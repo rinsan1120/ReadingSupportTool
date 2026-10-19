@@ -44,7 +44,7 @@
         <div id="sample-options" class="inset inline"><label>長さ<select id="sample-level"><option value="200">200字級</option><option value="400" selected>400字級</option><option value="600">600字級</option></select></label><label>雰囲気<select id="sample-mood"><option>おまかせ</option><option>ゆったり</option><option>ふつう</option><option>軽快</option><option>会話多め</option></select></label></div>
         <p id="sample-info" class="inset muted"></p>
         <label class="choice"><input type="radio" name="source" value="custom"> 用意した文章を読む</label>
-        <div id="custom-input" hidden><label for="time-text">朗読する作品の本文</label><textarea id="time-text" rows="8" spellcheck="false" autocomplete="off"></textarea><p id="time-count" class="muted">計測する本文：0文字</p><p id="time-annotation-retention" class="muted" hidden>引き継いだ読み仮名を保持しています。本文を変更して計測準備画面を開く場合は、計測用の読み仮名の削除を確認します。</p><p class="privacy">本文は自動保存・外部送信しません。再読み込み・タブ終了で失われます。</p></div>
+        <div id="custom-input" hidden><label for="time-text">朗読する作品の本文</label><textarea id="time-text" rows="8" spellcheck="false" autocomplete="off"></textarea><p id="time-count" class="muted">計測する本文：0文字</p><p id="time-annotation-retention" class="muted" hidden>引き継いだ読み仮名・書き込みを保持しています。本文を変更して計測準備画面を開く場合は、これらの削除を確認します。</p><p class="privacy">本文は自動保存・外部送信しません。再読み込み・タブ終了で失われます。</p></div>
       </fieldset>
       <div class="target-field"><label for="target-count">時間を知りたい作品全体の文字数</label><div class="inline"><input id="target-count" type="number" min="1" max="1000000000" step="1" inputmode="numeric" placeholder="例：6000"><span>文字</span></div><p class="muted">計測に使う文章とは別の、作品全体の文字数です。</p><button id="apply-count" class="quiet" hidden>貼り付けた文字数を反映</button></div>
       <div class="inline"><button id="prepare-time" class="primary">文章を確認して計測へ →</button><button id="existing-results" hidden>これまでの結果を見る</button></div>
@@ -54,6 +54,7 @@
         <div class="reader-toolbar"><button id="reader-back" class="quiet">← 入力へ</button><h1 id="reading-title" tabindex="-1">文章を読む</h1><div class="reader-actions"><button id="ruby-mode" aria-pressed="false" aria-describedby="ruby-help" hidden>ルビ：OFF</button><button id="operations" aria-haspopup="dialog">操作</button></div></div>
         <div id="writing-toolbar" aria-label="書き込みツール" hidden>
           <div class="writing-tools" role="group" aria-label="使用するツール"><button data-writing-tool="pen" aria-pressed="true">赤ペン</button><button data-writing-tool="marker" aria-pressed="false">マーカー</button><button data-writing-tool="memo" aria-pressed="false">文字メモ</button><button data-writing-tool="eraser" aria-pressed="false">消しゴム</button></div>
+          <div id="marker-colors" role="group" aria-label="マーカーの色" hidden><button data-marker-color="yellow" aria-pressed="true">黄色</button><button data-marker-color="lightblue" aria-pressed="false">水色</button><button data-marker-color="pink" aria-pressed="false">ピンク</button></div>
           <div class="writing-options"><span>JSON保存・PDF出力対応</span><button id="writing-undo" disabled>元に戻す</button><button id="writing-off">書き込みOFF</button></div>
           <p id="writing-tool-help"></p>
         </div>

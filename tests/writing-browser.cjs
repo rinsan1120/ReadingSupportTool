@@ -220,9 +220,9 @@ const counts = page => page.evaluate(() => ({ pen: document.querySelectorAll('#w
       });
       assert.match(await page.locator('#confirm-message').textContent(), /書き込み.*失われます/); await page.locator('#confirm-cancel').click();
       await page.locator('#open-read').click(); assert.deepEqual(await counts(page), retained);
-      // Timing remains independent, with the original writing waiting in read mode.
+      // Timing gets an independent, read-only copy of the writing.
       await page.locator('#operations').click(); await page.locator('#measure-current').click();
-      assert.deepEqual(await counts(page), { pen: 0, marker: 0, memo: 0 });
+      assert.deepEqual(await counts(page), retained);
       assert.equal(await page.locator('#writing-mode').isVisible(), false);
       await page.locator('#operations').click(); await page.locator('#home-from-menu').click();
       await page.locator('[data-go="read-input"]').click(); await page.locator('#open-read').click();
@@ -247,7 +247,7 @@ const counts = page => page.evaluate(() => ({ pen: document.querySelectorAll('#w
       await writingOn(page); await tool(page, 'marker'); await tap(await glyph(page, 2));
       assert.equal(await page.locator('#writing-markers rect').first().getAttribute('data-start'), '2');
       assert.equal(await page.locator('#writing-markers rect').first().getAttribute('data-end'), '13', 'ZWJ family is one marked grapheme at original UTF-16 boundaries');
-      assert.equal(await originalText(page), unicode); assert.deepEqual(checkSaved(await save(page), unicodeData), [{ id: 1, type: 'marker', start: 2, end: 13 }]);
+      assert.equal(await originalText(page), unicode); assert.deepEqual(checkSaved(await save(page), unicodeData), [{ id: 1, type: 'marker', start: 2, end: 13, color: 'yellow' }]);
       console.log(`PASS ${width}px: pen/marker/memo, edits/eraser/undo, source anchors/reflow, touch scrolling, ruby isolation, replacement protection, JSON/PDF marks, unchanged timing`);
       await context.close();
     }

@@ -44,7 +44,7 @@ const length = points => points.slice(1).reduce((sum, p, i) => sum + Math.hypot(
       const text = '黄昏に狐を見た。👩‍👩‍👧‍👦が𠮷【原文】。\r\n\r\n' + Array.from({ length: 60 }, (_, i) => `章${String(i).padStart(3, '0')}：風の音を聞いて、静かに今日のことを語る。${i % 4 === 0 ? '\n\n' : '\n'}`).join('') + '最終ページ確認。';
       const data = { format: 'reading-support-manuscript', version: 3, text,
         annotations: [{ offset: 2, text: 'たそがれ' }], sourceRubies: [{ start: 3, end: 4, reading: 'きつね' }],
-        marks: [{ id: 1, type: 'marker', start: 0, end: text.length },
+        marks: [{ id: 1, type: 'marker', start: 0, end: text.length, ...(width === 320 ? {} : { color: width === 1200 ? 'pink' : 'lightblue' }) },
           { id: 2, type: 'memo', offset: 3, dx: .4, dy: 0, text: '少し大きく・間を取る' },
           { id: 3, type: 'memo', offset: text.indexOf('章020'), dx: .4, dy: 0, text: 'ゆっくり'.repeat(8) },
           { id: 4, type: 'memo', offset: text.indexOf('章020'), dx: -1000, dy: 1000, text: '<b>HTMLにしない</b>' },
@@ -103,7 +103,7 @@ const length = points => points.slice(1).reduce((sum, p, i) => sum + Math.hypot(
         const ink = el => { const r = document.createRange(); r.selectNodeContents(el); const b = r.getBoundingClientRect(); return { x: b.left - page.left, y: b.top - page.top }; };
         return { width: page.width, height: page.height, scale: Number(canvas.dataset.scale), left: box.left - page.left,
           rows: [...sheet.querySelectorAll('.manuscript-line')].map(row => { const body = row.cloneNode(true); body.querySelectorAll('rt').forEach(rt => rt.remove()); return { index: Number(row.dataset.sourceLine), text: body.textContent, first: ink(row.firstChild.querySelector('ruby')?.firstChild || row.firstChild) }; }),
-          markers: [...sheet.querySelectorAll('.manuscript-markers rect')].map(el => ({ offset: Number(el.dataset.offset), ...rect(el) })),
+          markers: [...sheet.querySelectorAll('.manuscript-markers rect')].map(el => ({ offset: Number(el.dataset.offset), color: el.dataset.color, fill: getComputedStyle(el).fill, ...rect(el) })),
           pens: [...sheet.querySelectorAll('.manuscript-pens path[data-mark-id]')].map(el => ({ id: Number(el.dataset.markId), row: Number(el.dataset.sourceLine), d: el.getAttribute('d'), stroke: Number(el.getAttribute('stroke-width')) })),
           memos: [...sheet.querySelectorAll('.manuscript-memo')].map(el => ({ id: Number(el.dataset.markId), offset: Number(el.dataset.offset), text: el.lastChild.textContent, font: parseFloat(getComputedStyle(el).fontSize), ...rect(el) })),
           z: ['.manuscript-markers', '.manuscript-line', '.manuscript-pens', '.manuscript-memo'].map(sel => getComputedStyle(sheet.querySelector(sel) || canvas).zIndex)
@@ -118,6 +118,8 @@ const length = points => points.slice(1).reduce((sum, p, i) => sum + Math.hypot(
         const byRow = new Map(sheet.rows.map(row => [row.index, row]));
         const shift = index => byRow.get(index).first.y / sheet.scale - snap.lines[index].pieces[0].top;
         for (const mark of sheet.markers) {
+          assert.equal(mark.color, data.marks[0].color ?? 'yellow');
+          assert.equal(mark.fill, width === 1200 ? 'rgb(255, 208, 223)' : width === 390 ? 'rgb(189, 233, 250)' : 'rgb(255, 229, 136)', 'each page keeps its marker colour');
           const g = glyphs.get(mark.offset); assert.ok(byRow.has(g.line), 'marker follows text onto its page');
           assert.ok(Math.abs(mark.x - sheet.left - g.x * sheet.scale) < .06);
           assert.ok(Math.abs(mark.y - (g.y + shift(g.line)) * sheet.scale) < .1);

@@ -98,9 +98,7 @@
       const glyph = glyphs.get(item.offset), line = glyph && byLine.get(glyph.line);
       if (!line) throw new Error('文字メモの本文位置を確認できません。朗読画面を開き直してから出力してください。');
       const el = document.createElement('div'); el.className = 'manuscript-memo'; el.dataset.markId = item.id; el.dataset.offset = item.offset;
-      const context = document.createElement('small'), content = document.createElement('span');
-      context.textContent = `「${Array.from(writing.source.slice(item.offset)).slice(0, 5).join('').replace(/\s/g, ' ')}」`;
-      content.textContent = item.text; el.append(context, content); measurePage.append(el);
+      el.textContent = item.text; measurePage.append(el);
       groupByLine.get(line.index).memos.push({ item, glyph, el, height: el.getBoundingClientRect().height });
     }
     const maxGroupHeight = groups.reduce((height, g) => Math.max(height, g.extentBottom - g.extentTop), 0);
@@ -187,7 +185,7 @@
           const line = placedLines.get(glyph.line);
           if (!line || glyph.end <= item.start || glyph.start >= item.end) continue;
           svg('rect', { x: glyph.x * scale, y: (glyph.y + line.placedTop - line.top) * scale,
-            width: glyph.width * scale, height: glyph.height * scale, 'data-mark-id': item.id, 'data-offset': glyph.start }, markerLayer);
+            width: glyph.width * scale, height: glyph.height * scale, 'data-mark-id': item.id, 'data-offset': glyph.start, 'data-color': item.color ?? 'yellow' }, markerLayer);
         }
       }
       const penLayer = svg('svg', { class: 'manuscript-pens', width: snapshot.width * scale, height: bounds.height }, canvas);

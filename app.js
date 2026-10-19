@@ -12,7 +12,7 @@
   // A textarea normalizes CRLF/CR to LF. Retain the exact imported source until
   // its displayed input is edited, otherwise UTF-16 annotation offsets drift.
   let readInputSnapshot = null;
-  let timeAnnotations = null, timeInputSnapshot = null;
+  let timeAnnotations = null, timeMarks = null, timeInputSnapshot = null;
   let openingReader = false;
   const hasReadings = model => !!(model && (model.entries.length || model.sourceRubies.length));
   function ask(message, action = '削除する') {
@@ -65,7 +65,7 @@
     if (next === 'results') renderResults();
     $('existing-results').hidden = !history.length;
     $('annotation-retention').hidden = !hasReadings(readAnnotations);
-    $('time-annotation-retention').hidden = !hasReadings(timeAnnotations);
+    $('time-annotation-retention').hidden = !hasReadings(timeAnnotations) && !timeMarks?.hasMarks;
     $('writing-retention').hidden = !readMarks.hasMarks;
     window.scrollTo(0, 0);
     $(next).querySelector('h1')?.focus({ preventScroll: true });
@@ -106,10 +106,11 @@
     try {
       let plain = event.clipboardData?.getData('text/plain') || '', imported = null;
       const retained = id === 'read-text' ? readAnnotations : timeAnnotations;
+      const retainedMarks = id === 'read-text' ? readMarks : timeMarks;
       const whole = begin === 0 && end === el.value.length;
       if (ruby) {
         imported = window.HTMLRubyImporter.parse(html);
-        if (!whole && (hasReadings(retained) || (id === 'read-text' && readMarks.hasMarks))) {
+        if (!whole && (hasReadings(retained) || retainedMarks?.hasMarks)) {
           notify('読み仮名・書き込みがある原稿の途中にはHTMLルビを貼り付けできません。本文全体を選択して置き換えるか、別の原稿として取り込んでください。'); return;
         }
         plain = imported.source;
@@ -117,16 +118,16 @@
         imported = window.ReadingAnnotations.fromJSON(JSON.stringify({ ...imported.toJSON(), text: combined,
           sourceRubies: imported.sourceRubies.map(r => ({ ...r, start: r.start + begin, end: r.end + begin })) }));
       }
-      const replacingReadings = ruby && whole && (hasReadings(retained) || (id === 'read-text' && readMarks.hasMarks));
+      const replacingReadings = ruby && whole && (hasReadings(retained) || retainedMarks?.hasMarks);
       if (((el.value && end > begin) || replacingReadings) && !await ask(replacingReadings ?
-        '現在の本文と読み仮名を、貼り付けた文章と元の読み仮名で置き換えますか？' + (id === 'read-text' ? writingLoss() : '') : '選択中の本文を貼り付けた文章で置き換えますか？', '置き換える')) return;
+        '現在の本文と読み仮名を、貼り付けた文章と元の読み仮名で置き換えますか？' + (id === 'read-text' ? writingLoss() : timeMarks?.hasMarks ? ' 計測用の書き込みも削除されます。「文章を読む」の原稿は保持します。' : '') : '選択中の本文を貼り付けた文章で置き換えますか？', '置き換える')) return;
       if (view !== previousView || el.value !== previous) return;
       el.setRangeText(plain, begin, end, 'end');
       if (imported) {
         if (id === 'read-text') { readAnnotations = imported; readMarks = new window.ManuscriptMarks(imported.source); readInputSnapshot = el.value; }
-        else { timeAnnotations = imported; timeInputSnapshot = el.value; }
+        else { timeAnnotations = imported; timeMarks = null; timeInputSnapshot = el.value; }
         $('annotation-retention').hidden = !hasReadings(readAnnotations);
-        $('time-annotation-retention').hidden = !hasReadings(timeAnnotations);
+        $('time-annotation-retention').hidden = !hasReadings(timeAnnotations) && !timeMarks?.hasMarks;
         $('writing-retention').hidden = !readMarks.hasMarks;
         if (imported.sourceRubies.length) notify(`元の読み仮名を${imported.sourceRubies.length}件取り込みました`);
       }
@@ -169,8 +170,8 @@
         readInputSnapshot = $('read-text').value;
       }
       if (nextMode === 'time' && sourceType === 'custom' && timeAnnotations && text !== timeAnnotations.source) {
-        if (hasReadings(timeAnnotations) && !await ask('計測用の本文が変更されています。開くと計測用の読み仮名はすべて削除されます。「文章を読む」の原稿は変更されません。本文を差し替えますか？', '差し替える')) return;
-        timeAnnotations = null; timeInputSnapshot = null;
+        if ((hasReadings(timeAnnotations) || timeMarks?.hasMarks) && !await ask('計測用の本文が変更されています。開くと計測用の読み仮名・書き込みはすべて削除されます。「文章を読む」の原稿は変更されません。本文を差し替えますか？', '差し替える')) return;
+        timeAnnotations = null; timeMarks = null; timeInputSnapshot = null;
       }
     } finally { openingReader = false; }
     displayReader(nextMode, text);
@@ -189,7 +190,7 @@
     updatePreparationInfo();
     const model = mode === 'read' ? readAnnotations : sourceType === 'custom' ? timeAnnotations : null;
     window.Reader.show(text, model, { editable: mode === 'read' });
-    window.ManuscriptWriting.show(mode === 'read' ? readMarks : null);
+    window.ManuscriptWriting.show(mode === 'read' ? readMarks : sourceType === 'custom' && timeMarks?.source === text ? timeMarks : null, { editable: mode === 'read' });
   }
   $('open-read').onclick = () => openReader('read'); $('prepare-time').onclick = () => openReader('time');
   let preparingPDF = false, pdfAnchor = null;
@@ -241,7 +242,7 @@
       const inputText = text.replace(/\r\n?/g, '\n');
       $('operation-dialog').close();
       if ($('time-text').value && $('time-text').value !== inputText &&
-        !await ask('計測用入力欄の本文を、この文章で置き換えますか？入力済みの計測用本文と読み仮名は失われます。「文章を読む」の原稿は保持します。', '置き換える')) {
+        !await ask('計測用入力欄の本文を、この文章で置き換えますか？入力済みの計測用本文・読み仮名・書き込みは失われます。「文章を読む」の原稿は保持します。', '置き換える')) {
         $('operation-dialog').showModal(); return;
       }
       // Take an independent snapshot so changing either mode cannot mutate the
@@ -249,14 +250,17 @@
       const copied = new window.ReadingAnnotations(text);
       copied.entries = readAnnotations.entries.map(({ offset, text }) => ({ offset, text }));
       copied.sourceRubies = readAnnotations.sourceRubies.map(({ start, end, reading }) => ({ start, end, reading }));
-      timeAnnotations = copied;
+      if (readMarks.source !== text) throw new Error('本文と書き込みの原文が一致しません。');
+      const copiedMarks = window.ManuscriptMarks.fromItems(readMarks.items, copied);
+      timeAnnotations = copied; timeMarks = copiedMarks;
       $('time-text').value = text; timeInputSnapshot = $('time-text').value;
       const custom = document.querySelector('[name=source][value=custom]');
       custom.checked = true; custom.dispatchEvent(new Event('change'));
       $('time-text').dispatchEvent(new Event('input'));
       setTarget(count, true);
       displayReader('time', text);
-    } finally { openingReader = false; }
+    } catch (error) { notify(`計測用の原稿を準備できません。${error.message}`); }
+    finally { openingReader = false; }
   };
   $('export-manuscript').onclick = () => {
     if (view !== 'reading' || mode !== 'read') return;

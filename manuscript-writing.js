@@ -7,6 +7,7 @@
     static MAX_POINTS = 2000;
     static MAX_TOTAL_POINTS = 100000;
     static MAX_COORDINATE = 1000;
+    static MARKER_COLORS = ['yellow', 'lightblue', 'pink'];
     constructor(source = '') { this.source = source; this.items = []; this.history = []; this.nextId = 1; }
     get hasMarks() { return this.items.length > 0; }
     remember() { this.history.push(copy(this.items)); if (this.history.length > 40) this.history.shift(); }
@@ -48,7 +49,7 @@
         const label = `書き込み${index + 1}件目：`;
         const fields = {
           pen: ['id', 'type', 'offset', 'layoutKey', 'points', 'witnesses'],
-          marker: ['id', 'type', 'start', 'end'], memo: ['id', 'type', 'offset', 'dx', 'dy', 'text']
+          marker: ['id', 'type', 'start', 'end', 'color'], memo: ['id', 'type', 'offset', 'dx', 'dy', 'text']
         };
         if (!item || typeof item !== 'object' || Array.isArray(item) || typeof item.type !== 'string' || !Object.hasOwn(fields, item.type)) throw new Error(`${label}書き込み種類が不正です。`);
         object(item, fields[item.type], label);
@@ -58,7 +59,8 @@
         const base = { id: item.id, type: item.type };
         if (item.type === 'marker') {
           if (!position(item.start) || !position(item.end) || item.start >= item.end) throw new Error(`${label}マーカーの範囲が不正、または文字境界に一致しません。`);
-          restored.items.push({ ...base, start: item.start, end: item.end });
+          if (Object.hasOwn(item, 'color') && !this.MARKER_COLORS.includes(item.color)) throw new Error(`${label}マーカーの色はyellow・lightblue・pinkのいずれかにしてください。`);
+          restored.items.push({ ...base, start: item.start, end: item.end, ...(Object.hasOwn(item, 'color') ? { color: item.color } : {}) });
         } else {
           anchor(item.offset, label);
           if (item.type === 'memo') {
@@ -109,7 +111,7 @@
   const root = $('reader'), stage = $('reader-stage'), toolbar = $('writing-toolbar');
   const markers = $('writing-markers'), pens = $('writing-pen'), memos = $('writing-memos');
   const editor = $('writing-memo-dialog'), input = $('writing-memo-input');
-  let model = null, enabled = false, tool = 'pen', gesture = null, draftMemo = null, rendering = false;
+  let model = null, editable = true, enabled = false, tool = 'pen', markerColor = 'yellow', gesture = null, draftMemo = null, rendering = false;
   let paintedPens = [], paintedMarkers = [];
   const help = {
     pen: '本文付近をドラッグして赤い線。スクロールは「書き込みOFF」で。',
@@ -162,10 +164,13 @@
     stage.classList.toggle('writing-active', enabled);
     stage.classList.toggle('writing-drag', enabled && tool !== 'memo');
     document.querySelectorAll('[data-writing-tool]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.writingTool === tool)));
+    $('marker-colors').hidden = !enabled || tool !== 'marker';
+    document.querySelectorAll('[data-marker-color]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.markerColor === markerColor)));
     if ($('writing-tool-help').textContent !== help[tool]) $('writing-tool-help').textContent = help[tool];
-    $('writing-undo').disabled = !model?.history.length;
+    $('writing-undo').disabled = !editable || !model?.history.length;
   }
   function setMode(on) {
+    if (on && !editable) return;
     const anchor = window.Reader.capture();
     cancelPending(); enabled = Boolean(model && on);
     if (enabled) window.Reader.setRubyMode(false);
@@ -215,7 +220,7 @@
         for (const item of items) {
           if (item.type === 'marker') {
             const boxes = rectangles(item.start, item.end, geometry);
-            for (const box of boxes) svg('rect', { ...box, rx: 2, 'data-mark-id': item.id ?? 'draft', 'data-start': item.start, 'data-end': item.end }, markerGroup);
+            for (const box of boxes) svg('rect', { ...box, rx: 2, 'data-mark-id': item.id ?? 'draft', 'data-start': item.start, 'data-end': item.end, 'data-color': item.color ?? 'yellow' }, markerGroup);
             paintedMarkers.push({ id: item.id, boxes });
           } else if (item.type === 'pen') {
             const points = strokePoints(item, geometry);
@@ -230,17 +235,18 @@
         noteItems.sort((a, b) => a.glyph.y - b.glyph.y || a.item.id - b.item.id);
         let bottom = 0;
         for (const { item, glyph } of noteItems) {
-          const button = document.createElement('button'); button.type = 'button';
-          button.className = 'writing-memo'; button.dataset.markId = item.id;
-          const context = document.createElement('small'), content = document.createElement('span');
-          context.textContent = `「${Array.from(model.source.slice(item.offset)).slice(0, 5).join('').replace(/\s/g, ' ')}」`;
-          content.textContent = item.text; button.append(context, content);
-          button.setAttribute('aria-label', `文字メモ「${item.text}」を${tool === 'eraser' ? '削除' : '編集'}`);
-          button.disabled = !enabled || !['memo', 'eraser'].includes(tool);
+          const button = document.createElement(editable ? 'button' : 'div');
+          button.className = `writing-memo${editable ? '' : ' writing-memo-readonly'}`; button.dataset.markId = item.id;
+          button.textContent = item.text;
+          if (editable) {
+            button.type = 'button';
+            button.setAttribute('aria-label', `文字メモ「${item.text}」を${tool === 'eraser' ? '削除' : '編集'}`);
+            button.disabled = !enabled || !['memo', 'eraser'].includes(tool);
+          }
           button.style.left = `${Math.min(outer.width - 112, Math.max(ox + rect.width + 4, ox + glyph.x + item.dx * geometry.fontSize))}px`;
           button.style.top = `${Math.max(bottom, oy + glyph.y + item.dy * geometry.fontSize)}px`;
-          button.onclick = () => {
-            if (!enabled) return;
+          if (editable) button.onclick = () => {
+            if (!enabled || !editable) return;
             if (tool === 'eraser') { model.remove(item.id); render(); }
             else if (tool === 'memo') openMemo(item);
           };
@@ -248,7 +254,7 @@
         }
         stage.style.minHeight = bottom ? `${Math.ceil(bottom + 16)}px` : '';
       } else stage.style.minHeight = '';
-      const message = `書き込み${model.items.length}件：JSON保存・PDF出力に対応しています。${hidden ? ` 折り返しの変化により赤ペン${hidden}件を一時非表示にしています。これらはPDFに含まれません。元の配置に戻すと再表示します。` : ''}`;
+      const message = `書き込み${model.items.length}件：${editable ? 'JSON保存・PDF出力に対応しています。' : '閲覧専用です。'}${hidden ? ` 折り返しの変化により赤ペン${hidden}件を一時非表示にしています。${editable ? 'これらはPDFに含まれません。' : ''}元の配置に戻すと再表示します。` : ''}`;
       const status = $('writing-status'), hide = !enabled && !model.hasMarks;
       if (status.hidden !== hide || status.textContent !== message) {
         const anchor = window.Reader.capture(), height = status.getBoundingClientRect().height;
@@ -263,6 +269,7 @@
     editor.style.setProperty('--editor-height', `${Math.max(120, height - 24)}px`);
   }
   function openMemo(item) {
+    if (!editable || !enabled) return;
     draftMemo = { ...item }; input.value = item.text || '';
     $('writing-memo-delete').hidden = !item.id;
     $('writing-memo-save').disabled = !input.value.trim();
@@ -292,7 +299,7 @@
     }
   }
   stage.addEventListener('pointerdown', e => {
-    if (!enabled) return;
+    if (!enabled || !editable) return;
     if (!e.isPrimary) { releaseGesture(); render(); return; }
     if (e.button !== 0 || e.target.closest('.writing-memo') || editor.open) return;
     if ([...memos.children].some(note => {
@@ -307,28 +314,28 @@
       gesture.origin = center(glyph);
       gesture.preview = { type: 'pen', offset: glyph.start, layoutKey: geometry.layoutKey, points: [{ x: (point.x - gesture.origin.x) / geometry.fontSize, y: (point.y - gesture.origin.y) / geometry.fontSize }], witnesses: [{ offset: glyph.start, x: 0, y: 0 }] };
     }
-    if (tool === 'marker') gesture.preview = { type: 'marker', start: glyph.start, end: glyph.end };
+    if (tool === 'marker') gesture.preview = { type: 'marker', start: glyph.start, end: glyph.end, color: markerColor };
     render();
   });
   stage.addEventListener('pointermove', e => {
-    if (!gesture || gesture.id !== e.pointerId) return;
+    if (!editable || !gesture || gesture.id !== e.pointerId) return;
     const point = localPoint(e);
     if (Math.hypot(point.x - gesture.first.x, point.y - gesture.first.y) > 8) gesture.moved = true;
     if (tool === 'pen') updateStroke(point);
     if (tool === 'marker') {
       const end = nearest(point, window.Reader.getWritingGeometry());
-      if (end) gesture.preview = { type: 'marker', start: Math.min(gesture.glyph.start, end.start), end: Math.max(gesture.glyph.end, end.end) };
+      if (end) gesture.preview = { type: 'marker', start: Math.min(gesture.glyph.start, end.start), end: Math.max(gesture.glyph.end, end.end), color: markerColor };
     }
     if (tool === 'pen' || tool === 'marker') render();
   });
   stage.addEventListener('pointerup', e => {
-    if (!gesture || gesture.id !== e.pointerId) return;
+    if (!editable || !gesture || gesture.id !== e.pointerId) return;
     const point = localPoint(e);
     if (Math.hypot(point.x - gesture.first.x, point.y - gesture.first.y) > 8) gesture.moved = true;
     if (tool === 'pen') updateStroke(point);
     if (tool === 'marker') {
       const last = nearest(point, window.Reader.getWritingGeometry());
-      if (last) gesture.preview = { type: 'marker', start: Math.min(gesture.glyph.start, last.start), end: Math.max(gesture.glyph.end, last.end) };
+      if (last) gesture.preview = { type: 'marker', start: Math.min(gesture.glyph.start, last.start), end: Math.max(gesture.glyph.end, last.end), color: markerColor };
     }
     const completed = gesture; releaseGesture();
     if (tool === 'pen' && completed.preview.points.length > 1) model.add(completed.preview);
@@ -341,18 +348,19 @@
   });
   stage.addEventListener('pointercancel', () => { releaseGesture(); render(); });
   stage.addEventListener('lostpointercapture', () => { if (gesture) { gesture = null; render(); } });
-  document.querySelectorAll('[data-writing-tool]').forEach(button => button.onclick = () => { cancelPending(); tool = button.dataset.writingTool; controls(); render(); });
+  document.querySelectorAll('[data-writing-tool]').forEach(button => button.onclick = () => { if (!editable) return; cancelPending(); tool = button.dataset.writingTool; controls(); render(); });
+  document.querySelectorAll('[data-marker-color]').forEach(button => button.onclick = () => { if (!editable) return; cancelPending(); markerColor = button.dataset.markerColor; controls(); render(); });
   $('writing-off').onclick = () => setMode(false);
-  $('writing-undo').onclick = () => { cancelPending(); model?.undo(); render(); };
+  $('writing-undo').onclick = () => { if (!editable) return; cancelPending(); model?.undo(); render(); };
   input.addEventListener('input', () => { $('writing-memo-save').disabled = !input.value.trim(); });
   input.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.isComposing || e.keyCode === 229)) e.preventDefault(); });
   $('writing-memo-form').addEventListener('submit', e => {
     e.preventDefault(); const text = input.value.trim();
-    if (!draftMemo || !text || text.length > 40 || /[\r\n\u2028\u2029]/u.test(text)) return;
+    if (!editable || !enabled || !draftMemo || !text || text.length > 40 || /[\r\n\u2028\u2029]/u.test(text)) return;
     if (draftMemo.id) model.editMemo(draftMemo.id, text); else model.add({ ...draftMemo, text });
     cancelPending();
   });
-  $('writing-memo-delete').onclick = () => { if (draftMemo?.id) model.remove(draftMemo.id); cancelPending(); };
+  $('writing-memo-delete').onclick = () => { if (!editable) return; if (draftMemo?.id) model.remove(draftMemo.id); cancelPending(); };
   $('writing-memo-cancel').onclick = cancelPending;
   editor.addEventListener('cancel', e => { e.preventDefault(); cancelPending(); });
   editor.addEventListener('close', () => { draftMemo = null; });
@@ -381,7 +389,7 @@
       }
       return { source: model.source, items: copy(model.items), pens, hiddenPens };
     },
-    show(next) { cancelPending(); model = next; enabled = false; controls(); render(); },
+    show(next, options = {}) { cancelPending(); model = next; editable = options.editable !== false; enabled = false; controls(); render(); },
     leave() { cancelPending(); enabled = false; model = null; controls(); render(); },
     setMode, cancelPending,
     get enabled() { return enabled; }

@@ -212,12 +212,13 @@ input[type=number] {
 .manuscript-markers, .manuscript-pens { position:absolute; inset:0; overflow:visible; pointer-events:none; }
 .manuscript-markers { z-index:0; }
 .manuscript-markers rect { fill:#ffe588; }
+.manuscript-markers rect[data-color=lightblue] { fill:#bde9fa; }
+.manuscript-markers rect[data-color=pink] { fill:#ffd0df; }
 .manuscript-line { position:relative; z-index:1; }
 .manuscript-pens { z-index:2; }
 .manuscript-pens path { fill:none; stroke:#c52228; stroke-linecap:round; stroke-linejoin:round; }
 .manuscript-pens .manuscript-note-link { stroke:#9a6868; stroke-width:.6; }
 .manuscript-memo { position:absolute; z-index:3; width:112px; padding:0; margin:0; border:0; font:12px/1.45 system-ui,sans-serif; letter-spacing:0; color:#8b1e24; background:white; white-space:pre-wrap; overflow-wrap:anywhere; }
-.manuscript-memo small { display:block; font:10px/1.4 system-ui,sans-serif; color:#555; }
 #pdf-dialog h2 { margin-top:0; }
 #pdf-dialog p { line-height:1.8; }
 #pdf-small-warning { color:#fcd58a; }
@@ -309,6 +310,12 @@ footer {
 .writing-options { display:flex; align-items:center; justify-content:center; gap:8px; margin-top:6px; }
 .writing-options span { color:var(--muted); font-size:11px; }
 .writing-options button { font-size:12px; padding:7px; min-height:34px; }
+#marker-colors { display:flex; justify-content:center; gap:6px; margin-top:6px; }
+#marker-colors button { display:flex; align-items:center; gap:5px; min-height:34px; padding:6px 10px; font-size:12px; }
+#marker-colors button::before { content:""; width:12px; height:12px; border-radius:50%; background:#ffd148; }
+#marker-colors [data-marker-color=lightblue]::before { background:#60c6ff; }
+#marker-colors [data-marker-color=pink]::before { background:#ff89b9; }
+#marker-colors [aria-pressed=true] { border-color:var(--blue); outline:1px solid var(--blue); background:#23364f; }
 #writing-tool-help { margin:6px 0 0; font-size:12px; text-align:center; color:var(--muted); line-height:1.5; }
 .writing-status { margin:12px 16px 0; color:var(--muted); font-size:12px; line-height:1.6; }
 #reader-stage { display:grid; grid-template-columns:minmax(0,1fr); position:relative; isolation:isolate; }
@@ -318,11 +325,13 @@ footer {
 #writing-markers, #writing-pen, #writing-memos { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
 #writing-markers { z-index:0; overflow:hidden; }
 #writing-markers rect { fill:rgba(255,209,72,.38); }
+#writing-markers rect[data-color=lightblue] { fill:rgba(96,198,255,.38); }
+#writing-markers rect[data-color=pink] { fill:rgba(255,137,185,.38); }
 #writing-pen { z-index:2; overflow:hidden; }
 #writing-pen path { fill:none; stroke:#ff6b6b; stroke-width:2.8; stroke-linecap:round; stroke-linejoin:round; }
 #writing-memos { z-index:3; }
 .writing-memo { position:absolute; width:104px; padding:6px; font:14px/1.5 system-ui; text-align:left; color:#ffb0ac; background:var(--panel); border:1px solid #ff8b8659; border-radius:6px; overflow-wrap:anywhere; letter-spacing:0; }
-.writing-memo small { display:block; color:var(--muted); font-size:10px; }
+.writing-memo-readonly { background:transparent; border-color:transparent; cursor:default; pointer-events:none; }
 .writing-memo:disabled { opacity:1; cursor:default; }
 .writing-active { user-select:none; -webkit-user-select:none; touch-action:pan-y; }
 .writing-active .writing-memo:not(:disabled) { pointer-events:auto; }
