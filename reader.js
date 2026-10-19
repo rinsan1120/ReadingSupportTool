@@ -6,7 +6,7 @@
   let source = '', settings = { width: 900, fontSize: 22, height: 1.8, breaks: 5 };
   let blocks = [], lastAvailable = 0, lastMobile = false, scheduled = 0;
   let savedAnchor = null;
-  let annotations = null, rubyMode = false, draft = null, editAnchor = null;
+  let annotations = null, annotationsEditable = true, rubyMode = false, draft = null, editAnchor = null;
   const rubyButton = document.getElementById('ruby-mode');
   const rubyHelp = document.getElementById('ruby-help');
   const editor = document.getElementById('ruby-dialog');
@@ -249,7 +249,7 @@
     restore(anchor);
   }
   function updateMode(on) {
-    rubyMode = Boolean(annotations && on);
+    rubyMode = Boolean(annotations && annotationsEditable && on);
     rubyButton.setAttribute('aria-pressed', String(rubyMode));
     rubyButton.textContent = `ルビ：${rubyMode ? 'ON' : 'OFF'}`;
     rubyHelp.hidden = !rubyMode;
@@ -371,9 +371,10 @@
   addEventListener('scroll', () => { savedAnchor = capture(); }, { passive: true });
   document.fonts.ready.then(() => { if (source) layout(savedAnchor); });
   window.Reader = {
-    show(text, model = null) {
+    show(text, model = null, { editable = true } = {}) {
       finishEdit(); source = text; annotations = model;
-      rubyButton.hidden = !model; updateMode(false);
+      annotationsEditable = editable;
+      rubyButton.hidden = !model || !editable; updateMode(false);
       savedAnchor = null; layout(null);
     },
     leave() { finishEdit(); updateMode(false); },
@@ -388,6 +389,6 @@
       layout(anchor);
     },
     capture, restore,
-    refresh() { layout(savedAnchor); }
+    refresh(anchor = savedAnchor) { savedAnchor = anchor; layout(anchor); }
   };
 })();

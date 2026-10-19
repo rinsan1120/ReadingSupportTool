@@ -220,16 +220,30 @@ const server = http.createServer((req, res) => {
         const model = new window.ReadingAnnotations('黄昏の空。' + '日本語の本文。'.repeat(120));
         model.set(2, 'ながいよみがな'.repeat(80));
         window.Reader.show(model.source, model);
-        window.scrollTo(0, 600);
+        // Locate the reading itself; preparation controls vary with viewport.
+        window.scrollTo(0, window.scrollY + document.getElementById('reader').getBoundingClientRect().top + 300);
         const before = window.Reader.capture();
+        const annotationTop = index => {
+          for (const span of document.querySelectorAll('.reading-annotation[data-offset="2"]')) {
+            const node = span.firstChild;
+            if (index < node.length) {
+              const range = document.createRange(); range.setStart(node, index); range.setEnd(node, index + 1);
+              return range.getBoundingClientRect().top;
+            }
+            index -= node.length;
+          }
+          throw new Error(`Missing anchored annotation character: ${JSON.stringify({ index, before })}`);
+        };
+        const glyphBefore = annotationTop(before.annotationIndex);
         window.Reader.configure({ height: 1.8 });
-        return { before, after: window.Reader.capture() };
+        return { before, after: window.Reader.capture(), glyphBefore, glyphAfter: annotationTop(before.annotationIndex) };
       });
       assert.equal(longAnchor.before.offset, 2);
       assert.ok(longAnchor.before.annotationIndex > 0, 'anchor is inside a wrapped reading');
       assert.equal(longAnchor.after.offset, longAnchor.before.offset);
-      assert.equal(longAnchor.after.annotationIndex, longAnchor.before.annotationIndex);
-      assert.ok(Math.abs(longAnchor.before.y - longAnchor.after.y) < 2);
+      // A preceding line can become partially visible when spacing shrinks.
+      // Verify the saved character's screen position, not the next capture's line.
+      assert.ok(Math.abs(longAnchor.glyphBefore - longAnchor.glyphAfter) < 2);
       await page.locator('#operations').click(); await page.locator('#home-from-menu').click();
       await page.locator('[data-go="read-input"]').click(); await page.locator('#open-read').click();
       assert.ok(await page.locator('.reading-annotation').count() >= 2);

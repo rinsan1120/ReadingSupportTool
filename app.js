@@ -10,6 +10,7 @@
   // A textarea normalizes CRLF/CR to LF. Retain the exact imported source until
   // its displayed input is edited, otherwise UTF-16 annotation offsets drift.
   let readInputSnapshot = null;
+  let timeAnnotations = null, timeInputSnapshot = null;
   let openingReader = false;
   function ask(message, action = '削除する') {
     return new Promise(resolve => {
@@ -45,7 +46,12 @@
   } catch { /* Storage is optional; text is never stored. */ }
   function setTarget(value, manual = false) {
     target = value; if (manual) targetManual = true;
-    $('target-count').value = value; $('result-target').value = value;
+    $('target-count').value = value; $('result-target').value = value; $('preparation-target').value = value;
+    updatePreparationInfo();
+  }
+  function updatePreparationInfo() {
+    const total = validTarget(target) ? `${Number(target).toLocaleString()}文字` : '未設定';
+    $('preparation-info').textContent = `計測する本文：${measuredCount}文字 ／ 作品全体：${total}`;
   }
   setTarget(target);
   function show(next) {
@@ -56,6 +62,7 @@
     if (next === 'results') renderResults();
     $('existing-results').hidden = !history.length;
     $('annotation-retention').hidden = !readAnnotations.entries.length;
+    $('time-annotation-retention').hidden = !timeAnnotations?.entries.length;
     window.scrollTo(0, 0);
     $(next).querySelector('h1')?.focus({ preventScroll: true });
   }
@@ -116,10 +123,12 @@
   $('clear-read').onclick = async () => { if ($('read-text').value && await ask('入力した本文を削除しますか？')) { $('read-text').value = ''; $('read-text').dispatchEvent(new Event('input')); } };
   $('apply-count').onclick = () => { setTarget(countText($('time-text').value) || '', true); persist(); };
   $('target-count').addEventListener('input', () => { setTarget($('target-count').value, true); persist(); });
+  $('preparation-target').addEventListener('input', () => { setTarget($('preparation-target').value, true); persist(); });
   $('result-target').addEventListener('input', () => { setTarget($('result-target').value, true); persist(); renderResults(); });
   async function openReader(nextMode) {
     if (openingReader) return;
-    const text = nextMode === 'read' ? ($('read-text').value === readInputSnapshot ? readAnnotations.source : $('read-text').value) : sourceType === 'sample' ? sample.text : $('time-text').value;
+    const text = nextMode === 'read' ? ($('read-text').value === readInputSnapshot ? readAnnotations.source : $('read-text').value) : sourceType === 'sample' ? sample.text :
+      timeAnnotations && $('time-text').value === timeInputSnapshot ? timeAnnotations.source : $('time-text').value;
     const retainedRead = nextMode === 'read' && $('read-text').value === readInputSnapshot;
     if (!countText(text) && !retainedRead) { notify('朗読する文章を入力してください。'); return; }
     if (nextMode === 'time' && !validTarget(target)) { notify('作品全体の文字数を1〜1,000,000,000の整数で入力してください。'); $('target-count').focus(); return; }
@@ -130,6 +139,10 @@
         readAnnotations.reset(text);
         readInputSnapshot = $('read-text').value;
       }
+      if (nextMode === 'time' && sourceType === 'custom' && timeAnnotations && text !== timeAnnotations.source) {
+        if (timeAnnotations.entries.length && !await ask('計測用の本文が変更されています。開くと計測用の読み仮名はすべて削除されます。「文章を読む」の原稿は変更されません。本文を差し替えますか？', '差し替える')) return;
+        timeAnnotations = null; timeInputSnapshot = null;
+      }
     } finally { openingReader = false; }
     displayReader(nextMode, text);
   }
@@ -138,13 +151,40 @@
     show('reading');
     $('reading-title').textContent = mode === 'time' ? (sourceType === 'sample' ? sample.title : '朗読速度の計測') : '文章を読む';
     $('preparation').hidden = mode !== 'time'; $('measurement-bar').hidden = true;
-    $('preparation-info').textContent = `計測する本文：${countText(text)}文字 ／ 作品全体：${Number(target).toLocaleString()}文字`;
     $('open-settings').disabled = false;
     $('export-manuscript').hidden = mode !== 'read';
+    $('measure-current').hidden = mode !== 'read';
     measuredCount = countText(text); measuredType = sourceType;
-    window.Reader.show(text, mode === 'read' ? readAnnotations : null);
+    updatePreparationInfo();
+    const model = mode === 'read' ? readAnnotations : sourceType === 'custom' ? timeAnnotations : null;
+    window.Reader.show(text, model, { editable: mode === 'read' });
   }
   $('open-read').onclick = () => openReader('read'); $('prepare-time').onclick = () => openReader('time');
+  $('measure-current').onclick = async () => {
+    if (view !== 'reading' || mode !== 'read' || openingReader) return;
+    const text = readAnnotations.source, count = countText(text);
+    if (!count) { $('operation-dialog').close(); notify('計測する文字を含む本文を用意してください。'); return; }
+    openingReader = true;
+    try {
+      const inputText = text.replace(/\r\n?/g, '\n');
+      $('operation-dialog').close();
+      if ($('time-text').value && $('time-text').value !== inputText &&
+        !await ask('計測用入力欄の本文を、この文章で置き換えますか？入力済みの計測用本文と読み仮名は失われます。「文章を読む」の原稿は保持します。', '置き換える')) {
+        $('operation-dialog').showModal(); return;
+      }
+      // Take an independent snapshot so changing either mode cannot mutate the
+      // other manuscript. Keep original CRLF/CR and UTF-16 offsets in the model.
+      const copied = new window.ReadingAnnotations(text);
+      copied.entries = readAnnotations.entries.map(({ offset, text }) => ({ offset, text }));
+      timeAnnotations = copied;
+      $('time-text').value = text; timeInputSnapshot = $('time-text').value;
+      const custom = document.querySelector('[name=source][value=custom]');
+      custom.checked = true; custom.dispatchEvent(new Event('change'));
+      $('time-text').dispatchEvent(new Event('input'));
+      setTarget(count, true);
+      displayReader('time', text);
+    } finally { openingReader = false; }
+  };
   $('export-manuscript').onclick = () => {
     if (view !== 'reading' || mode !== 'read') return;
     let url;
@@ -282,12 +322,13 @@
   const clock = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
   $('start').onclick = () => {
     if (phase !== 'idle' || document.hidden) return;
+    if (!validTarget(target)) { notify('作品全体の文字数を1〜1,000,000,000の整数で入力してください。'); $('preparation-target').focus(); return; }
     $('operation-dialog').close(); $('settings-dialog').close();
     phase = 'countdown'; $('start').disabled = true; $('open-settings').disabled = true;
     // Remove preparation controls and scroll to the beginning BEFORE counting.
     $('preparation').hidden = true; $('measurement-bar').hidden = false; $('finish').disabled = true;
     $('elapsed').textContent = '準備中'; window.scrollTo(0, 0);
-    window.Reader.refresh();
+    window.Reader.refresh(null);
     let value = 3; $('countdown').hidden = false; $('countdown').textContent = '3';
     const tick = () => {
       if (phase !== 'countdown') return;
