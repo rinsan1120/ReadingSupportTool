@@ -264,6 +264,26 @@ footer {
   margin:0;
   overflow-wrap:anywhere
 }
+.reader-actions { display:flex; gap:8px; flex-shrink:0; }
+#ruby-mode[aria-pressed=true] { background:var(--blue); color:var(--bg); border-color:var(--blue); }
+.ruby-help { margin:8px 16px; color:var(--muted); font-size:12px; text-align:center; }
+.reading-annotation { color:#fcd58a; }
+.ruby-mode .reading-annotation { cursor:pointer; }
+.reading-annotation:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.annotation-draft { text-decoration:underline dotted; text-underline-offset:.2em; }
+#ruby-dialog {
+  position:fixed;
+  inset:auto 0;
+  top:var(--editor-center,50dvh);
+  transform:translateY(-50%);
+  margin:0 auto;
+  max-height:var(--editor-height,calc(100dvh - 24px));
+}
+#ruby-dialog h2 { margin:0 0 8px; }
+#ruby-dialog .muted { margin:0 0 12px; }
+#ruby-input { width:100%; min-height:46px; padding:10px; border:1px solid #7897c157; border-radius:8px; background:#080f1e; color:var(--text); font-size:16px; }
+.ruby-editor-actions { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:8px; margin-top:16px; }
+.ruby-editor-actions button { padding:10px 12px; }
 .preparation {
   max-width:720px;
   margin:28px auto;
@@ -468,11 +488,15 @@ fieldset {
   margin-left:12px
 }
 .reader-toolbar {
-  padding:10px 12px
+  padding:8px;
+  gap:6px
 }
 .reader-toolbar button {
-  padding:10px 12px
+  padding:10px 8px;
+  white-space:nowrap
 }
+.reader-toolbar h1 { font-size:12px; letter-spacing:0; }
+.reader-actions { gap:4px; }
 .preparation {
   margin:20px 16px;
   padding:18px

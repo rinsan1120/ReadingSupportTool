@@ -6,6 +6,12 @@
   let source = '', settings = { width: 900, fontSize: 22, height: 1.8, breaks: 5 };
   let blocks = [], lastAvailable = 0, lastMobile = false, scheduled = 0;
   let savedAnchor = null;
+  let annotations = null, rubyMode = false, draft = null, editAnchor = null;
+  const rubyButton = document.getElementById('ruby-mode');
+  const rubyHelp = document.getElementById('ruby-help');
+  const editor = document.getElementById('ruby-dialog');
+  const rubyInput = document.getElementById('ruby-input');
+  const segmenter = new Intl.Segmenter('ja', { granularity: 'grapheme' });
   const columnsInput = document.getElementById('columns');
   const columnsOutput = document.getElementById('columns-value');
   const widthInput = document.getElementById('reader-width');
@@ -13,6 +19,64 @@
   const mobile = matchMedia('(max-width: 600px)');
   const availableWidth = () => Math.max(1, root.parentElement.clientWidth - (mobile.matches ? 32 : 40));
   const range = document.createRange();
+  function sourceOffset(block, offset) {
+    const run = block.runs.find(r => offset >= r.start && offset < r.end) || block.runs.at(-1);
+    return run.annotation ? run.sourceStart : run.sourceStart + offset - run.start;
+  }
+  function displayOffset(block, offset, annotationIndex) {
+    const annotation = annotationIndex !== undefined && block.runs.find(r => r.annotation && r.sourceStart === offset);
+    if (annotation) {
+      // Keep the visible part of a long reading when it spans several lines.
+      // After editing, clamp to a complete grapheme in the replacement reading.
+      const index = Math.min(annotationIndex, annotation.value.length - 1);
+      const boundary = [...segmenter.segment(annotation.value)].filter(s => s.index <= index).at(-1).index;
+      return annotation.start + boundary;
+    }
+    const run = block.runs.find(r => !r.annotation && offset >= r.sourceStart && offset < r.sourceEnd)
+      || block.runs.find(r => r.sourceStart === offset);
+    return run ? run.start + (run.annotation ? 0 : offset - run.sourceStart) : block.text.length - 1;
+  }
+  function compose(text, start) {
+    const runs = [];
+    let display = '', cursor = start;
+    const add = (value, sourceStart, sourceEnd, annotation = false, pending = false) => {
+      if (!value) return;
+      runs.push({ start: display.length, end: display.length + value.length, value, sourceStart, sourceEnd, annotation, pending });
+      display += value;
+    };
+    const entries = annotations ? annotations.entries.filter(a => !draft || a.offset !== draft.offset) : [];
+    if (draft) entries.push(draft);
+    entries.sort((a, b) => a.offset - b.offset);
+    for (const entry of entries) {
+      if (entry.offset < start || entry.offset > start + text.length) continue;
+      add(source.slice(cursor, entry.offset), cursor, entry.offset);
+      add(`【${entry.text}】`, entry.offset, entry.offset, true, entry === draft);
+      cursor = entry.offset;
+    }
+    add(source.slice(cursor, start + text.length), cursor, start + text.length);
+    return { text: display, runs };
+  }
+  // Use the same inline runs for natural measurement, shifted groups and fallback.
+  // Splitting at measured lines must retain annotation colour and source mapping.
+  function appendRuns(block, parent, first = 0, end = block.text.length) {
+    for (const run of block.runs) {
+      const begin = Math.max(first, run.start), finish = Math.min(end, run.end);
+      if (begin >= finish) continue;
+      const node = document.createTextNode(block.text.slice(begin, finish));
+      if (run.annotation) {
+        const span = document.createElement('span');
+        span.className = `reading-annotation${run.pending ? ' annotation-draft' : ''}`;
+        span.dataset.offset = run.sourceStart;
+        if (rubyMode && !run.pending) {
+          span.setAttribute('role', 'button');
+          span.setAttribute('aria-label', `読み仮名「${run.value.slice(1, -1)}」を編集`);
+          span.tabIndex = begin === run.start ? 0 : -1;
+        }
+        span.append(node); parent.append(span);
+      } else parent.append(node);
+      block.parts.push({ node, start: begin, end: finish, run });
+    }
+  }
   function point(block, offset) {
     const part = block.parts.find(p => offset >= p.start && offset < p.end) || block.parts.at(-1);
     if (!part) return null;
@@ -36,7 +100,9 @@
       }
       if (lo < block.lines.length) {
         const line = block.lines[lo], rect = point(block, line.start);
-        best = { offset: block.start + line.start, y: rect.top };
+        best = { offset: sourceOffset(block, line.start), y: rect.top };
+        const run = block.runs.find(r => line.start >= r.start && line.start < r.end);
+        if (run?.annotation) best.annotationIndex = line.start - run.start;
       }
       if (best) break;
     }
@@ -44,9 +110,9 @@
   }
   function restore(anchor) {
     if (!anchor) return;
-    const block = blocks.find(b => anchor.offset >= b.start && anchor.offset < b.start + b.text.length);
+    const block = blocks.find(b => anchor.offset >= b.start && anchor.offset <= b.sourceEnd);
     if (!block) return;
-    const rect = point(block, anchor.offset - block.start);
+    const rect = point(block, displayOffset(block, anchor.offset, anchor.annotationIndex));
     if (rect) {
       const panel = document.getElementById('settings-dialog');
       const panelTop = mobile.matches && panel.open ? panel.getBoundingClientRect().top : Infinity;
@@ -57,15 +123,13 @@
     }
   }
   function measure(block) {
-    const node = block.el.firstChild;
-    if (!node || !node.length) return [];
-    const offsets = [];
-    for (let i = 0; i < node.length;) { offsets.push(i); i += node.data.codePointAt(i) > 0xffff ? 2 : 1; }
-    offsets.push(node.length);
+    if (!block.text.length) return [];
+    const offsets = [...segmenter.segment(block.text)].map(s => s.index);
+    block.graphemes = offsets.slice();
+    offsets.push(block.text.length);
     const lineHeight = parseFloat(getComputedStyle(block.el).lineHeight);
     const top = i => {
-      range.setStart(node, offsets[i]); range.setEnd(node, offsets[i + 1]);
-      const rect = range.getBoundingClientRect();
+      const rect = point(block, offsets[i]);
       // Font fallback (e.g. emoji) can have a different glyph box on the same
       // line. Compare vertical centers within half a line, not exact glyph tops.
       return rect.top + rect.height / 2;
@@ -120,8 +184,10 @@
         gap.style.height = `${(count - (start ? 1 : 0)) * settings.height * parseFloat(getComputedStyle(root).fontSize)}px`;
         root.append(gap);
       } else if (text) {
-        const el = document.createElement('div'); el.className = 'text-block'; el.textContent = text;
-        root.append(el); blocks.push({ el, text, start, parts: [], lines: [] });
+        const el = document.createElement('div'); el.className = 'text-block';
+        const block = { el, ...compose(text, start), start, sourceEnd: start + text.length, parts: [], lines: [] };
+        appendRuns(block, el);
+        root.append(el); blocks.push(block);
       }
       start += text.length;
     });
@@ -130,16 +196,16 @@
     let unsupported = false;
     const gapSize = parseFloat(getComputedStyle(root).fontSize) * .85;
     blocks.forEach(b => {
+      b.parts = [];
       const fragment = document.createDocumentFragment();
       const size = settings.breaks || Math.max(1, b.lines.length);
       for (let i = 0; i < b.lines.length; i += size) {
         const first = b.lines[i].start;
         const end = b.lines[Math.min(i + size, b.lines.length) - 1].end;
         const span = document.createElement('span'); span.className = 'line-segment';
-        span.textContent = b.text.slice(first, end);
+        appendRuns(b, span, first, end);
         span.style.top = `${Math.floor(i / size) * gapSize}px`;
         fragment.append(span);
-        b.parts.push({ node: span.firstChild, start: first, end });
       }
       b.el.replaceChildren(fragment);
       b.el.style.paddingBottom = `${Math.max(0, Math.ceil(b.lines.length / size) - 1) * gapSize}px`;
@@ -156,8 +222,8 @@
         return Math.abs(rect.top + rect.height / 2 - base - (line.y - b.lines[0].y) - shift) > 1;
       });
       if (invalid) {
-        unsupported = true; b.el.textContent = b.text; b.el.style.paddingBottom = '0';
-        b.parts = [{ node: b.el.firstChild, start: 0, end: b.text.length }];
+        unsupported = true; b.el.replaceChildren(); b.el.style.paddingBottom = '0';
+        b.parts = []; appendRuns(b, b.el);
       }
     });
     status.textContent = unsupported ? 'この文章の一部では折り返しを優先し、自動区切りを適用していません。' : '';
@@ -165,6 +231,117 @@
     lastMobile = mobile.matches;
     restore(anchor);
   }
+  function updateMode(on) {
+    rubyMode = Boolean(annotations && on);
+    rubyButton.setAttribute('aria-pressed', String(rubyMode));
+    rubyButton.textContent = `ルビ：${rubyMode ? 'ON' : 'OFF'}`;
+    rubyHelp.hidden = !rubyMode;
+    root.classList.toggle('ruby-mode', rubyMode);
+  }
+  function fitEditor() {
+    const viewport = window.visualViewport;
+    const height = viewport?.height || window.innerHeight;
+    editor.style.setProperty('--editor-center', `${(viewport?.offsetTop || 0) + height / 2}px`);
+    editor.style.setProperty('--editor-height', `${Math.max(120, height - 24)}px`);
+  }
+  window.visualViewport?.addEventListener('resize', fitEditor);
+  window.visualViewport?.addEventListener('scroll', fitEditor);
+  addEventListener('resize', fitEditor);
+  function finishEdit() {
+    if (!draft) return;
+    draft = null;
+    if (editor.open) editor.close();
+    layout(editAnchor);
+    editAnchor = null;
+  }
+  function beginEdit(offset) {
+    if (!rubyMode || editor.open) return;
+    const existing = annotations.entries.find(a => a.offset === offset);
+    editAnchor = capture();
+    document.getElementById('settings-dialog').close();
+    root.style.setProperty('--settings-panel-height', '0px');
+    draft = { offset, text: existing?.text || '' };
+    rubyInput.value = draft.text;
+    document.getElementById('ruby-title').textContent = existing ? '読み仮名を編集' : '読み仮名を追加';
+    document.getElementById('ruby-delete').hidden = !existing;
+    document.getElementById('ruby-save').disabled = !draft.text.trim();
+    layout(editAnchor);
+    fitEditor(); editor.showModal();
+    rubyInput.focus({ preventScroll: true });
+  }
+  rubyInput.addEventListener('input', () => {
+    if (!draft) return;
+    draft.text = rubyInput.value;
+    document.getElementById('ruby-save').disabled = !draft.text.trim() || /[\r\n]/u.test(draft.text);
+    layout(editAnchor);
+  });
+  document.getElementById('ruby-form').addEventListener('submit', e => {
+    e.preventDefault();
+    if (e.isComposing || !draft || !annotations.set(draft.offset, rubyInput.value)) return;
+    finishEdit();
+  });
+  // Enter used to confirm an IME conversion must not register the draft.
+  rubyInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.isComposing || e.keyCode === 229)) e.preventDefault();
+  });
+  document.getElementById('ruby-delete').onclick = () => {
+    if (!draft) return;
+    annotations.remove(draft.offset); finishEdit();
+  };
+  document.getElementById('ruby-cancel').onclick = finishEdit;
+  editor.addEventListener('cancel', e => { e.preventDefault(); finishEdit(); });
+  editor.addEventListener('close', () => { if (!editor.open) finishEdit(); });
+  rubyButton.onclick = () => {
+    const anchor = capture(); updateMode(!rubyMode); layout(anchor);
+  };
+  // A click is accepted only after a short stationary pointer gesture. Native
+  // scrolling/selection stays enabled; cancellation or movement rejects a tap.
+  let gesture = null;
+  root.addEventListener('pointerdown', e => {
+    gesture = rubyMode && e.isPrimary && e.button === 0
+      ? { id: e.pointerId, x: e.clientX, y: e.clientY, scroll: window.scrollY, time: performance.now(), moved: false } : null;
+  });
+  document.addEventListener('pointermove', e => {
+    if (gesture && e.pointerId === gesture.id && Math.hypot(e.clientX - gesture.x, e.clientY - gesture.y) > 8) gesture.moved = true;
+  }, { passive: true });
+  document.addEventListener('pointercancel', () => { gesture = null; });
+  root.addEventListener('click', e => {
+    const tap = gesture; gesture = null;
+    if (!rubyMode || !tap || tap.moved || Math.abs(window.scrollY - tap.scroll) > 2 || performance.now() - tap.time > 650) return;
+    const annotation = e.target.closest('.reading-annotation');
+    if (annotation) { beginEdit(Number(annotation.dataset.offset)); return; }
+    const caret = document.caretPositionFromPoint?.(e.clientX, e.clientY);
+    const caretRange = !caret && document.caretRangeFromPoint?.(e.clientX, e.clientY);
+    const node = caret?.offsetNode || caretRange?.startContainer;
+    const offset = caret?.offset ?? caretRange?.startOffset;
+    const block = blocks.find(b => b.parts.some(p => p.node === node));
+    if (!block) return;
+    const part = block.parts.find(p => p.node === node);
+    const position = part.start + offset;
+    // Caret APIs return the nearest position even in margins. Require the point
+    // to be INSIDE a non-whitespace grapheme's actual client rectangle.
+    let index = block.graphemes.findIndex(start => start >= position);
+    if (index < 0) index = block.graphemes.length;
+    for (let i = Math.max(0, index - 1); i <= Math.min(index, block.graphemes.length - 1); i++) {
+      const first = block.graphemes[i], end = block.graphemes[i + 1] ?? block.text.length;
+      if (!block.text.slice(first, end).trim()) continue;
+      const a = block.parts.find(p => first >= p.start && first < p.end);
+      const b = block.parts.find(p => end > p.start && end <= p.end);
+      if (!a || !b || a.run.annotation) continue;
+      range.setStart(a.node, first - a.start); range.setEnd(b.node, end - b.start);
+      const rect = [...range.getClientRects()].find(r => r.width > 0 && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom);
+      if (rect) {
+        const boundary = e.clientX < rect.left + rect.width / 2 ? first : end;
+        beginEdit(sourceOffset(block, boundary)); return;
+      }
+    }
+  });
+  root.addEventListener('keydown', e => {
+    const annotation = e.target.closest('.reading-annotation');
+    if (rubyMode && annotation && ['Enter', ' '].includes(e.key)) {
+      e.preventDefault(); beginEdit(Number(annotation.dataset.offset));
+    }
+  });
   const observer = new ResizeObserver(() => {
     if (root.closest('[hidden]') || (Math.abs(availableWidth() - lastAvailable) < .5 && mobile.matches === lastMobile)) return;
     cancelAnimationFrame(scheduled);
@@ -177,7 +354,12 @@
   addEventListener('scroll', () => { savedAnchor = capture(); }, { passive: true });
   document.fonts.ready.then(() => { if (source) layout(savedAnchor); });
   window.Reader = {
-    show(text) { source = text; savedAnchor = null; layout(null); },
+    show(text, model = null) {
+      finishEdit(); source = text; annotations = model;
+      rubyButton.hidden = !model; updateMode(false);
+      savedAnchor = null; layout(null);
+    },
+    leave() { finishEdit(); updateMode(false); },
     configure(next) {
       const anchor = capture();
       if (next.width !== undefined && !mobile.matches) settings.width = next.width;

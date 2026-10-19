@@ -6,6 +6,8 @@
   let history = [], target = '', targetManual = false;
   let phase = 'idle', began = 0, countdownTimer = 0, elapsedTimer = 0, noticeTimer = 0;
   let measuredCount = 0, measuredType = 'sample', wakeLock = null, wakePending = false, wakeGeneration = 0;
+  const readAnnotations = new window.ReadingAnnotations();
+  let openingReader = false;
   function ask(message, action = '削除する') {
     return new Promise(resolve => {
       const dialog = $('confirm-dialog');
@@ -44,12 +46,13 @@
   }
   setTarget(target);
   function show(next) {
-    if (view === 'reading' && next !== 'reading') { cancelMeasurement(); releaseWake(); }
+    if (view === 'reading' && next !== 'reading') { window.Reader.leave(); cancelMeasurement(); releaseWake(); }
     document.querySelectorAll('dialog[open]').forEach(d => d.close());
     document.querySelectorAll('.view').forEach(el => el.hidden = el.id !== next);
     view = next; $('footer').hidden = next === 'reading';
     if (next === 'results') renderResults();
     $('existing-results').hidden = !history.length;
+    $('annotation-retention').hidden = !readAnnotations.entries.length;
     window.scrollTo(0, 0);
     $(next).querySelector('h1')?.focus({ preventScroll: true });
   }
@@ -111,18 +114,26 @@
   $('apply-count').onclick = () => { setTarget(countText($('time-text').value) || '', true); persist(); };
   $('target-count').addEventListener('input', () => { setTarget($('target-count').value, true); persist(); });
   $('result-target').addEventListener('input', () => { setTarget($('result-target').value, true); persist(); renderResults(); });
-  function openReader(nextMode) {
-    mode = nextMode;
-    const text = mode === 'read' ? $('read-text').value : sourceType === 'sample' ? sample.text : $('time-text').value;
+  async function openReader(nextMode) {
+    if (openingReader) return;
+    const text = nextMode === 'read' ? $('read-text').value : sourceType === 'sample' ? sample.text : $('time-text').value;
     if (!countText(text)) { notify('朗読する文章を入力してください。'); return; }
-    if (mode === 'time' && !validTarget(target)) { notify('作品全体の文字数を1〜1,000,000,000の整数で入力してください。'); $('target-count').focus(); return; }
+    if (nextMode === 'time' && !validTarget(target)) { notify('作品全体の文字数を1〜1,000,000,000の整数で入力してください。'); $('target-count').focus(); return; }
+    openingReader = true;
+    try {
+      if (nextMode === 'read' && text !== readAnnotations.source) {
+        if (readAnnotations.entries.length && !await ask('本文が変更されています。この文章を開くと、登録済みの読み仮名はすべて削除されます。本文を差し替えますか？', '差し替える')) return;
+        readAnnotations.reset(text);
+      }
+    } finally { openingReader = false; }
+    mode = nextMode;
     show('reading');
     $('reading-title').textContent = mode === 'time' ? (sourceType === 'sample' ? sample.title : '朗読速度の計測') : '文章を読む';
     $('preparation').hidden = mode !== 'time'; $('measurement-bar').hidden = true;
     $('preparation-info').textContent = `計測する本文：${countText(text)}文字 ／ 作品全体：${Number(target).toLocaleString()}文字`;
     $('open-settings').disabled = false;
     measuredCount = countText(text); measuredType = sourceType;
-    window.Reader.show(text);
+    window.Reader.show(text, mode === 'read' ? readAnnotations : null);
   }
   $('open-read').onclick = () => openReader('read'); $('prepare-time').onclick = () => openReader('time');
   $('reader-back').onclick = () => show(mode === 'time' ? 'time-input' : 'read-input');

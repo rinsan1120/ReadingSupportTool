@@ -9,6 +9,7 @@
   <title>朗読支援ツール（仮）</title>
   <link rel="stylesheet" href="styles.css">
   <script src="samples.js" defer></script>
+  <script src="reading-annotations.js" defer></script>
   <script src="reader.js" defer></script>
   <script src="app.js" defer></script>
 </head>
@@ -27,6 +28,7 @@
       <button class="back" data-go="home">← ホーム</button><p class="eyebrow">READ</p><h1 id="read-title" tabindex="-1">文章を読む</h1>
       <label for="read-text">朗読する作品の本文</label><textarea id="read-text" rows="12" placeholder="全文でも、一部でも。ここに文章を貼り付けてください。" spellcheck="false" autocomplete="off"></textarea>
       <div class="inline spread"><p id="read-count" class="muted">0文字</p><button id="clear-read" class="quiet">本文を削除</button></div>
+      <p id="annotation-retention" class="muted" hidden>読み仮名を保持しています。本文を変更して朗読画面を開く場合は、読み仮名の削除を確認します。</p>
       <p class="privacy">本文はこの画面を開いている間だけ保持します。再読み込み・タブ終了前に、元の文章をお手元に残してください。</p>
       <button id="open-read" class="primary">表示を確認して読む →</button>
     </section>
@@ -43,9 +45,10 @@
       <div class="inline"><button id="prepare-time" class="primary">文章を確認して計測へ →</button><button id="existing-results" hidden>これまでの結果を見る</button></div>
     </section>
     <section id="reading" class="view reading-view" hidden aria-labelledby="reading-title">
-      <div class="reader-toolbar"><button id="reader-back" class="quiet">← 入力へ</button><h1 id="reading-title" tabindex="-1">文章を読む</h1><button id="operations" aria-haspopup="dialog">操作</button></div>
+      <div class="reader-toolbar"><button id="reader-back" class="quiet">← 入力へ</button><h1 id="reading-title" tabindex="-1">文章を読む</h1><div class="reader-actions"><button id="ruby-mode" aria-pressed="false" aria-describedby="ruby-help" hidden>ルビ：OFF</button><button id="operations" aria-haspopup="dialog">操作</button></div></div>
       <div id="preparation" class="preparation"><p id="preparation-info"></p><div class="inline"><button id="before-settings">表示設定</button><button id="start" class="primary">計測を始める</button></div><p class="muted">全文を読み終えたら「読了」を押してください。別タブや別アプリに移ると、その回の計測は無効になります。</p></div>
       <p id="layout-status" class="layout-status" role="status"></p>
+      <p id="ruby-help" class="ruby-help" role="status" hidden>文字の前後をタップして読み仮名を追加。読み仮名を選ぶと編集できます。</p>
       <article id="reader" aria-label="朗読本文"></article>
       <div id="measurement-bar" class="measurement-bar" hidden><span id="elapsed" aria-live="off">0:00</span><button id="finish" class="primary">読了</button></div>
       <div id="countdown" class="countdown" hidden role="status" aria-live="assertive"></div>
@@ -68,6 +71,15 @@
     <p class="muted settings-help">幅を変えると文字サイズを保ったまま行の長さが変わります。文字数を増やすと文字が小さく、減らすと大きくなります。</p>
   </dialog>
   <p id="notice" class="notice" role="status" hidden></p>
+  <dialog id="ruby-dialog" aria-labelledby="ruby-title" aria-describedby="ruby-draft-help">
+    <form id="ruby-form">
+      <h2 id="ruby-title">読み仮名を追加</h2>
+      <p id="ruby-draft-help" class="muted">本文の点線の【】は未登録です。</p>
+      <label for="ruby-input">括弧内の読み仮名</label>
+      <input id="ruby-input" type="text" required autocomplete="off" spellcheck="false" enterkeyhint="done">
+      <div class="ruby-editor-actions"><button id="ruby-cancel" type="button">キャンセル</button><button id="ruby-delete" type="button" hidden>削除</button><button id="ruby-save" type="submit" class="primary" disabled>登録</button></div>
+    </form>
+  </dialog>
   <dialog id="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title">操作の確認</h2><p id="confirm-message"></p><div class="inline"><button id="confirm-cancel">キャンセル</button><button id="confirm-ok" class="primary">削除する</button></div></dialog>
 </body>
 </html>
