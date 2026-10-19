@@ -13,7 +13,7 @@
   <script src="app.js" defer></script>
 </head>
 <body>
-  <header class="site-header"><button class="brand" data-go="home"><span aria-hidden="true">☾</span> 朗読支援ツール <small>（仮）</small></button><span class="header-note">声にする、その時間に。</span></header>
+  <header class="site-header"><button class="brand" data-go="home"><span aria-hidden="true">☾</span> 朗読支援ツール <small>（仮）</small></button></header>
   <main>
     <section id="home" class="view narrow" aria-labelledby="home-title">
       <p class="eyebrow">READING SUPPORT</p><h1 id="home-title" tabindex="-1">ことばに、<br>静かな余白を。</h1>
@@ -52,7 +52,7 @@
     </section>
     <section id="results" class="view narrow" hidden aria-labelledby="result-title"><button class="back" data-go="home">← ホーム</button><p class="eyebrow">YOUR READING PACE</p><h1 id="result-title" tabindex="-1">朗読時間の目安</h1><p id="estimate" class="estimate"></p><p id="result-summary" class="muted"></p><label for="result-target">時間を知りたい作品全体の文字数</label><div class="inline"><input id="result-target" type="number" min="1" max="1000000000" step="1" inputmode="numeric"><span>文字</span></div><p class="muted">間の取り方や作品によって、実際の時間は変わります。</p><div class="inline"><button id="again" class="primary">もう一度計測する</button><button id="reset-history" class="quiet">全履歴をリセット</button></div><h2>計測履歴</h2><ul id="history" class="history"></ul><p class="privacy">確定した数値の結果だけを、このタブ内に保存します。本文は保存しません。</p></section>
   </main>
-  <footer id="footer">静かに読む。自分の速さを知る。<span>朗読支援ツール（仮）</span></footer>
+  <footer id="footer"><span>朗読支援ツール（仮）</span></footer>
   <dialog id="operation-dialog"><div class="dialog-heading"><h2>操作</h2><button data-close="operation-dialog" aria-label="操作を閉じる">閉じる</button></div><button id="open-settings">表示設定</button><button id="wake">画面点灯維持：OFF</button><p id="wake-status" class="muted" role="status"></p><button id="edit-from-menu">入力画面へ戻る</button><button id="home-from-menu">ホームへ戻る</button></dialog>
   <dialog id="settings-dialog"><div class="dialog-heading"><h2>表示設定</h2><button data-close="settings-dialog">閉じる</button></div><label for="columns">1行の文字数目安 <output id="columns-value">28</output></label><input id="columns" type="range" min="18" max="34" value="28"><label for="line-height">行間 <output id="line-height-value">1.8</output></label><input id="line-height" type="range" min="1.2" max="2.6" step="0.1" value="1.8"><label for="break-lines">自動区切り <output id="break-lines-value">5表示行ごと</output></label><input id="break-lines" type="range" min="0" max="10" value="5"><p class="muted">文字数を減らすと文字が大きく、増やすと小さくなります。選べる範囲は画面幅に合わせて調整します。空行では区切りをリセットします。</p></dialog>
   <p id="notice" class="notice" role="status" hidden></p>
