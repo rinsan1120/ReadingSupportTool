@@ -336,6 +336,17 @@ footer {
 .writing-active { user-select:none; -webkit-user-select:none; touch-action:pan-y; }
 .writing-active .writing-memo:not(:disabled) { pointer-events:auto; }
 .writing-drag { touch-action:none; cursor:crosshair; }
+/* Paint the entire writing stage without changing its box or glyph layout. */
+#reader-stage.paper-mode { background:#fff; color:#17191d; }
+#reader-stage.paper-mode .reading-annotation { color:#17365d; }
+#reader-stage.paper-mode #writing-pen path { stroke:#c52228; }
+#reader-stage.paper-mode #writing-markers rect { fill:#ffe588; }
+#reader-stage.paper-mode #writing-markers rect[data-color=lightblue] { fill:#bde9fa; }
+#reader-stage.paper-mode #writing-markers rect[data-color=pink] { fill:#ffd0df; }
+#reader-stage.paper-mode .writing-memo { color:#8b1e24; background:#fff; border-color:#dfc4c4; }
+#reader-stage.paper-mode .writing-memo-readonly { background:transparent; border-color:transparent; }
+#paper-mode { margin-top:8px; min-height:36px; padding:7px 12px; font-size:14px; }
+#paper-mode[aria-pressed=true] { background:var(--blue); color:var(--bg); border-color:var(--blue); }
 #writing-memo-dialog { position:fixed; inset:auto 0; top:var(--editor-center,50dvh); transform:translateY(-50%); margin:0 auto; max-height:var(--editor-height,calc(100dvh - 24px)); }
 #writing-memo-dialog h2 { margin:0 0 8px; }
 #writing-memo-input { width:100%; min-height:46px; padding:10px; border:1px solid #7897c157; border-radius:8px; background:#080f1e; color:var(--text); font-size:16px; }
@@ -608,7 +619,7 @@ dialog {
 /* Reserve scrollbar space so opening settings never changes the text width. */
 html { scrollbar-gutter: stable; }
 .settings-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
-.settings-tabs button { flex: 1; padding: 8px; min-height: 40px; }
+.settings-tabs button { flex: 1; min-width: 0; padding: 8px; min-height: 40px; font-size: 14px; white-space: nowrap; }
 .settings-tabs [aria-selected=true] { background: var(--blue); color: var(--bg); }
 @media(max-width:600px) {
   #settings-dialog[open] {

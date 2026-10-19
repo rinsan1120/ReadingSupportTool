@@ -13,6 +13,15 @@
   // its displayed input is edited, otherwise UTF-16 annotation offsets drift.
   let readInputSnapshot = null;
   let timeAnnotations = null, timeMarks = null, timeInputSnapshot = null;
+  // Tab-local paint state; timing keeps its own preference for each source.
+  // A different manuscript starts dark, while a retry of the same text keeps it.
+  let readPaper = false, displayedText = '';
+  const timingPaper = { custom: { text: null, on: false }, sample: { text: null, on: false } };
+  function applyPaper(on) {
+    $('reader-stage').classList.toggle('paper-mode', on);
+    $('paper-mode').setAttribute('aria-pressed', String(on));
+    $('paper-mode').textContent = `原稿表示：${on ? 'ON' : 'OFF'}`;
+  }
   let openingReader = false;
   const hasReadings = model => !!(model && (model.entries.length || model.sourceRubies.length));
   function ask(message, action = '削除する') {
@@ -178,6 +187,10 @@
   }
   function displayReader(nextMode, text) {
     mode = nextMode;
+    displayedText = text;
+    const paper = timingPaper[sourceType];
+    if (mode === 'time' && paper.text !== text) { paper.text = text; paper.on = false; }
+    applyPaper(mode === 'read' ? readPaper : paper.on);
     show('reading');
     $('reading-title').textContent = mode === 'time' ? (sourceType === 'sample' ? sample.title : '朗読速度の計測') : '文章を読む';
     $('preparation').hidden = mode !== 'time'; $('measurement-bar').hidden = true;
@@ -253,6 +266,7 @@
       if (readMarks.source !== text) throw new Error('本文と書き込みの原文が一致しません。');
       const copiedMarks = window.ManuscriptMarks.fromItems(readMarks.items, copied);
       timeAnnotations = copied; timeMarks = copiedMarks;
+      timingPaper.custom = { text, on: readPaper };
       $('time-text').value = text; timeInputSnapshot = $('time-text').value;
       const custom = document.querySelector('[name=source][value=custom]');
       custom.checked = true; custom.dispatchEvent(new Event('change'));
@@ -315,7 +329,8 @@
   $('writing-mode').onclick = () => { closeSettings(); $('operation-dialog').close(); window.ManuscriptWriting.setMode(!window.ManuscriptWriting.enabled); };
   document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.dataset.close === 'settings-dialog' ? closeSettings() : $(b.dataset.close).close());
   const settingsMobile = matchMedia('(max-width: 600px)');
-  const settingNames = ['columns', 'line-height', 'break-lines'];
+  const layoutSettings = ['columns', 'line-height', 'break-lines'];
+  const settingNames = [...layoutSettings, 'paper'];
   let activeSetting = 'columns';
   function reserveSettingsSpace() {
     const panel = $('settings-dialog');
@@ -384,7 +399,14 @@
     }
   });
   new ResizeObserver(reserveSettingsSpace).observe($('settings-dialog'));
-  ['reader-width', ...settingNames].forEach(id => $(id).addEventListener('input', () => {
+  $('paper-mode').onclick = () => {
+    if (view !== 'reading' || phase !== 'idle') return;
+    const on = !$('reader-stage').classList.contains('paper-mode');
+    if (mode === 'read') readPaper = on;
+    else timingPaper[sourceType] = { text: displayedText, on };
+    applyPaper(on);
+  };
+  ['reader-width', ...layoutSettings].forEach(id => $(id).addEventListener('input', () => {
     if (phase !== 'idle') return;
     const value = Number($(id).value);
     if (id === 'reader-width') window.Reader.configure({ width: value });
