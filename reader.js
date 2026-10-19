@@ -3,12 +3,15 @@
 (() => {
   const root = document.getElementById('reader');
   const status = document.getElementById('layout-status');
-  let source = '', settings = { columns: 28, height: 1.8, breaks: 5 };
-  let blocks = [], lastWidth = 0, scheduled = 0;
+  let source = '', settings = { width: 900, fontSize: 22, height: 1.8, breaks: 5 };
+  let blocks = [], lastAvailable = 0, lastMobile = false, scheduled = 0;
   let savedAnchor = null;
-  let columnsChosen = false;
   const columnsInput = document.getElementById('columns');
   const columnsOutput = document.getElementById('columns-value');
+  const widthInput = document.getElementById('reader-width');
+  const widthOutput = document.getElementById('reader-width-value');
+  const mobile = matchMedia('(max-width: 600px)');
+  const availableWidth = () => Math.max(1, root.parentElement.clientWidth - (mobile.matches ? 32 : 40));
   const range = document.createRange();
   function point(block, offset) {
     const part = block.parts.find(p => offset >= p.start && offset < p.end) || block.parts.at(-1);
@@ -44,8 +47,14 @@
     const block = blocks.find(b => anchor.offset >= b.start && anchor.offset < b.start + b.text.length);
     if (!block) return;
     const rect = point(block, anchor.offset - block.start);
-    if (rect) window.scrollBy(0, rect.top - anchor.y);
-    savedAnchor = anchor;
+    if (rect) {
+      const panel = document.getElementById('settings-dialog');
+      const panelTop = mobile.matches && panel.open ? panel.getBoundingClientRect().top : Infinity;
+      const edge = document.querySelector('.reader-toolbar').getBoundingClientRect().bottom + 12;
+      const y = Math.min(anchor.y, Math.max(edge, panelTop - rect.height - 12));
+      window.scrollBy(0, rect.top - y);
+      savedAnchor = { ...anchor, y };
+    }
   }
   function measure(block) {
     const node = block.el.firstChild;
@@ -77,19 +86,25 @@
   }
   function layout(anchor = capture()) {
     if (root.closest('[hidden]')) return;
-    // Width is independent of type size. Derive a full-width Japanese em from
-    // the available content box, keeping every selectable step effective.
+    const available = availableWidth();
+    const maxWidth = Math.min(1400, available);
+    const minWidth = Math.min(480, maxWidth);
+    // Keep the preferred desktop width and font size as independent state.
+    // A window resize can constrain width without changing the chosen type size.
+    root.style.width = `${mobile.matches ? available : Math.min(maxWidth, Math.max(minWidth, settings.width))}px`;
     const width = root.getBoundingClientRect().width;
-    if (!width) return;
+    widthInput.min = minWidth;
+    widthInput.max = maxWidth;
+    widthInput.value = Math.round(width);
+    widthOutput.textContent = `${Math.round(width)}px`;
+    widthInput.setAttribute('aria-valuetext', `現在の表示幅 ${Math.round(width)}ピクセル`);
     const minColumns = Math.max(1, Math.ceil(width / 36));
     const maxColumns = Math.max(minColumns, Math.floor(width / 18));
-    const preferred = columnsChosen ? settings.columns : Math.round(width / 22);
-    settings.columns = Math.min(maxColumns, Math.max(minColumns, preferred));
     columnsInput.min = minColumns;
     columnsInput.max = maxColumns;
-    columnsInput.value = settings.columns;
-    columnsOutput.textContent = settings.columns;
-    root.style.fontSize = `${width / settings.columns}px`;
+    columnsInput.value = Math.min(maxColumns, Math.max(minColumns, Math.round(width / settings.fontSize)));
+    columnsOutput.textContent = `約${columnsInput.value}文字`;
+    root.style.fontSize = `${settings.fontSize}px`;
     root.style.lineHeight = settings.height;
     root.replaceChildren(); blocks = [];
     // Empty original lines are natural boundaries; retain all whitespace verbatim.
@@ -146,23 +161,31 @@
       }
     });
     status.textContent = unsupported ? 'この文章の一部では折り返しを優先し、自動区切りを適用していません。' : '';
-    lastWidth = root.getBoundingClientRect().width;
+    lastAvailable = available;
+    lastMobile = mobile.matches;
     restore(anchor);
   }
   const observer = new ResizeObserver(() => {
-    if (root.closest('[hidden]') || Math.abs(root.getBoundingClientRect().width - lastWidth) < .5) return;
+    if (root.closest('[hidden]') || (Math.abs(availableWidth() - lastAvailable) < .5 && mobile.matches === lastMobile)) return;
     cancelAnimationFrame(scheduled);
     scheduled = requestAnimationFrame(() => layout(savedAnchor));
   });
-  observer.observe(root);
+  observer.observe(root.parentElement);
+  mobile.addEventListener('change', () => {
+    if (!root.closest('[hidden]')) layout(savedAnchor);
+  });
   addEventListener('scroll', () => { savedAnchor = capture(); }, { passive: true });
   document.fonts.ready.then(() => { if (source) layout(savedAnchor); });
   window.Reader = {
     show(text) { source = text; savedAnchor = null; layout(null); },
     configure(next) {
-      if (next.columns !== undefined && next.columns !== settings.columns) columnsChosen = true;
       const anchor = capture();
-      settings = { ...settings, ...next };
+      if (next.width !== undefined && !mobile.matches) settings.width = next.width;
+      if (next.columns !== undefined) {
+        settings.fontSize = Math.min(36, Math.max(18, root.getBoundingClientRect().width / next.columns));
+      }
+      if (next.height !== undefined) settings.height = next.height;
+      if (next.breaks !== undefined) settings.breaks = next.breaks;
       layout(anchor);
     },
     capture, restore,

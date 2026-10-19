@@ -6,7 +6,6 @@
   let history = [], target = '', targetManual = false;
   let phase = 'idle', began = 0, countdownTimer = 0, elapsedTimer = 0, noticeTimer = 0;
   let measuredCount = 0, measuredType = 'sample', wakeLock = null, wakePending = false, wakeGeneration = 0;
-  let settingsAnchor = null;
   function ask(message, action = '削除する') {
     return new Promise(resolve => {
       const dialog = $('confirm-dialog');
@@ -129,20 +128,89 @@
   $('reader-back').onclick = () => show(mode === 'time' ? 'time-input' : 'read-input');
   $('edit-from-menu').onclick = () => $('reader-back').click();
   $('home-from-menu').onclick = () => show('home');
-  $('operations').onclick = () => { $('open-settings').disabled = phase !== 'idle'; $('operation-dialog').showModal(); };
-  document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => $(b.dataset.close).close());
+  $('operations').onclick = () => { closeSettings(); $('open-settings').disabled = phase !== 'idle'; $('operation-dialog').showModal(); };
+  document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.dataset.close === 'settings-dialog' ? closeSettings() : $(b.dataset.close).close());
+  const settingsMobile = matchMedia('(max-width: 600px)');
+  const settingNames = ['columns', 'line-height', 'break-lines'];
+  let activeSetting = 'columns';
+  function reserveSettingsSpace() {
+    const panel = $('settings-dialog');
+    const height = panel.open && settingsMobile.matches ? Math.ceil(panel.getBoundingClientRect().height) : 0;
+    $('reader').style.setProperty('--settings-panel-height', `${height}px`);
+  }
+  function updateSettingsControls() {
+    $('settings-tabs').hidden = !settingsMobile.matches;
+    $('setting-width').hidden = settingsMobile.matches;
+    settingNames.forEach(name => {
+      const group = $(`setting-${name}`), tab = $(`tab-${name}`);
+      group.hidden = settingsMobile.matches && activeSetting !== name;
+      if (settingsMobile.matches) {
+        group.setAttribute('role', 'tabpanel'); group.setAttribute('aria-labelledby', tab.id);
+      } else { group.removeAttribute('role'); group.removeAttribute('aria-labelledby'); }
+      tab.setAttribute('aria-selected', String(activeSetting === name));
+      tab.tabIndex = activeSetting === name ? 0 : -1;
+    });
+    reserveSettingsSpace();
+  }
+  function closeSettings() {
+    const panel = $('settings-dialog');
+    if (!panel.open) return;
+    // The user can scroll while the mobile panel is open. Keep the CURRENT
+    // source position instead of returning to the position at panel opening.
+    const anchor = window.Reader.capture();
+    panel.close(); reserveSettingsSpace();
+    if (view === 'reading') window.Reader.restore(anchor);
+  }
   function openSettings() {
     if (phase !== 'idle') return;
-    settingsAnchor = window.Reader.capture(); $('operation-dialog').close(); $('settings-dialog').showModal();
+    const anchor = window.Reader.capture();
+    $('operation-dialog').close();
+    updateSettingsControls();
+    if (!$('settings-dialog').open) {
+      if (settingsMobile.matches) $('settings-dialog').show(); else $('settings-dialog').showModal();
+    }
+    reserveSettingsSpace(); window.Reader.restore(anchor);
   }
   $('before-settings').onclick = openSettings; $('open-settings').onclick = openSettings;
-  $('settings-dialog').addEventListener('close', () => { window.Reader.restore(settingsAnchor); });
-  ['columns', 'line-height', 'break-lines'].forEach(id => $(id).addEventListener('input', () => {
+  $('settings-dialog').addEventListener('close', reserveSettingsSpace);
+  $('settings-dialog').addEventListener('cancel', e => { e.preventDefault(); closeSettings(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && settingsMobile.matches && $('settings-dialog').open) { e.preventDefault(); closeSettings(); }
+  });
+  settingNames.forEach((name, index) => {
+    $(`tab-${name}`).onclick = () => { activeSetting = name; updateSettingsControls(); };
+    $(`tab-${name}`).onkeydown = e => {
+      let next;
+      if (e.key === 'ArrowRight') next = (index + 1) % settingNames.length;
+      if (e.key === 'ArrowLeft') next = (index + settingNames.length - 1) % settingNames.length;
+      if (e.key === 'Home') next = 0;
+      if (e.key === 'End') next = settingNames.length - 1;
+      if (next === undefined) return;
+      e.preventDefault(); activeSetting = settingNames[next]; updateSettingsControls();
+      $(`tab-${activeSetting}`).focus({ preventScroll: true });
+    };
+  });
+  settingsMobile.addEventListener('change', () => {
+    const panel = $('settings-dialog'), anchor = window.Reader.capture(), wasOpen = panel.open;
+    if (wasOpen) panel.close();
+    updateSettingsControls();
+    if (wasOpen) {
+      if (settingsMobile.matches) panel.show(); else panel.showModal();
+      reserveSettingsSpace(); window.Reader.restore(anchor);
+    }
+  });
+  new ResizeObserver(reserveSettingsSpace).observe($('settings-dialog'));
+  ['reader-width', ...settingNames].forEach(id => $(id).addEventListener('input', () => {
     if (phase !== 'idle') return;
-    $('columns-value').textContent = $('columns').value;
-    $('line-height-value').textContent = Number($('line-height').value).toFixed(1);
-    const n = Number($('break-lines').value); $('break-lines-value').textContent = n ? `${n}表示行ごと` : 'なし';
-    window.Reader.configure({ columns: Number($('columns').value), height: Number($('line-height').value), breaks: n });
+    const value = Number($(id).value);
+    if (id === 'reader-width') window.Reader.configure({ width: value });
+    if (id === 'columns') window.Reader.configure({ columns: value });
+    if (id === 'line-height') {
+      $('line-height-value').textContent = value.toFixed(1); window.Reader.configure({ height: value });
+    }
+    if (id === 'break-lines') {
+      $('break-lines-value').textContent = value ? `${value}表示行ごと` : 'なし'; window.Reader.configure({ breaks: value });
+    }
   }));
   function cancelMeasurement() {
     clearTimeout(countdownTimer); clearInterval(elapsedTimer);
