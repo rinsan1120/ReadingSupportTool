@@ -9,6 +9,7 @@
   let writingGeometry = null;
   const readingEdge = () => document.querySelector('.reader-controls').getBoundingClientRect().bottom + 12;
   let annotations = null, annotationsEditable = true, rubyMode = false, draft = null, editAnchor = null;
+  let readingChangeGuard = async () => true, readingChangePending = false;
   const rubyButton = document.getElementById('ruby-mode');
   const rubyHelp = document.getElementById('ruby-help');
   const editor = document.getElementById('ruby-dialog');
@@ -401,19 +402,30 @@
     document.getElementById('ruby-save').disabled = !draft.text.trim() || /[\r\n\u2028\u2029]/u.test(draft.text);
     layout(editAnchor);
   });
+  async function commitReading(remove = false) {
+    if (!draft || readingChangePending) return;
+    const currentDraft = draft, model = annotations, text = rubyInput.value.trim();
+    const existing = model.entries.find(a => a.offset === currentDraft.offset);
+    if (!remove && (!text || /[\r\n\u2028\u2029]/u.test(text) || !model.boundaries.has(currentDraft.offset))) return;
+    if ((!remove && existing?.text === text) || (remove && !existing)) { finishEdit(); return; }
+    readingChangePending = true;
+    try {
+      if (!await readingChangeGuard()) { rubyInput.focus({ preventScroll: true }); return; }
+      if (draft !== currentDraft || annotations !== model || !editor.open) return;
+      if (remove) model.remove(currentDraft.offset);
+      else if (!model.set(currentDraft.offset, text)) return;
+      finishEdit();
+    } finally { readingChangePending = false; }
+  }
   document.getElementById('ruby-form').addEventListener('submit', e => {
     e.preventDefault();
-    if (e.isComposing || !draft || !annotations.set(draft.offset, rubyInput.value)) return;
-    finishEdit();
+    if (!e.isComposing) commitReading();
   });
   // Enter used to confirm an IME conversion must not register the draft.
   rubyInput.addEventListener('keydown', e => {
     if (e.key === 'Enter' && (e.isComposing || e.keyCode === 229)) e.preventDefault();
   });
-  document.getElementById('ruby-delete').onclick = () => {
-    if (!draft) return;
-    annotations.remove(draft.offset); finishEdit();
-  };
+  document.getElementById('ruby-delete').onclick = () => commitReading(true);
   document.getElementById('ruby-cancel').onclick = finishEdit;
   editor.addEventListener('cancel', e => { e.preventDefault(); finishEdit(); });
   editor.addEventListener('close', () => { if (!editor.open) finishEdit(); });
@@ -503,6 +515,7 @@
       layout(anchor);
     },
     capture, restore, printSnapshot, getWritingGeometry,
+    setReadingChangeGuard(guard) { readingChangeGuard = guard; },
     setRubyMode(on) { const anchor = capture(); finishEdit(); updateMode(on); layout(anchor); },
     refresh(anchor = savedAnchor) { savedAnchor = anchor; layout(anchor); }
   };

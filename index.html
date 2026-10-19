@@ -32,8 +32,7 @@
       <label for="read-text">朗読する作品の本文</label><textarea id="read-text" rows="12" placeholder="全文でも、一部でも。ここに文章を貼り付けてください。" spellcheck="false" autocomplete="off"></textarea>
       <div class="inline spread"><p id="read-count" class="muted">0文字</p><button id="clear-read" class="quiet">本文を削除</button></div>
       <p id="annotation-retention" class="muted" hidden>読み仮名を保持しています。本文を変更して朗読画面を開く場合は、読み仮名の削除を確認します。</p>
-      <p id="writing-retention" class="muted" hidden>試作の書き込みを保持しています。本文を変更して別の原稿を開くと失われます。書き込みは原稿ファイル（JSON）に保存できます。PDFにも出力できます（一時非表示の赤ペンを除く）。</p>
-      <p class="privacy">本文・読み仮名・書き込みは自動保存しません。朗読画面の「操作」→「原稿を保存」でJSONファイルへ手動保存できます。再読み込み・タブ終了前に保存してください。</p>
+      <p id="writing-retention" class="muted" hidden>仮保存中の文章を表示しています。<br>画面を更新した場合は、この仮保存は消去されます。</p>
       <div class="inline"><button id="import-manuscript">原稿ファイルを読み込む</button><input id="manuscript-file" type="file" accept=".json,application/json" hidden>
       <button id="open-read" class="primary">表示を確認して読む →</button></div>
     </section>
@@ -70,7 +69,7 @@
     <section id="results" class="view narrow" hidden aria-labelledby="result-title"><button class="back" data-go="home">← ホーム</button><p class="eyebrow">YOUR READING PACE</p><h1 id="result-title" tabindex="-1">朗読時間の目安</h1><p id="estimate" class="estimate"></p><p id="result-summary" class="muted"></p><label for="result-target">時間を知りたい作品全体の文字数</label><div class="inline"><input id="result-target" type="number" min="1" max="1000000000" step="1" inputmode="numeric"><span>文字</span></div><p class="muted">間の取り方や作品によって、実際の時間は変わります。</p><div class="inline"><button id="again" class="primary">もう一度計測する</button><button id="reset-history" class="quiet">全履歴をリセット</button></div><h2>計測履歴</h2><ul id="history" class="history"></ul><p class="privacy">確定した数値の結果だけを、このタブ内に保存します。本文は保存しません。</p></section>
   </main>
   <footer id="footer"><span>朗読支援ツール（仮）</span></footer>
-  <dialog id="operation-dialog"><div class="dialog-heading"><h2>操作</h2><button data-close="operation-dialog" aria-label="操作を閉じる">閉じる</button></div><button id="open-settings">表示設定</button><button id="writing-mode" aria-pressed="false" hidden>書き込み：OFF</button><p id="writing-save-help" class="muted" hidden>「原稿を保存」で本文・読み仮名・書き込みをJSONに保存できます。確定済みの書き込みはPDFにも出力できます（一時非表示の赤ペンを除く）。</p><button id="export-manuscript" hidden>原稿を保存</button><button id="export-pdf" hidden>PDF出力</button><button id="measure-current" hidden>この文章で時間を計測</button><button id="wake">画面点灯維持：OFF</button><p id="wake-status" class="muted" role="status"></p><button id="edit-from-menu">入力画面へ戻る</button><button id="home-from-menu">ホームへ戻る</button></dialog>
+  <dialog id="operation-dialog"><div class="dialog-heading"><h2>操作</h2><button data-close="operation-dialog" aria-label="操作を閉じる">閉じる</button></div><button id="open-settings">表示設定</button><button id="writing-mode" aria-pressed="false" hidden>書き込み：OFF</button><button id="export-manuscript" hidden>原稿を保存</button><button id="export-pdf" hidden>PDF出力</button><button id="measure-current" hidden>この文章で時間を計測</button><button id="wake">画面点灯維持：OFF</button><p id="wake-status" class="muted" role="status"></p><button id="edit-from-menu">入力画面へ戻る</button><button id="home-from-menu">ホームへ戻る</button></dialog>
   <dialog id="settings-dialog" aria-labelledby="settings-title">
     <div class="dialog-heading"><h2 id="settings-title">表示設定</h2><button data-close="settings-dialog">閉じる</button></div>
     <div id="settings-tabs" class="settings-tabs" role="tablist" aria-label="調整する項目" hidden>
@@ -84,7 +83,7 @@
     <div id="setting-line-height"><label for="line-height">行間 <output id="line-height-value">1.8</output></label><input id="line-height" type="range" min="1.2" max="2.6" step="0.1" value="1.8"></div>
     <div id="setting-break-lines"><label for="break-lines">自動区切り <output id="break-lines-value">5表示行ごと</output></label><input id="break-lines" type="range" min="0" max="10" value="5"></div>
     <div id="setting-paper"><button id="paper-mode" type="button" aria-pressed="false">原稿表示：OFF</button></div>
-    <p class="muted settings-help">幅を変えると文字サイズを保ったまま行の長さが変わります。文字数を増やすと文字が小さく、減らすと大きくなります。</p>
+    <p class="muted settings-help">表示幅は行の長さ、文字数は文字の大きさを調整します。</p>
   </dialog>
   <p id="notice" class="notice" role="status" hidden></p>
   <div id="manuscript-print"></div>
@@ -92,19 +91,18 @@
     <h2 id="pdf-title">PDF出力</h2>
     <p>次の印刷画面で「PDFとして保存」を選んでください。端末によっては共有・プリントからPDFを保存します。</p>
     <p class="muted">A4・縦向き・倍率100%を基本とし、ヘッダーとフッターはOFFにしてください。保存が完了したかは印刷画面でご確認ください。</p>
-    <p id="pdf-layout-info" class="muted"></p><p id="pdf-small-warning" hidden></p>
+    <p id="pdf-layout-info" class="muted" hidden></p><p id="pdf-small-warning" hidden></p>
     <div class="inline"><button id="pdf-cancel">キャンセル</button><button id="pdf-print" class="primary">印刷画面へ</button></div>
   </dialog>
-  <dialog id="ruby-dialog" aria-labelledby="ruby-title" aria-describedby="ruby-draft-help">
+  <dialog id="ruby-dialog" aria-labelledby="ruby-title">
     <form id="ruby-form">
       <h2 id="ruby-title">読み仮名を追加</h2>
-      <p id="ruby-draft-help" class="muted">本文の点線の【】は未登録です。</p>
       <label for="ruby-input">括弧内の読み仮名</label>
       <input id="ruby-input" type="text" required autocomplete="off" spellcheck="false" enterkeyhint="done">
       <div class="ruby-editor-actions"><button id="ruby-cancel" type="button">キャンセル</button><button id="ruby-delete" type="button" hidden>削除</button><button id="ruby-save" type="submit" class="primary" disabled>登録</button></div>
     </form>
   </dialog>
-  <dialog id="writing-memo-dialog" aria-labelledby="writing-memo-title"><form id="writing-memo-form"><h2 id="writing-memo-title">文字メモ</h2><p class="muted">本文の右側に表示します。原稿ファイル（JSON）に保存できます。PDFにも出力できます（一時非表示の赤ペンを除く）。</p><label for="writing-memo-input">短いメモ（40文字以内）</label><input id="writing-memo-input" type="text" maxlength="40" required autocomplete="off" enterkeyhint="done"><div class="ruby-editor-actions"><button id="writing-memo-cancel" type="button">キャンセル</button><button id="writing-memo-delete" type="button" hidden>削除</button><button id="writing-memo-save" type="submit" class="primary" disabled>登録</button></div></form></dialog>
+  <dialog id="writing-memo-dialog" aria-labelledby="writing-memo-title"><form id="writing-memo-form"><h2 id="writing-memo-title">文字メモ</h2><p class="muted">本文の右側に表示します。</p><label for="writing-memo-input">短いメモ（40文字以内）</label><input id="writing-memo-input" type="text" maxlength="40" required autocomplete="off" enterkeyhint="done"><div class="ruby-editor-actions"><button id="writing-memo-cancel" type="button">キャンセル</button><button id="writing-memo-delete" type="button" hidden>削除</button><button id="writing-memo-save" type="submit" class="primary" disabled>登録</button></div></form></dialog>
   <dialog id="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title">操作の確認</h2><p id="confirm-message"></p><div class="inline"><button id="confirm-cancel">キャンセル</button><button id="confirm-ok" class="primary">削除する</button></div></dialog>
 </body>
 </html>

@@ -24,9 +24,10 @@
   }
   let openingReader = false;
   const hasReadings = model => !!(model && (model.entries.length || model.sourceRubies.length));
-  function ask(message, action = '削除する') {
+  function ask(message, action = '削除する', title = '操作の確認') {
     return new Promise(resolve => {
       const dialog = $('confirm-dialog');
+      $('confirm-title').textContent = title;
       $('confirm-message').textContent = message; $('confirm-ok').textContent = action;
       dialog.returnValue = '';
       $('confirm-cancel').onclick = () => dialog.close('cancel');
@@ -35,6 +36,14 @@
       dialog.showModal(); $('confirm-cancel').focus();
     });
   }
+  function confirmMarkedChange(subject) {
+    if (!window.ManuscriptWriting.hasMarks) return Promise.resolve(true);
+    const impact = window.ManuscriptWriting.hasPens
+      ? '一部の赤ペンが表示されなくなる場合があります。'
+      : '書き込みの表示位置が変わる場合があります。';
+    return ask(`原稿に書き込みがあります。\n\n${subject}を変更すると、${impact}`, '変更する', `${subject}を変更しますか？`);
+  }
+  window.Reader.setReadingChangeGuard(() => confirmMarkedChange('読み仮名'));
   function countText(text) {
     const derived = text.replace(/［＃[^\r\n]*?］/g, '')
       .replace(/｜([^｜《》\r\n]+)《[^《》\r\n]+》/g, '$1')
@@ -84,7 +93,7 @@
     const level = Number($('sample-level').value), mood = $('sample-mood').value;
     const choices = window.READING_SAMPLES.filter(s => s.level === level && (mood === 'おまかせ' || s.mood === mood));
     sample = choices[Math.floor(Math.random() * choices.length)];
-    $('sample-info').textContent = `${sample.title} / ${sample.mood}・計測本文 ${countText(sample.text)}文字（初版の暫定例文）`;
+    $('sample-info').textContent = `${sample.title} / ${sample.mood}・計測本文 ${countText(sample.text)}文字`;
   }
   selectSample();
   ['sample-level', 'sample-mood'].forEach(id => $(id).addEventListener('change', selectSample));
@@ -198,7 +207,7 @@
     $('export-manuscript').hidden = mode !== 'read';
     $('export-pdf').hidden = mode !== 'read';
     $('measure-current').hidden = mode !== 'read';
-    $('writing-mode').hidden = mode !== 'read'; $('writing-save-help').hidden = mode !== 'read';
+    $('writing-mode').hidden = mode !== 'read';
     measuredCount = countText(text); measuredType = sourceType;
     updatePreparationInfo();
     const model = mode === 'read' ? readAnnotations : sourceType === 'custom' ? timeAnnotations : null;
@@ -220,7 +229,8 @@
       pdfAnchor = window.Reader.capture();
       const writing = window.ManuscriptWriting.printSnapshot();
       const result = window.ManuscriptPrint.prepare(snapshot, writing);
-      $('pdf-layout-info').textContent = `画面の行構成を固定して約${result.pages}ページ。文字サイズは約${result.points.toFixed(1)}pt（縮小率${Math.round(result.scale * 100)}%）です。確定済みの書き込み${result.marks}件を含みます。${result.hiddenPens ? ` 折り返し・周辺文字の配置が変わり、一時非表示になっている赤ペン${result.hiddenPens}件はPDFに含まれません。キャンセルして元の表示設定へ戻すと再表示できます。データはJSONに保存できます。` : ''}`;
+      $('pdf-layout-info').hidden = !result.hiddenPens;
+      $('pdf-layout-info').textContent = result.hiddenPens ? `赤ペン${result.hiddenPens}件は、現在の表示位置を再現できないためPDFに反映されません。` : '';
       $('pdf-small-warning').hidden = result.points >= 9;
       $('pdf-small-warning').textContent = '文字が小さくなるため、キャンセルして本文幅を狭くするか文字サイズを大きくしてから出力することをおすすめします。長い読み仮名がある場合は、内容の短縮もご検討ください。';
       $('operation-dialog').close(); $('pdf-dialog').showModal();
@@ -286,7 +296,6 @@
       url = URL.createObjectURL(blob);
       link.href = url; link.download = 'reading-manuscript.json';
       document.body.append(link); link.click(); $('operation-dialog').close();
-      if (readMarks.hasMarks) notify('本文・読み仮名・書き込みのJSONダウンロードを開始しました。');
     } catch (error) { notify(`原稿ファイルを保存できません。${error.message}`); }
     finally {
       link.remove();
@@ -318,7 +327,7 @@
       readInputSnapshot = $('read-text').value;
       $('read-text').dispatchEvent(new Event('input'));
       displayReader('read', restored.source);
-      notify('原稿ファイルを読み込みました。変更を残すには「原稿を保存」で再保存してください。');
+      notify('原稿ファイルを読み込みました。');
     } catch (error) { notify(`原稿を読み込めません。${error.message}`); }
     finally { importing = false; $('import-manuscript').disabled = false; }
   });
@@ -330,6 +339,27 @@
   document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.dataset.close === 'settings-dialog' ? closeSettings() : $(b.dataset.close).close());
   const settingsMobile = matchMedia('(max-width: 600px)');
   const layoutSettings = ['columns', 'line-height', 'break-lines'];
+  const sliderIds = ['reader-width', ...layoutSettings];
+  const sliderOutput = { 'reader-width': 'reader-width-value', columns: 'columns-value', 'line-height': 'line-height-value', 'break-lines': 'break-lines-value' };
+  let settingsApproved = false, pendingSetting = null, confirmingSetting = false, settingsSession = 0;
+  let pointerAdjusting = false, keyboardAdjusting = false;
+  let settingsBaseline = new Map();
+  function rememberSettings() {
+    if (pendingSetting || confirmingSetting) return;
+    settingsBaseline = new Map(sliderIds.map(id => [id, { value: $(id).value, label: $(sliderOutput[id]).textContent }]));
+  }
+  function discardSetting() {
+    pendingSetting = null;
+    settingsBaseline.forEach((state, id) => { $(id).value = state.value; $(sliderOutput[id]).textContent = state.label; });
+    pointerAdjusting = false; keyboardAdjusting = false;
+  }
+  $('reader').addEventListener('reader-layout', () => {
+    // Rotation can update the width/character bounds while confirmation is
+    // open. Cancellation must restore the new viewport's actual controls.
+    if (pendingSetting || confirmingSetting) {
+      ['reader-width', 'columns'].forEach(id => settingsBaseline.set(id, { value: $(id).value, label: $(sliderOutput[id]).textContent }));
+    } else rememberSettings();
+  });
   const settingNames = [...layoutSettings, 'paper'];
   let activeSetting = 'columns';
   function reserveSettingsSpace() {
@@ -354,6 +384,7 @@
   function closeSettings() {
     const panel = $('settings-dialog');
     if (!panel.open) return;
+    discardSetting(); settingsApproved = false; settingsSession++;
     // The user can scroll while the mobile panel is open. Keep the CURRENT
     // source position instead of returning to the position at panel opening.
     const anchor = window.Reader.capture();
@@ -366,12 +397,16 @@
     $('operation-dialog').close();
     updateSettingsControls();
     if (!$('settings-dialog').open) {
+      settingsApproved = false; settingsSession++; rememberSettings();
       if (settingsMobile.matches) $('settings-dialog').show(); else $('settings-dialog').showModal();
     }
     reserveSettingsSpace(); window.Reader.restore(anchor);
   }
   $('before-settings').onclick = openSettings; $('open-settings').onclick = openSettings;
-  $('settings-dialog').addEventListener('close', reserveSettingsSpace);
+  $('settings-dialog').addEventListener('close', () => {
+    reserveSettingsSpace();
+    if (!$('settings-dialog').open) { discardSetting(); settingsApproved = false; settingsSession++; }
+  });
   $('settings-dialog').addEventListener('cancel', e => { e.preventDefault(); closeSettings(); });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && settingsMobile.matches && $('settings-dialog').open) { e.preventDefault(); closeSettings(); }
@@ -406,9 +441,7 @@
     else timingPaper[sourceType] = { text: displayedText, on };
     applyPaper(on);
   };
-  ['reader-width', ...layoutSettings].forEach(id => $(id).addEventListener('input', () => {
-    if (phase !== 'idle') return;
-    const value = Number($(id).value);
+  function applySetting(id, value) {
     if (id === 'reader-width') window.Reader.configure({ width: value });
     if (id === 'columns') window.Reader.configure({ columns: value });
     if (id === 'line-height') {
@@ -417,7 +450,43 @@
     if (id === 'break-lines') {
       $('break-lines-value').textContent = value ? `${value}表示行ごと` : 'なし'; window.Reader.configure({ breaks: value });
     }
-  }));
+    rememberSettings();
+  }
+  async function commitSetting() {
+    if (!pendingSetting || confirmingSetting || pointerAdjusting || keyboardAdjusting) return;
+    const change = pendingSetting, session = settingsSession;
+    if (String(change.value) === settingsBaseline.get(change.id)?.value) { discardSetting(); return; }
+    confirmingSetting = true;
+    try {
+      const approved = await confirmMarkedChange('表示設定');
+      if (session !== settingsSession || view !== 'reading' || phase !== 'idle' || !$('settings-dialog').open) return;
+      if (!approved) { discardSetting(); return; }
+      settingsApproved = true; pendingSetting = null;
+      applySetting(change.id, change.value);
+    } finally { confirmingSetting = false; rememberSettings(); }
+  }
+  sliderIds.forEach(id => {
+    const input = $(id);
+    input.addEventListener('pointerdown', () => { rememberSettings(); pointerAdjusting = true; });
+    input.addEventListener('keydown', e => {
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) {
+        rememberSettings(); keyboardAdjusting = true;
+      }
+    });
+    input.addEventListener('keyup', () => { keyboardAdjusting = false; commitSetting(); });
+    input.addEventListener('change', commitSetting);
+    input.addEventListener('blur', () => { keyboardAdjusting = false; commitSetting(); });
+    input.addEventListener('input', () => {
+      if (phase !== 'idle' || confirmingSetting) return;
+      const value = Number(input.value);
+      if (!window.ManuscriptWriting.hasMarks || settingsApproved) { applySetting(id, value); return; }
+      pendingSetting = { id, value };
+      $(sliderOutput[id]).textContent = id === 'reader-width' ? `${value}px` : id === 'columns' ? `約${value}文字`
+        : id === 'line-height' ? value.toFixed(1) : value ? `${value}表示行ごと` : 'なし';
+    });
+  });
+  document.addEventListener('pointerup', () => { pointerAdjusting = false; commitSetting(); });
+  document.addEventListener('pointercancel', () => { if (pendingSetting) discardSetting(); pointerAdjusting = false; });
   function cancelMeasurement() {
     clearTimeout(countdownTimer); clearInterval(elapsedTimer);
     phase = 'idle'; $('countdown').hidden = true; $('measurement-bar').hidden = true;

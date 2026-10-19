@@ -222,6 +222,7 @@ input[type=number] {
 #pdf-dialog h2 { margin-top:0; }
 #pdf-dialog p { line-height:1.8; }
 #pdf-small-warning { color:#fcd58a; }
+#confirm-message { white-space: pre-line; }
 @page { size:A4 portrait; margin:15mm; }
 @media print {
   html:has(body.manuscript-printing) { background:#fff!important; color-scheme:light; scrollbar-gutter:auto; }

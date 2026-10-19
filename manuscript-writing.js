@@ -254,8 +254,8 @@
         }
         stage.style.minHeight = bottom ? `${Math.ceil(bottom + 16)}px` : '';
       } else stage.style.minHeight = '';
-      const message = `書き込み${model.items.length}件：${editable ? 'JSON保存・PDF出力に対応しています。' : '閲覧専用です。'}${hidden ? ` 折り返しの変化により赤ペン${hidden}件を一時非表示にしています。${editable ? 'これらはPDFに含まれません。' : ''}元の配置に戻すと再表示します。` : ''}`;
-      const status = $('writing-status'), hide = !enabled && !model.hasMarks;
+      const message = hidden ? `折り返しの変化により赤ペン${hidden}件を一時非表示にしています。${editable ? 'これらはPDFに含まれません。' : ''}元の配置に戻すと再表示します。` : '';
+      const status = $('writing-status'), hide = !hidden;
       if (status.hidden !== hide || status.textContent !== message) {
         const anchor = window.Reader.capture(), height = status.getBoundingClientRect().height;
         status.hidden = hide; status.textContent = message;
@@ -392,6 +392,8 @@
     show(next, options = {}) { cancelPending(); model = next; editable = options.editable !== false; enabled = false; controls(); render(); },
     leave() { cancelPending(); enabled = false; model = null; controls(); render(); },
     setMode, cancelPending,
+    get hasMarks() { return Boolean(model?.hasMarks); },
+    get hasPens() { return Boolean(model?.items.some(item => item.type === 'pen')); },
     get enabled() { return enabled; }
   };
 })();
