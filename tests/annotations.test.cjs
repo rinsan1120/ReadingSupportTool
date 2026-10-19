@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
-const context = { window: {}, Intl };
+const context = { window: {}, Intl, TextEncoder };
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../reading-annotations.js'), 'utf8'), context);
 const Model = context.window.ReadingAnnotations;
 
@@ -92,7 +92,7 @@ test('reject the complete file on every schema/offset/content failure with a spe
   const cases = [
     ['{', /JSON/], ['null', /format/], ['[]', /format/], ['{}', /format/],
     [{ ...manuscript(), format: 'other' }, /format/],
-    [{ ...manuscript(), version: 3 }, /version/],
+    [{ ...manuscript(), version: 4 }, /version/],
     [{ ...manuscript(), version: '1' }, /version/],
     [{ ...manuscript(), text: null }, /本文/],
     [{ ...manuscript(), annotations: {} }, /配列/],

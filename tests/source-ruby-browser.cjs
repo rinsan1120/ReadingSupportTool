@@ -129,7 +129,7 @@ const verifyLayout = async (page, breaks) => {
       assert.equal(await source(page), parsed.text); assert.deepEqual(await readings(page), parsed.sourceRubies.map(r => r.reading));
       const count = await page.evaluate(text => window.countReadingCharacters(text), parsed.text);
       assert.equal(await page.locator('#read-count').textContent(), `${count}文字`);
-      assert.deepEqual(await save(page), parsed);
+      assert.deepEqual(await save(page), { ...parsed, version: 3, marks: [] });
       // The original manual edit UI works inside a multi-character ruby base.
       await page.locator('#ruby-mode').click();
       const at = await page.locator('#reader ruby').filter({ hasText: '或朝' }).evaluate(el => {

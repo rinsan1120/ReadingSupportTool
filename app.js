@@ -8,7 +8,7 @@
   let measuredCount = 0, measuredType = 'sample', wakeLock = null, wakePending = false, wakeGeneration = 0;
   let readAnnotations = new window.ReadingAnnotations();
   let readMarks = new window.ManuscriptMarks();
-  const writingLoss = () => readMarks.hasMarks ? ' 試作の書き込みはファイル保存できず、この置き換えで失われます。' : '';
+  const writingLoss = () => readMarks.hasMarks ? ' 現在の書き込みも失われます。残すには、置き換え前に「原稿を保存」でJSONへ保存してください。' : '';
   // A textarea normalizes CRLF/CR to LF. Retain the exact imported source until
   // its displayed input is edited, otherwise UTF-16 annotation offsets drift.
   let readInputSnapshot = null;
@@ -143,12 +143,12 @@
     if (el.value && el.selectionStart === 0 && el.selectionEnd === el.value.length && (deleting || replacing)) {
       e.preventDefault();
       const next = deleting ? '' : (e.data || '');
-      if (await ask('入力済みの本文全体を削除・置換しますか？' + (id === 'read-text' && readMarks.hasMarks ? ' 本文を変えて別の原稿を開くと、ファイル保存できない試作の書き込みは失われます。' : ''), deleting ? '削除する' : '置き換える')) {
+      if (await ask('入力済みの本文全体を削除・置換しますか？' + (id === 'read-text' && readMarks.hasMarks ? ' 本文を変えて別の原稿を開くと、書き込みは失われます。残すには事前に「原稿を保存」でJSONへ保存してください。' : ''), deleting ? '削除する' : '置き換える')) {
         el.setRangeText(next, 0, el.value.length, 'end'); el.dispatchEvent(new Event('input'));
       }
     }
   }));
-  $('clear-read').onclick = async () => { if ($('read-text').value && await ask('入力した本文を削除しますか？' + (readMarks.hasMarks ? ' 本文を変えて別の原稿を開くと、ファイル保存できない試作の書き込みは失われます。' : ''))) { $('read-text').value = ''; $('read-text').dispatchEvent(new Event('input')); } };
+  $('clear-read').onclick = async () => { if ($('read-text').value && await ask('入力した本文を削除しますか？' + (readMarks.hasMarks ? ' 本文を変えて別の原稿を開くと、書き込みは失われます。残すには事前に「原稿を保存」でJSONへ保存してください。' : ''))) { $('read-text').value = ''; $('read-text').dispatchEvent(new Event('input')); } };
   $('apply-count').onclick = () => { setTarget(countText($('time-text').value) || '', true); persist(); };
   $('target-count').addEventListener('input', () => { setTarget($('target-count').value, true); persist(); });
   $('preparation-target').addEventListener('input', () => { setTarget($('preparation-target').value, true); persist(); });
@@ -259,12 +259,13 @@
     let url;
     const link = document.createElement('a');
     try {
-      const blob = new Blob([JSON.stringify(readAnnotations, null, 2)], { type: 'application/json;charset=utf-8' });
+      const json = window.ManuscriptMarks.serializeManuscript(readAnnotations, readMarks);
+      const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
       url = URL.createObjectURL(blob);
       link.href = url; link.download = 'reading-manuscript.json';
       document.body.append(link); link.click(); $('operation-dialog').close();
-      if (readMarks.hasMarks) notify('本文と読み仮名のJSONダウンロードを開始しました。試作の書き込みは含まれません。');
-    } catch { notify('原稿ファイルのダウンロードを開始できませんでした。'); }
+      if (readMarks.hasMarks) notify('本文・読み仮名・書き込みのJSONダウンロードを開始しました。PDFへの書き込み反映は未対応です。');
+    } catch (error) { notify(`原稿ファイルを保存できません。${error.message}`); }
     finally {
       link.remove();
       // Leave time for the browser's local download to consume the blob URL.
@@ -279,17 +280,18 @@
     if (!file || importing || view !== 'read-input') return;
     importing = true; $('import-manuscript').disabled = true;
     try {
+      if (file.size > window.ReadingAnnotations.MAX_FILE_BYTES) throw new Error('原稿ファイルは10MiBまでです。');
       let json;
       try { json = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()); }
       catch { throw new Error('UTF-8のJSONファイルを読み取れませんでした。'); }
-      const restored = window.ReadingAnnotations.fromJSON(json);
+      const { manuscript: restored, markings } = window.ManuscriptMarks.restoreManuscript(json);
       if (view !== 'read-input') return;
       if (($('read-text').value || readAnnotations.source || readAnnotations.entries.length) &&
         !await ask('現在の本文と読み仮名を、選択した原稿ファイルの内容で置き換えますか？未保存の変更は失われます。' + writingLoss(), '置き換える')) return;
       // All validation and confirmation have succeeded. Commit together, using
       // the same model and rendering path as manually entered manuscripts.
       readAnnotations = restored;
-      readMarks = new window.ManuscriptMarks(restored.source);
+      readMarks = markings;
       $('read-text').value = restored.source;
       readInputSnapshot = $('read-text').value;
       $('read-text').dispatchEvent(new Event('input'));

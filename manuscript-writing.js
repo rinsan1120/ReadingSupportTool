@@ -1,12 +1,21 @@
-/* Prototype writing stays in a separate, memory-only model. No JSON/storage or
- * PDF output: the reader's original text and ruby models remain authoritative. */
+/* Writing stays separate from the original text/ruby model. Only confirmed
+ * items enter manuscript JSON; history, transient gestures and DOM never do. */
 (() => {
   const copy = value => structuredClone(value);
   window.ManuscriptMarks = class {
+    static MAX_MARKS = 1000;
+    static MAX_POINTS = 2000;
+    static MAX_TOTAL_POINTS = 100000;
+    static MAX_COORDINATE = 1000;
     constructor(source = '') { this.source = source; this.items = []; this.history = []; this.nextId = 1; }
     get hasMarks() { return this.items.length > 0; }
     remember() { this.history.push(copy(this.items)); if (this.history.length > 40) this.history.shift(); }
-    add(item) { this.remember(); this.items.push({ ...copy(item), id: this.nextId++ }); }
+    add(item) {
+      const used = new Set(this.items.map(mark => mark.id));
+      while (used.has(this.nextId)) this.nextId = this.nextId === Number.MAX_SAFE_INTEGER ? 1 : this.nextId + 1;
+      this.remember(); this.items.push({ ...copy(item), id: this.nextId });
+      this.nextId = this.nextId === Number.MAX_SAFE_INTEGER ? 1 : this.nextId + 1;
+    }
     remove(id) { if (!this.items.some(item => item.id === id)) return; this.remember(); this.items = this.items.filter(item => item.id !== id); }
     editMemo(id, text) {
       const item = this.items.find(item => item.id === id && item.type === 'memo');
@@ -14,6 +23,87 @@
       this.remember(); item.text = text;
     }
     undo() { if (this.history.length) this.items = this.history.pop(); }
+    static fromItems(items, manuscript) {
+      if (!Array.isArray(items)) throw new Error('marksは配列である必要があります。');
+      if (items.length > this.MAX_MARKS) throw new Error('書き込みは1,000件までです。');
+      const restored = new this(manuscript.source), ids = new Set(), visible = new Set();
+      if (!items.length) return restored;
+      const boundaries = [...manuscript.boundaries];
+      for (let i = 0; i < boundaries.length - 1; i++) {
+        if (manuscript.source.slice(boundaries[i], boundaries[i + 1]).trim()) visible.add(boundaries[i]);
+      }
+      let total = 0, maxId = 0;
+      const object = (value, fields, label) => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label}オブジェクトで指定してください。`);
+        if (Object.keys(value).some(key => !fields.includes(key))) throw new Error(`${label}未対応のフィールドがあります。`);
+      };
+      const position = value => Number.isSafeInteger(value) && manuscript.boundaries.has(value);
+      const anchor = (value, label) => { if (!position(value) || !visible.has(value)) throw new Error(`${label}offsetは本文の文字の先頭に一致する必要があります。`); };
+      const coordinates = (value, fields, label) => {
+        object(value, fields, label);
+        for (const axis of ['x', 'y']) if (!Number.isFinite(value[axis]) || Math.abs(value[axis]) > this.MAX_COORDINATE) throw new Error(`${label}相対座標は±1,000以内の有限数にしてください。`);
+        return { x: value.x, y: value.y };
+      };
+      for (const [index, item] of items.entries()) {
+        const label = `書き込み${index + 1}件目：`;
+        const fields = {
+          pen: ['id', 'type', 'offset', 'layoutKey', 'points', 'witnesses'],
+          marker: ['id', 'type', 'start', 'end'], memo: ['id', 'type', 'offset', 'dx', 'dy', 'text']
+        };
+        if (!item || typeof item !== 'object' || Array.isArray(item) || typeof item.type !== 'string' || !Object.hasOwn(fields, item.type)) throw new Error(`${label}書き込み種類が不正です。`);
+        object(item, fields[item.type], label);
+        if (!Number.isSafeInteger(item.id) || item.id < 1) throw new Error(`${label}IDは正の安全な整数にしてください。`);
+        if (ids.has(item.id)) throw new Error(`${label}書き込みIDが重複しています。`);
+        ids.add(item.id); maxId = Math.max(maxId, item.id);
+        const base = { id: item.id, type: item.type };
+        if (item.type === 'marker') {
+          if (!position(item.start) || !position(item.end) || item.start >= item.end) throw new Error(`${label}マーカーの範囲が不正、または文字境界に一致しません。`);
+          restored.items.push({ ...base, start: item.start, end: item.end });
+        } else {
+          anchor(item.offset, label);
+          if (item.type === 'memo') {
+            coordinates({ x: item.dx, y: item.dy }, ['x', 'y'], label);
+            if (typeof item.text !== 'string' || !item.text.trim() || item.text.length > 40 || /[\r\n\u2028\u2029]/u.test(item.text)) throw new Error(`${label}メモは空白だけでない、改行を含まない40 UTF-16文字以内の文字列にしてください。`);
+            restored.items.push({ ...base, offset: item.offset, dx: item.dx, dy: item.dy, text: item.text });
+          } else {
+            if (typeof item.layoutKey !== 'string' || item.layoutKey.length > 100 || !/^\d+(?:\.\d+)?:\d+(?:\.\d+)?:\d+:\d+$/.test(item.layoutKey)) throw new Error(`${label}赤ペンのlayoutKeyが不正です。`);
+            const [columns, height, breaks, hash] = item.layoutKey.split(':').map(Number);
+            if (!(columns > 0 && columns <= 10000 && height > 0 && height <= 10 && Number.isSafeInteger(breaks) && breaks <= 100 && Number.isSafeInteger(hash) && hash <= 0xffffffff)) throw new Error(`${label}赤ペンのlayoutKeyが範囲外です。`);
+            if (!Array.isArray(item.points) || item.points.length < 2 || item.points.length > this.MAX_POINTS) throw new Error(`${label}赤ペンの点列は2〜2,000点にしてください。`);
+            if (!Array.isArray(item.witnesses) || !item.witnesses.length || item.witnesses.length > this.MAX_POINTS) throw new Error(`${label}赤ペンの補助位置は1〜2,000件にしてください。`);
+            total += item.points.length + item.witnesses.length;
+            if (total > this.MAX_TOTAL_POINTS) throw new Error('赤ペンの点と補助位置は原稿全体で100,000件までです。');
+            const points = item.points.map(p => coordinates(p, ['x', 'y'], label));
+            if (!points.some(p => p.x !== points[0].x || p.y !== points[0].y)) throw new Error(`${label}赤ペンの点列に長さがありません。`);
+            const seen = new Set();
+            const witnesses = item.witnesses.map(w => {
+              const point = coordinates(w, ['offset', 'x', 'y'], label); anchor(w.offset, label);
+              if (seen.has(w.offset)) throw new Error(`${label}補助位置のoffsetが重複しています。`);
+              seen.add(w.offset); return { offset: w.offset, ...point };
+            });
+            if (!witnesses.some(w => w.offset === item.offset && w.x === 0 && w.y === 0)) throw new Error(`${label}赤ペンの基準位置に対応する補助情報がありません。`);
+            restored.items.push({ ...base, offset: item.offset, layoutKey: item.layoutKey, points, witnesses });
+          }
+        }
+      }
+      restored.nextId = maxId === Number.MAX_SAFE_INTEGER ? 1 : maxId + 1;
+      return restored;
+    }
+    static restoreManuscript(json) {
+      const data = window.ReadingAnnotations.parseJSON(json);
+      const manuscript = window.ReadingAnnotations.fromData(data);
+      if (data.version < 3 && data.marks !== undefined && (!Array.isArray(data.marks) || data.marks.length)) throw new Error('書き込みを含む原稿はversion 3で指定してください。');
+      const markings = this.fromItems(data.version === 3 ? data.marks : [], manuscript);
+      return { manuscript, markings };
+    }
+    static serializeManuscript(manuscript, markings) {
+      if (manuscript.source !== markings.source) throw new Error('本文と書き込みの原文が一致しません。本文を確認してから保存してください。');
+      const validated = window.ReadingAnnotations.fromData(manuscript.toJSON());
+      const marks = this.fromItems(markings.items, validated).items;
+      const json = JSON.stringify({ ...validated.toJSON(), version: 3, marks }, null, 2);
+      if (json.length > window.ReadingAnnotations.MAX_FILE_BYTES || new TextEncoder().encode(json).length > window.ReadingAnnotations.MAX_FILE_BYTES) throw new Error('原稿ファイルは10MiBまでです。');
+      return json;
+    }
   };
   const $ = id => document.getElementById(id);
   const root = $('reader'), stage = $('reader-stage'), toolbar = $('writing-toolbar');
@@ -158,7 +248,7 @@
         }
         stage.style.minHeight = bottom ? `${Math.ceil(bottom + 16)}px` : '';
       } else stage.style.minHeight = '';
-      const message = `書き込み${model.items.length}件：試作機能のためJSON・PDFに保存できません。${hidden ? ` 折り返しの変化により赤ペン${hidden}件を一時非表示にしています。元の配置に戻すと再表示します。` : ''}`;
+      const message = `書き込み${model.items.length}件：原稿ファイル（JSON）に保存できます。PDFへの反映は未対応です。${hidden ? ` 折り返しの変化により赤ペン${hidden}件を一時非表示にしています。元の配置に戻すと再表示します。` : ''}`;
       const status = $('writing-status'), hide = !enabled && !model.hasMarks;
       if (status.hidden !== hide || status.textContent !== message) {
         const anchor = window.Reader.capture(), height = status.getBoundingClientRect().height;

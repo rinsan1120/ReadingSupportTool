@@ -23,6 +23,7 @@ const save = async page => {
   await page.locator('#operations').click(); const pending = page.waitForEvent('download'); await page.locator('#export-manuscript').click();
   const download = await pending; return JSON.parse(fs.readFileSync(await download.path(), 'utf8'));
 };
+const checkSaved = (saved, original) => { const { marks, ...base } = saved; assert.deepEqual(base, { ...original, version: 3 }); return marks; };
 const writingOn = async page => {
   await page.locator('#operations').click(); await page.locator('#writing-mode').click();
   await page.locator('#writing-toolbar').waitFor({ state: 'visible' });
@@ -78,7 +79,7 @@ const counts = page => page.evaluate(() => ({ pen: document.querySelectorAll('#w
       await writingOn(page);
       const toolBounds = await page.locator('#writing-toolbar').evaluate(el => ({ width: el.clientWidth, scroll: el.scrollWidth, buttons: [...el.querySelectorAll('[data-writing-tool]')].map(b => b.getBoundingClientRect().height) }));
       assert.equal(toolBounds.width, toolBounds.scroll); assert.ok(toolBounds.buttons.every(height => height <= 44));
-      assert.match(await page.locator('#writing-save-help').textContent(), /まだファイル保存できません/);
+      assert.match(await page.locator('#writing-save-help').textContent(), /JSONに保存できます/);
       assert.equal(await page.locator('#ruby-mode').getAttribute('aria-pressed'), 'false');
       p = await glyph(page, fox);
       await tap(p); assert.equal((await counts(page)).pen, 0, 'pen tap alone is not a stray line');
@@ -92,7 +93,7 @@ const counts = page => page.evaluate(() => ({ pen: document.querySelectorAll('#w
       assert.equal(await page.locator('#writing-markers rect').first().getAttribute('data-start'), '0');
       assert.equal(await page.locator('#writing-markers rect').first().getAttribute('data-end'), '5');
       assert.equal(await originalText(page), sourceText); assert.equal(await page.locator('#read-count').textContent(), originalCount);
-      assert.deepEqual(await save(page), data, 'JSON schema and ruby data exclude writing');
+      assert.deepEqual(checkSaved(await save(page), data).map(mark => mark.type), ['pen', 'marker']);
       // Source positions survive reflow; short pen stays attached to the fox.
       const before = await page.evaluate(() => {
         const path = document.querySelector('#writing-pen path'), point = path.getPointAtLength(0), geometry = window.Reader.getWritingGeometry();
@@ -139,7 +140,7 @@ const counts = page => page.evaluate(() => ({ pen: document.querySelectorAll('#w
       await page.locator('#writing-off').click();
       const retained = await counts(page); assert.equal(retained.memo, 1);
       assert.equal(await page.locator('.writing-memo').isDisabled(), true);
-      assert.match(await page.locator('#writing-status').textContent(), /JSON・PDFに保存できません/);
+      assert.match(await page.locator('#writing-status').textContent(), /JSON.*保存できます/);
       // Native touch scroll returns when OFF, without creating marks.
       if (cdp) {
         const beforeScroll = await page.evaluate(() => scrollY);
@@ -224,7 +225,7 @@ const counts = page => page.evaluate(() => ({ pen: document.querySelectorAll('#w
       await page.locator('#operations').click(); await page.locator('#home-from-menu').click();
       await page.locator('[data-go="read-input"]').click(); await page.locator('#open-read').click();
       assert.deepEqual(await counts(page), retained);
-      assert.deepEqual(await save(page), data);
+      assert.deepEqual(checkSaved(await save(page), data).map(mark => mark.type).sort(), ['marker', 'memo', 'pen']);
       assert.equal(await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } })), initialStorage);
       assert.equal(requests.length, initialRequests, 'writing makes no network requests'); assert.deepEqual(errors, []);
       // A manuscript with writing but no ruby still asks before replacement.
@@ -244,8 +245,8 @@ const counts = page => page.evaluate(() => ({ pen: document.querySelectorAll('#w
       await writingOn(page); await tool(page, 'marker'); await tap(await glyph(page, 2));
       assert.equal(await page.locator('#writing-markers rect').first().getAttribute('data-start'), '2');
       assert.equal(await page.locator('#writing-markers rect').first().getAttribute('data-end'), '13', 'ZWJ family is one marked grapheme at original UTF-16 boundaries');
-      assert.equal(await originalText(page), unicode); assert.deepEqual(await save(page), unicodeData);
-      console.log(`PASS ${width}px: pen/marker/memo, edits/eraser/undo, source anchors/reflow, touch scrolling, ruby isolation, replacement protection, unchanged JSON/PDF/timing`);
+      assert.equal(await originalText(page), unicode); assert.deepEqual(checkSaved(await save(page), unicodeData), [{ id: 1, type: 'marker', start: 2, end: 13 }]);
+      console.log(`PASS ${width}px: pen/marker/memo, edits/eraser/undo, source anchors/reflow, touch scrolling, ruby isolation, replacement protection, JSON marks, unchanged PDF/timing`);
       await context.close();
     }
   } finally { await browser.close(); }

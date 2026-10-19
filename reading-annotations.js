@@ -5,6 +5,9 @@
 (() => {
   const segmenter = new Intl.Segmenter('ja', { granularity: 'grapheme' });
   window.ReadingAnnotations = class {
+    static MAX_FILE_BYTES = 10 * 1024 * 1024;
+    static MAX_TEXT_LENGTH = 200000;
+    static MAX_READINGS = 10000;
     constructor(source = '') { this.reset(source); }
     reset(source) {
       this.source = source;
@@ -29,13 +32,23 @@
         sourceRubies: this.sourceRubies.map(({ start, end, reading }) => ({ start, end, reading })) };
     }
     static fromJSON(json) {
+      return this.fromData(this.parseJSON(json));
+    }
+    static parseJSON(json) {
+      if (typeof json !== 'string') throw new Error('原稿はJSON文字列で指定してください。');
+      if (json.length > this.MAX_FILE_BYTES || new TextEncoder().encode(json).length > this.MAX_FILE_BYTES) throw new Error('原稿ファイルは10MiBまでです。');
       let data;
       try { data = JSON.parse(json); }
       catch { throw new Error('正しいJSONとして解析できません。'); }
+      return data;
+    }
+    static fromData(data) {
       if (!data || typeof data !== 'object' || Array.isArray(data) || data.format !== 'reading-support-manuscript') throw new Error('原稿ファイルのformatが一致しません。');
-      if (![1, 2].includes(data.version)) throw new Error('対応していないversionです。対応バージョンは1と2です。');
+      if (![1, 2, 3].includes(data.version)) throw new Error('対応していないversionです。対応バージョンは1・2・3です。');
       if (typeof data.text !== 'string') throw new Error('本文textは文字列である必要があります。');
+      if (data.text.length > this.MAX_TEXT_LENGTH) throw new Error('本文は200,000 UTF-16文字までです。');
       if (!Array.isArray(data.annotations)) throw new Error('annotationsは配列である必要があります。');
+      if (data.annotations.length > this.MAX_READINGS) throw new Error('手動読み仮名は10,000件までです。');
       // Construct separately: no existing manuscript is mutated on any failure.
       const model = new this(data.text), seen = new Set();
       for (const [index, entry] of data.annotations.entries()) {
@@ -51,8 +64,9 @@
         model.entries.push({ offset: entry.offset, text: entry.text });
       }
       model.entries.sort((a, b) => a.offset - b.offset);
-      if (data.version === 2 || data.sourceRubies !== undefined) {
+      if (data.version >= 2 || data.sourceRubies !== undefined) {
         if (!Array.isArray(data.sourceRubies)) throw new Error('sourceRubiesは配列である必要があります。');
+        if (data.sourceRubies.length > this.MAX_READINGS) throw new Error('元の読み仮名は10,000件までです。');
         for (const [index, ruby] of data.sourceRubies.entries()) {
           const label = `元の読み仮名${index + 1}件目：`;
           if (!ruby || typeof ruby !== 'object' || Array.isArray(ruby)) throw new Error(`${label}データがオブジェクトではありません。`);
