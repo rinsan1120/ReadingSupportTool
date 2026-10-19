@@ -19,6 +19,8 @@
   const mobile = matchMedia('(max-width: 600px)');
   const availableWidth = () => Math.max(1, root.parentElement.clientWidth - (mobile.matches ? 32 : 40));
   const range = document.createRange();
+  const printMedia = matchMedia('print');
+  const printing = () => printMedia.matches && document.body.classList.contains('manuscript-printing');
   function sourceOffset(block, offset) {
     const run = block.runs.find(r => offset >= r.start && offset < r.end) || block.runs.at(-1);
     return run.annotation ? run.sourceStart : run.sourceStart + offset - run.start;
@@ -87,7 +89,7 @@
     return range.getBoundingClientRect();
   }
   function capture() {
-    if (root.closest('[hidden]')) return savedAnchor;
+    if (printing() || root.closest('[hidden]')) return savedAnchor;
     const edge = document.querySelector('.reader-toolbar').getBoundingClientRect().bottom + 12;
     let best = null;
     for (const block of blocks) {
@@ -109,7 +111,7 @@
     return best || savedAnchor;
   }
   function restore(anchor) {
-    if (!anchor) return;
+    if (!anchor || printing()) return;
     const block = blocks.find(b => anchor.offset >= b.start && anchor.offset <= b.sourceEnd);
     if (!block) return;
     const rect = point(block, displayOffset(block, anchor.offset, anchor.annotationIndex));
@@ -149,7 +151,7 @@
     return lines;
   }
   function layout(anchor = capture()) {
-    if (root.closest('[hidden]')) return;
+    if (printing() || root.closest('[hidden]')) return;
     const available = availableWidth();
     const maxWidth = Math.min(1400, available);
     const minWidth = Math.min(480, maxWidth);
@@ -247,6 +249,42 @@
     lastAvailable = available;
     lastMobile = mobile.matches;
     restore(anchor);
+  }
+  function printSnapshot() {
+    if (draft) throw new Error('読み仮名を登録またはキャンセルしてからPDF出力してください。');
+    if (printing() || root.closest('[hidden]')) throw new Error('朗読画面でPDF出力してください。');
+    const origin = root.getBoundingClientRect(), computed = getComputedStyle(root);
+    const font = {};
+    for (const name of ['fontFamily', 'fontSize', 'lineHeight', 'fontWeight', 'fontStyle', 'fontStretch', 'fontKerning', 'fontFeatureSettings', 'fontVariantLigatures', 'fontVariantEastAsian', 'letterSpacing', 'wordSpacing', 'tabSize', 'direction']) font[name] = computed[name];
+    const lines = [];
+    for (const block of blocks) {
+      let previousShift = 0;
+      for (const line of block.lines) {
+        const firstRect = point(block, line.start), pieces = [], rects = [];
+        const firstPart = block.parts.find(p => line.start >= p.start && line.start < p.end);
+        const shift = parseFloat(firstPart.node.parentElement.closest('.line-segment')?.style.top) || 0;
+        for (const part of block.parts) {
+          const begin = Math.max(line.start, part.start), end = Math.min(line.end, part.end);
+          if (begin >= end) continue;
+          range.setStart(part.node, begin - part.start); range.setEnd(part.node, end - part.start);
+          rects.push(...[...range.getClientRects()].filter(r => r.height > 0));
+          // Preserve tab stops through the next text's measured X position;
+          // resetting a tab inside an independently positioned span would drift.
+          for (const match of block.text.slice(begin, end).matchAll(/[^\r\n\t\u2028\u2029]+/gu)) {
+            range.setStart(part.node, begin - part.start + match.index);
+            range.setEnd(part.node, begin - part.start + match.index + match[0].length);
+            const rect = range.getBoundingClientRect();
+            pieces.push({ text: match[0], left: rect.left - origin.left, top: rect.top - origin.top, annotation: part.run.annotation ? part.run.sourceStart : null });
+          }
+        }
+        const center = firstRect.top + firstRect.height / 2 - origin.top;
+        const top = Math.min(center - parseFloat(computed.lineHeight) / 2, ...rects.map(r => r.top - origin.top));
+        const bottom = Math.max(center + parseFloat(computed.lineHeight) / 2, ...rects.map(r => r.bottom - origin.top));
+        lines.push({ top, bottom, autoBefore: Math.max(0, shift - previousShift), pieces });
+        previousShift = shift;
+      }
+    }
+    return { width: origin.width, font, lines };
   }
   function updateMode(on) {
     rubyMode = Boolean(annotations && annotationsEditable && on);
@@ -360,7 +398,7 @@
     }
   });
   const observer = new ResizeObserver(() => {
-    if (root.closest('[hidden]') || (Math.abs(availableWidth() - lastAvailable) < .5 && mobile.matches === lastMobile)) return;
+    if (printing() || root.closest('[hidden]') || (Math.abs(availableWidth() - lastAvailable) < .5 && mobile.matches === lastMobile)) return;
     cancelAnimationFrame(scheduled);
     scheduled = requestAnimationFrame(() => layout(savedAnchor));
   });
@@ -388,7 +426,7 @@
       if (next.breaks !== undefined) settings.breaks = next.breaks;
       layout(anchor);
     },
-    capture, restore,
+    capture, restore, printSnapshot,
     refresh(anchor = savedAnchor) { savedAnchor = anchor; layout(anchor); }
   };
 })();

@@ -196,6 +196,27 @@ input[type=number] {
   width:220px
 }
 #preparation-target { width:min(220px,calc(100% - 48px)); }
+
+/* Independent, frozen text layout. One millimetre of vertical tolerance avoids
+   rounding an A4 content box into an extra blank page in print engines. */
+#manuscript-print { display:none; }
+#manuscript-print.print-measuring { display:block; position:fixed; left:-100000px; top:0; visibility:hidden; pointer-events:none; }
+.manuscript-page { position:relative; width:180mm; height:266mm; margin:0; padding:0; border:0; overflow:hidden; background:#fff; color:#000; }
+.manuscript-canvas { position:absolute; top:0; color:#000; }
+.manuscript-piece { position:absolute; top:0; white-space:pre; overflow-wrap:normal; word-break:normal; }
+.manuscript-annotation { color:#17365d; }
+#pdf-dialog h2 { margin-top:0; }
+#pdf-dialog p { line-height:1.8; }
+#pdf-small-warning { color:#fcd58a; }
+@page { size:A4 portrait; margin:15mm; }
+@media print {
+  html:has(body.manuscript-printing) { background:#fff!important; color-scheme:light; scrollbar-gutter:auto; }
+  body.manuscript-printing { background:#fff!important; margin:0; padding:0; min-height:0; }
+  body.manuscript-printing > :not(#manuscript-print) { display:none!important; }
+  body.manuscript-printing #manuscript-print { display:block; position:static; visibility:visible; margin:0; padding:0; width:180mm; }
+  .manuscript-page { break-inside:avoid; break-after:page; page-break-inside:avoid; page-break-after:always; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+  .manuscript-page:last-child { break-after:auto; page-break-after:auto; }
+}
 select {
   display:block;
   min-width:140px;

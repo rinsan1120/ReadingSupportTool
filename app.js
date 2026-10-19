@@ -55,7 +55,7 @@
   }
   setTarget(target);
   function show(next) {
-    if (view === 'reading' && next !== 'reading') { window.Reader.leave(); cancelMeasurement(); releaseWake(); }
+    if (view === 'reading' && next !== 'reading') { window.ManuscriptPrint.clear(); window.Reader.leave(); cancelMeasurement(); releaseWake(); }
     document.querySelectorAll('dialog[open]').forEach(d => d.close());
     document.querySelectorAll('.view').forEach(el => el.hidden = el.id !== next);
     view = next; $('footer').hidden = next === 'reading';
@@ -153,6 +153,7 @@
     $('preparation').hidden = mode !== 'time'; $('measurement-bar').hidden = true;
     $('open-settings').disabled = false;
     $('export-manuscript').hidden = mode !== 'read';
+    $('export-pdf').hidden = mode !== 'read';
     $('measure-current').hidden = mode !== 'read';
     measuredCount = countText(text); measuredType = sourceType;
     updatePreparationInfo();
@@ -160,6 +161,42 @@
     window.Reader.show(text, model, { editable: mode === 'read' });
   }
   $('open-read').onclick = () => openReader('read'); $('prepare-time').onclick = () => openReader('time');
+  let preparingPDF = false, pdfAnchor = null;
+  $('export-pdf').onclick = async () => {
+    if (view !== 'reading' || mode !== 'read' || preparingPDF) return;
+    preparingPDF = true;
+    try {
+      await document.fonts.ready;
+      if (view !== 'reading' || mode !== 'read') return;
+      const snapshot = window.Reader.printSnapshot();
+      pdfAnchor = window.Reader.capture();
+      const result = window.ManuscriptPrint.prepare(snapshot);
+      $('pdf-layout-info').textContent = `画面の行構成を固定して約${result.pages}ページ。文字サイズは約${result.points.toFixed(1)}pt（縮小率${Math.round(result.scale * 100)}%）です。`;
+      $('pdf-small-warning').hidden = result.points >= 9;
+      $('pdf-small-warning').textContent = '文字が小さくなるため、キャンセルして本文幅を狭くするか文字サイズを大きくしてから出力することをおすすめします。長い読み仮名がある場合は、内容の短縮もご検討ください。';
+      $('operation-dialog').close(); $('pdf-dialog').showModal();
+    } catch (error) { window.ManuscriptPrint.clear(); $('operation-dialog').close(); notify(error.message); }
+    finally { preparingPDF = false; }
+  };
+  $('pdf-cancel').onclick = () => $('pdf-dialog').close();
+  $('pdf-dialog').addEventListener('close', () => {
+    if (!document.body.classList.contains('manuscript-printing')) window.ManuscriptPrint.clear();
+  });
+  $('pdf-print').onclick = () => {
+    // Set printing state before closing: the asynchronous close event must not
+    // remove the prepared pages while a mobile print dialog is still opening.
+    document.body.classList.add('manuscript-printing'); $('pdf-dialog').close();
+    try { window.ManuscriptPrint.print(); }
+    catch { window.ManuscriptPrint.clear(); notify('このブラウザでは印刷を開始できませんでした。端末の印刷・PDF保存に対応したブラウザでお試しください。'); }
+  };
+  const finishPDF = () => {
+    if (!document.body.classList.contains('manuscript-printing')) return;
+    window.ManuscriptPrint.clear();
+    const anchor = pdfAnchor; pdfAnchor = null;
+    requestAnimationFrame(() => { if (view === 'reading') window.Reader.restore(anchor); });
+  };
+  addEventListener('afterprint', finishPDF);
+  matchMedia('print').addEventListener('change', e => { if (!e.matches) finishPDF(); });
   $('measure-current').onclick = async () => {
     if (view !== 'reading' || mode !== 'read' || openingReader) return;
     const text = readAnnotations.source, count = countText(text);
