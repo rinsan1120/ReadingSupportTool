@@ -6,7 +6,10 @@
   let history = [], target = '', targetManual = false;
   let phase = 'idle', began = 0, countdownTimer = 0, elapsedTimer = 0, noticeTimer = 0;
   let measuredCount = 0, measuredType = 'sample', wakeLock = null, wakePending = false, wakeGeneration = 0;
-  const readAnnotations = new window.ReadingAnnotations();
+  let readAnnotations = new window.ReadingAnnotations();
+  // A textarea normalizes CRLF/CR to LF. Retain the exact imported source until
+  // its displayed input is edited, otherwise UTF-16 annotation offsets drift.
+  let readInputSnapshot = null;
   let openingReader = false;
   function ask(message, action = '削除する') {
     return new Promise(resolve => {
@@ -116,26 +119,74 @@
   $('result-target').addEventListener('input', () => { setTarget($('result-target').value, true); persist(); renderResults(); });
   async function openReader(nextMode) {
     if (openingReader) return;
-    const text = nextMode === 'read' ? $('read-text').value : sourceType === 'sample' ? sample.text : $('time-text').value;
-    if (!countText(text)) { notify('朗読する文章を入力してください。'); return; }
+    const text = nextMode === 'read' ? ($('read-text').value === readInputSnapshot ? readAnnotations.source : $('read-text').value) : sourceType === 'sample' ? sample.text : $('time-text').value;
+    const retainedRead = nextMode === 'read' && $('read-text').value === readInputSnapshot;
+    if (!countText(text) && !retainedRead) { notify('朗読する文章を入力してください。'); return; }
     if (nextMode === 'time' && !validTarget(target)) { notify('作品全体の文字数を1〜1,000,000,000の整数で入力してください。'); $('target-count').focus(); return; }
     openingReader = true;
     try {
       if (nextMode === 'read' && text !== readAnnotations.source) {
         if (readAnnotations.entries.length && !await ask('本文が変更されています。この文章を開くと、登録済みの読み仮名はすべて削除されます。本文を差し替えますか？', '差し替える')) return;
         readAnnotations.reset(text);
+        readInputSnapshot = $('read-text').value;
       }
     } finally { openingReader = false; }
+    displayReader(nextMode, text);
+  }
+  function displayReader(nextMode, text) {
     mode = nextMode;
     show('reading');
     $('reading-title').textContent = mode === 'time' ? (sourceType === 'sample' ? sample.title : '朗読速度の計測') : '文章を読む';
     $('preparation').hidden = mode !== 'time'; $('measurement-bar').hidden = true;
     $('preparation-info').textContent = `計測する本文：${countText(text)}文字 ／ 作品全体：${Number(target).toLocaleString()}文字`;
     $('open-settings').disabled = false;
+    $('export-manuscript').hidden = mode !== 'read';
     measuredCount = countText(text); measuredType = sourceType;
     window.Reader.show(text, mode === 'read' ? readAnnotations : null);
   }
   $('open-read').onclick = () => openReader('read'); $('prepare-time').onclick = () => openReader('time');
+  $('export-manuscript').onclick = () => {
+    if (view !== 'reading' || mode !== 'read') return;
+    let url;
+    const link = document.createElement('a');
+    try {
+      const blob = new Blob([JSON.stringify(readAnnotations, null, 2)], { type: 'application/json;charset=utf-8' });
+      url = URL.createObjectURL(blob);
+      link.href = url; link.download = 'reading-manuscript.json';
+      document.body.append(link); link.click(); $('operation-dialog').close();
+    } catch { notify('原稿ファイルのダウンロードを開始できませんでした。'); }
+    finally {
+      link.remove();
+      // Leave time for the browser's local download to consume the blob URL.
+      if (url) setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+  };
+  let importing = false;
+  $('import-manuscript').onclick = () => $('manuscript-file').click();
+  $('manuscript-file').addEventListener('change', async () => {
+    const file = $('manuscript-file').files[0];
+    $('manuscript-file').value = ''; // Allow retrying the same file after cancel/error.
+    if (!file || importing || view !== 'read-input') return;
+    importing = true; $('import-manuscript').disabled = true;
+    try {
+      let json;
+      try { json = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()); }
+      catch { throw new Error('UTF-8のJSONファイルを読み取れませんでした。'); }
+      const restored = window.ReadingAnnotations.fromJSON(json);
+      if (view !== 'read-input') return;
+      if (($('read-text').value || readAnnotations.source || readAnnotations.entries.length) &&
+        !await ask('現在の本文と読み仮名を、選択した原稿ファイルの内容で置き換えますか？未保存の変更は失われます。', '置き換える')) return;
+      // All validation and confirmation have succeeded. Commit together, using
+      // the same model and rendering path as manually entered manuscripts.
+      readAnnotations = restored;
+      $('read-text').value = restored.source;
+      readInputSnapshot = $('read-text').value;
+      $('read-text').dispatchEvent(new Event('input'));
+      displayReader('read', restored.source);
+      notify('原稿ファイルを読み込みました。変更を残すには「原稿を保存」で再保存してください。');
+    } catch (error) { notify(`原稿を読み込めません。${error.message}`); }
+    finally { importing = false; $('import-manuscript').disabled = false; }
+  });
   $('reader-back').onclick = () => show(mode === 'time' ? 'time-input' : 'read-input');
   $('edit-from-menu').onclick = () => $('reader-back').click();
   $('home-from-menu').onclick = () => show('home');

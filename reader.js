@@ -173,9 +173,27 @@
     root.replaceChildren(); blocks = [];
     // Empty original lines are natural boundaries; retain all whitespace verbatim.
     const chunks = source.split(/((?:\r\n|\n|\r)[\t \u3000]*(?:\r\n|\n|\r)(?:[\t \u3000]*(?:\r\n|\n|\r))*)/);
-    let start = 0;
+    let start = 0, pendingText = '', pendingStart = 0;
+    const positions = [...(annotations?.entries || []), ...(draft ? [draft] : [])].map(a => a.offset);
+    const flushText = () => {
+      if (pendingText || (!source && positions.includes(0))) {
+        const el = document.createElement('div'); el.className = 'text-block';
+        const block = { el, ...compose(pendingText, pendingStart), start: pendingStart, sourceEnd: pendingStart + pendingText.length, parts: [], lines: [] };
+        appendRuns(block, el);
+        root.append(el); blocks.push(block);
+      }
+      pendingText = '';
+    };
     chunks.forEach((text, index) => {
-      if (index % 2) {
+      // Imported annotations can occur inside original blank lines. Merge that
+      // gap with adjacent text so its reading and newlines are measured together
+      // rather than hiding it in the zero-font natural-gap representation.
+      const annotatedGap = index % 2 && positions.some(offset =>
+        (offset > start && offset < start + text.length) ||
+        (start === 0 && offset === 0) ||
+        (start + text.length === source.length && offset === source.length));
+      if (index % 2 && !annotatedGap) {
+        flushText();
         const gap = document.createElement('div'); gap.className = 'natural-gap';
         gap.textContent = text;
         const count = (text.match(/\r\n|\r|\n/g) || []).length;
@@ -183,14 +201,13 @@
         // Use pixel height so font-size:0 doesn't remove the intended blank lines.
         gap.style.height = `${(count - (start ? 1 : 0)) * settings.height * parseFloat(getComputedStyle(root).fontSize)}px`;
         root.append(gap);
-      } else if (text) {
-        const el = document.createElement('div'); el.className = 'text-block';
-        const block = { el, ...compose(text, start), start, sourceEnd: start + text.length, parts: [], lines: [] };
-        appendRuns(block, el);
-        root.append(el); blocks.push(block);
+      } else {
+        if (!pendingText) pendingStart = start;
+        pendingText += text;
       }
       start += text.length;
     });
+    flushText();
     // Batch natural DOM creation before any geometry reads.
     blocks.forEach(b => { b.lines = measure(b); });
     let unsupported = false;
@@ -272,7 +289,7 @@
   rubyInput.addEventListener('input', () => {
     if (!draft) return;
     draft.text = rubyInput.value;
-    document.getElementById('ruby-save').disabled = !draft.text.trim() || /[\r\n]/u.test(draft.text);
+    document.getElementById('ruby-save').disabled = !draft.text.trim() || /[\r\n\u2028\u2029]/u.test(draft.text);
     layout(editAnchor);
   });
   document.getElementById('ruby-form').addEventListener('submit', e => {
