@@ -41,21 +41,34 @@
   function compose(text, start) {
     const runs = [];
     let display = '', cursor = start;
-    const add = (value, sourceStart, sourceEnd, annotation = false, pending = false) => {
+    const add = (value, sourceStart, sourceEnd, annotation = false, pending = false, sourceRuby = null) => {
       if (!value) return;
-      runs.push({ start: display.length, end: display.length + value.length, value, sourceStart, sourceEnd, annotation, pending });
+      runs.push({ start: display.length, end: display.length + value.length, value, sourceStart, sourceEnd, annotation, pending, sourceRuby });
       display += value;
+    };
+    const rubies = annotations?.sourceRubies || [];
+    const addSource = end => {
+      for (const ruby of rubies) {
+        if (ruby.start < cursor || ruby.end > end) continue;
+        add(source.slice(cursor, ruby.start), cursor, ruby.start);
+        add(source.slice(ruby.start, ruby.end), ruby.start, ruby.end, false, false, ruby);
+        cursor = ruby.end;
+      }
+      add(source.slice(cursor, end), cursor, end);
+      cursor = end;
     };
     const entries = annotations ? annotations.entries.filter(a => !draft || a.offset !== draft.offset) : [];
     if (draft) entries.push(draft);
-    entries.sort((a, b) => a.offset - b.offset);
-    for (const entry of entries) {
+    // Keep source ruby atomic. A manual note inside its base appears just after
+    // the complete base; its original offset remains available for editing.
+    const positioned = entries.map(entry => ({ entry, at: rubies.find(r => entry.offset > r.start && entry.offset < r.end)?.end ?? entry.offset }));
+    positioned.sort((a, b) => a.at - b.at || a.entry.offset - b.entry.offset);
+    for (const { entry, at } of positioned) {
       if (entry.offset < start || entry.offset > start + text.length) continue;
-      add(source.slice(cursor, entry.offset), cursor, entry.offset);
+      addSource(at);
       add(`【${entry.text}】`, entry.offset, entry.offset, true, entry === draft);
-      cursor = entry.offset;
     }
-    add(source.slice(cursor, start + text.length), cursor, start + text.length);
+    addSource(start + text.length);
     return { text: display, runs };
   }
   // Use the same inline runs for natural measurement, shifted groups and fallback.
@@ -75,6 +88,10 @@
           span.tabIndex = begin === run.start ? 0 : -1;
         }
         span.append(node); parent.append(span);
+      } else if (run.sourceRuby) {
+        const unit = document.createElement('span'), ruby = document.createElement('ruby'), rt = document.createElement('rt');
+        unit.className = 'source-ruby-unit'; rt.textContent = run.sourceRuby.reading;
+        ruby.append(node, rt); unit.append(ruby); parent.append(unit);
       } else parent.append(node);
       block.parts.push({ node, start: begin, end: finish, run });
     }
@@ -363,10 +380,13 @@
   root.addEventListener('click', e => {
     const tap = gesture; gesture = null;
     if (!rubyMode || !tap || tap.moved || Math.abs(window.scrollY - tap.scroll) > 2 || performance.now() - tap.time > 650) return;
+    // Mobile browsers can retarget a click to a nearby button-like note. Use
+    // the actual pointer position and require its rectangle to contain the tap.
+    const x = tap.x, y = tap.y;
     const annotation = e.target.closest('.reading-annotation');
-    if (annotation) { beginEdit(Number(annotation.dataset.offset)); return; }
-    const caret = document.caretPositionFromPoint?.(e.clientX, e.clientY);
-    const caretRange = !caret && document.caretRangeFromPoint?.(e.clientX, e.clientY);
+    if (annotation && [...annotation.getClientRects()].some(r => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom)) { beginEdit(Number(annotation.dataset.offset)); return; }
+    const caret = document.caretPositionFromPoint?.(x, y);
+    const caretRange = !caret && document.caretRangeFromPoint?.(x, y);
     const node = caret?.offsetNode || caretRange?.startContainer;
     const offset = caret?.offset ?? caretRange?.startOffset;
     const block = blocks.find(b => b.parts.some(p => p.node === node));
@@ -384,10 +404,12 @@
       const b = block.parts.find(p => end > p.start && end <= p.end);
       if (!a || !b || a.run.annotation) continue;
       range.setStart(a.node, first - a.start); range.setEnd(b.node, end - b.start);
-      const rect = [...range.getClientRects()].find(r => r.width > 0 && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom);
+      const rect = [...range.getClientRects()].find(r => r.width > 0 && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom);
       if (rect) {
-        const boundary = e.clientX < rect.left + rect.width / 2 ? first : end;
-        beginEdit(sourceOffset(block, boundary)); return;
+        const boundary = x < rect.left + rect.width / 2 ? first : end;
+        // The next displayed run may be a manual note deferred from inside a
+        // source ruby. Map this glyph's edge using its OWN base source run.
+        beginEdit(a.run.sourceStart + boundary - a.run.start); return;
       }
     }
   });

@@ -12,6 +12,7 @@
   let readInputSnapshot = null;
   let timeAnnotations = null, timeInputSnapshot = null;
   let openingReader = false;
+  const hasReadings = model => !!(model && (model.entries.length || model.sourceRubies.length));
   function ask(message, action = '削除する') {
     return new Promise(resolve => {
       const dialog = $('confirm-dialog');
@@ -61,8 +62,8 @@
     view = next; $('footer').hidden = next === 'reading';
     if (next === 'results') renderResults();
     $('existing-results').hidden = !history.length;
-    $('annotation-retention').hidden = !readAnnotations.entries.length;
-    $('time-annotation-retention').hidden = !timeAnnotations?.entries.length;
+    $('annotation-retention').hidden = !hasReadings(readAnnotations);
+    $('time-annotation-retention').hidden = !hasReadings(timeAnnotations);
     window.scrollTo(0, 0);
     $(next).querySelector('h1')?.focus({ preventScroll: true });
   }
@@ -87,24 +88,47 @@
     $('time-count').textContent = `計測する本文：${count}文字`;
     if (!targetManual) setTarget(count || '');
   });
-  // HTML clipboard ruby is parsed in an inert document. Only plain text enters
-  // the textarea; neither pasted markup nor ruby annotations enter the page.
+  // Only plain source enters the textarea. Commit the separately validated
+  // ruby ranges together with it after replacement confirmation has succeeded.
+  let pasting = false;
   ['read-text', 'time-text'].forEach(id => $(id).addEventListener('paste', async event => {
     const html = event.clipboardData?.getData('text/html');
     const el = $(id), begin = el.selectionStart, end = el.selectionEnd;
     const ruby = html && /<ruby[\s>]/i.test(html);
     if (!ruby && begin === end) return;
-    let plain = event.clipboardData?.getData('text/plain') || '';
-    if (ruby) {
-      const doc = new DOMParser().parseFromString(html, 'text/html');
-      doc.querySelectorAll('rt,rp,script,style').forEach(n => n.remove());
-      doc.querySelectorAll('br').forEach(n => n.replaceWith('\n'));
-      doc.querySelectorAll('p,div,li').forEach(n => n.append('\n'));
-      plain = (doc.body.textContent || '').replace(/\n$/, '');
-    }
     event.preventDefault();
-    if (el.value && end > begin && !await ask('選択中の本文を貼り付けた文章で置き換えますか？', '置き換える')) return;
-    el.setRangeText(plain, begin, end, 'end'); el.dispatchEvent(new Event('input'));
+    if (pasting) return;
+    pasting = true;
+    const previous = el.value, previousView = view;
+    try {
+      let plain = event.clipboardData?.getData('text/plain') || '', imported = null;
+      const retained = id === 'read-text' ? readAnnotations : timeAnnotations;
+      const whole = begin === 0 && end === el.value.length;
+      if (ruby) {
+        imported = window.HTMLRubyImporter.parse(html);
+        if (!whole && hasReadings(retained)) {
+          notify('読み仮名がある原稿の途中にはHTMLルビを貼り付けできません。本文全体を選択して置き換えるか、別の原稿として取り込んでください。'); return;
+        }
+        plain = imported.source;
+        const combined = el.value.slice(0, begin) + plain + el.value.slice(end);
+        imported = window.ReadingAnnotations.fromJSON(JSON.stringify({ ...imported.toJSON(), text: combined,
+          sourceRubies: imported.sourceRubies.map(r => ({ ...r, start: r.start + begin, end: r.end + begin })) }));
+      }
+      const replacingReadings = ruby && whole && hasReadings(retained);
+      if (((el.value && end > begin) || replacingReadings) && !await ask(replacingReadings ?
+        '現在の本文と読み仮名を、貼り付けた文章と元の読み仮名で置き換えますか？' : '選択中の本文を貼り付けた文章で置き換えますか？', '置き換える')) return;
+      if (view !== previousView || el.value !== previous) return;
+      el.setRangeText(plain, begin, end, 'end');
+      if (imported) {
+        if (id === 'read-text') { readAnnotations = imported; readInputSnapshot = el.value; }
+        else { timeAnnotations = imported; timeInputSnapshot = el.value; }
+        $('annotation-retention').hidden = !hasReadings(readAnnotations);
+        $('time-annotation-retention').hidden = !hasReadings(timeAnnotations);
+        if (imported.sourceRubies.length) notify(`元の読み仮名を${imported.sourceRubies.length}件取り込みました`);
+      }
+      el.dispatchEvent(new Event('input'));
+    } catch (error) { notify(`HTMLの読み仮名を取り込めません。${error.message} 原稿は変更していません。`); }
+    finally { pasting = false; }
   }));
   // Confirm an explicit replacement/deletion while leaving normal typing and
   // navigation uninterrupted. Native undo remains available for text edits.
@@ -135,12 +159,12 @@
     openingReader = true;
     try {
       if (nextMode === 'read' && text !== readAnnotations.source) {
-        if (readAnnotations.entries.length && !await ask('本文が変更されています。この文章を開くと、登録済みの読み仮名はすべて削除されます。本文を差し替えますか？', '差し替える')) return;
+        if (hasReadings(readAnnotations) && !await ask('本文が変更されています。この文章を開くと、登録済みの読み仮名はすべて削除されます。本文を差し替えますか？', '差し替える')) return;
         readAnnotations.reset(text);
         readInputSnapshot = $('read-text').value;
       }
       if (nextMode === 'time' && sourceType === 'custom' && timeAnnotations && text !== timeAnnotations.source) {
-        if (timeAnnotations.entries.length && !await ask('計測用の本文が変更されています。開くと計測用の読み仮名はすべて削除されます。「文章を読む」の原稿は変更されません。本文を差し替えますか？', '差し替える')) return;
+        if (hasReadings(timeAnnotations) && !await ask('計測用の本文が変更されています。開くと計測用の読み仮名はすべて削除されます。「文章を読む」の原稿は変更されません。本文を差し替えますか？', '差し替える')) return;
         timeAnnotations = null; timeInputSnapshot = null;
       }
     } finally { openingReader = false; }
@@ -213,6 +237,7 @@
       // other manuscript. Keep original CRLF/CR and UTF-16 offsets in the model.
       const copied = new window.ReadingAnnotations(text);
       copied.entries = readAnnotations.entries.map(({ offset, text }) => ({ offset, text }));
+      copied.sourceRubies = readAnnotations.sourceRubies.map(({ start, end, reading }) => ({ start, end, reading }));
       timeAnnotations = copied;
       $('time-text').value = text; timeInputSnapshot = $('time-text').value;
       const custom = document.querySelector('[name=source][value=custom]');

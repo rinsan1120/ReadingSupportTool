@@ -290,6 +290,11 @@ footer {
 #ruby-mode[aria-pressed=true] { background:var(--blue); color:var(--bg); border-color:var(--blue); }
 .ruby-help { margin:8px 16px; color:var(--muted); font-size:12px; text-align:center; }
 .reading-annotation { color:#fcd58a; }
+/* Atomic base/reading pairs reserve enough line-box space at low line heights.
+   The reader measures the base text, never the small reading above it. */
+.source-ruby-unit { display:inline-block; white-space:nowrap; line-height:1.5; padding-top:.6em; text-indent:0; }
+.source-ruby-unit ruby { ruby-position:over; ruby-align:center; }
+.source-ruby-unit rt { font-size:.5em; line-height:1; font-weight:normal; }
 .ruby-mode .reading-annotation { cursor:pointer; }
 .reading-annotation:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .annotation-draft { text-decoration:underline dotted; text-underline-offset:.2em; }

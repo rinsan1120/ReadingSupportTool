@@ -39,18 +39,52 @@ const manuscript = (text = '黄昏の空。', annotations = [{ offset: 2, text: 
   format: 'reading-support-manuscript', version: 1, text, annotations
 });
 
+test('version 2 preserves source ruby ranges and independent manual notes; reset clears both', () => {
+  const text = '𠮷か\u3099親子\r\n狐';
+  const data = { ...manuscript(text, [{ offset: 5, text: 'こども' }]), version: 2,
+    sourceRubies: [{ start: 8, end: 9, reading: 'きつね' }, { start: 4, end: 6, reading: 'おやこ' }] };
+  const model = Model.fromJSON(JSON.stringify(data));
+  assert.deepEqual(JSON.parse(JSON.stringify(model)), { ...data, sourceRubies: data.sourceRubies.toSorted((a, b) => a.start - b.start) });
+  model.set(5, 'へんしゅう'); model.remove(5);
+  assert.equal(model.sourceRubies.length, 2);
+  assert.equal(data.annotations[0].text, 'こども');
+  model.reset('別の本文'); assert.equal(model.sourceRubies.length, 0);
+});
+
+test('source ruby validation rejects incomplete, overlapping and interior-grapheme ranges atomically', () => {
+  const text = '𠮷か\u3099親子\r\n狐', valid = { start: 4, end: 6, reading: 'おやこ' };
+  const failures = [null, {}, [null],
+    ...[-1, .5, '0', 9].map(start => [{ ...valid, start }]),
+    ...[0, 4, 10, '6', .5].map(end => [{ ...valid, end }]),
+    [{ start: 1, end: 2, reading: 'よし' }], [{ start: 2, end: 3, reading: 'が' }],
+    [{ start: 4, end: 9, reading: 'かいぎょう' }], [{ start: 6, end: 8, reading: 'くうはく' }],
+    ...['', '　', 'a\nb', 'a\rb', 'a\u2028b', 'a\u2029b', 123].map(reading => [{ ...valid, reading }]),
+    [valid, valid], [valid, { start: 5, end: 6, reading: 'こ' }],
+    [valid, { start: 5, end: 9, reading: 'こうさ' }]
+  ];
+  const current = Model.fromJSON(JSON.stringify(manuscript()));
+  const original = JSON.stringify(current);
+  for (const sourceRubies of failures) {
+    assert.throws(() => Model.fromJSON(JSON.stringify({ ...manuscript(text, []), version: 2, sourceRubies })), /sourceRubies|元の読み仮名/);
+    assert.equal(JSON.stringify(current), original);
+  }
+  assert.throws(() => Model.fromJSON(JSON.stringify({ ...manuscript(text, []), version: 2 })), /sourceRubies/);
+  assert.throws(() => Model.fromJSON(JSON.stringify({ ...manuscript('漢字熟語', []), version: 2,
+    sourceRubies: [{ start: 0, end: 2, reading: 'かんじ' }, { start: 1, end: 3, reading: 'こうさ' }] })), /重複・交差/);
+});
+
 test('JSON round trip preserves all original bytes after UTF-8 encoding and annotations verbatim', () => {
   const text = '\r\n黄昏\r\n \t\r\n👩‍👩‍👧‍👦か\u3099𠮷【元の括弧】\r末\n';
   const data = manuscript(text, [{ offset: text.length, text: ' 末尾 ' }, { offset: 0, text: '<b>先頭</b>' }, { offset: text.indexOf('👩'), text: '家族' }]);
   const model = Model.fromJSON(JSON.stringify(data));
   const exported = JSON.parse(Buffer.from(JSON.stringify(model), 'utf8').toString('utf8'));
   assert.equal(model.source, text);
-  assert.deepEqual(exported, { ...data, annotations: data.annotations.toSorted((a, b) => a.offset - b.offset) });
+  assert.deepEqual(exported, { ...data, version: 2, sourceRubies: [], annotations: data.annotations.toSorted((a, b) => a.offset - b.offset) });
   assert.equal(model.entries.at(-1).text, ' 末尾 ');
   model.set(0, 'へんしゅう'); model.remove(text.length);
   assert.equal(JSON.parse(JSON.stringify(model)).annotations[0].text, 'へんしゅう');
   for (const text of ['', ' \t\r\n', '本文だけ']) {
-    assert.deepEqual(JSON.parse(JSON.stringify(Model.fromJSON(JSON.stringify(manuscript(text, []))))), manuscript(text, []));
+    assert.deepEqual(JSON.parse(JSON.stringify(Model.fromJSON(JSON.stringify(manuscript(text, []))))), { ...manuscript(text, []), version: 2, sourceRubies: [] });
   }
 });
 
@@ -58,7 +92,7 @@ test('reject the complete file on every schema/offset/content failure with a spe
   const cases = [
     ['{', /JSON/], ['null', /format/], ['[]', /format/], ['{}', /format/],
     [{ ...manuscript(), format: 'other' }, /format/],
-    [{ ...manuscript(), version: 2 }, /version/],
+    [{ ...manuscript(), version: 3 }, /version/],
     [{ ...manuscript(), version: '1' }, /version/],
     [{ ...manuscript(), text: null }, /本文/],
     [{ ...manuscript(), annotations: {} }, /配列/],

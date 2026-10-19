@@ -7,7 +7,7 @@ const { chromium } = require('playwright');
 const directory = path.resolve(__dirname, '..');
 const server = http.createServer((req, res) => {
   const name = req.url === '/' ? 'index.html' : req.url.slice(1);
-  if (!['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'reader.js', 'manuscript-print.js', 'app.js'].includes(name)) { res.writeHead(404).end(); return; }
+  if (!['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-print.js', 'app.js'].includes(name)) { res.writeHead(404).end(); return; }
   res.setHeader('Content-Type', (name.endsWith('.js') ? 'text/javascript' : name.endsWith('.css') ? 'text/css' : 'text/html') + '; charset=utf-8');
   res.end(fs.readFileSync(path.join(directory, name)));
 });
@@ -145,7 +145,7 @@ const readonly = async page => {
       await page.locator('#prepare-time').click();
       assert.deepEqual(await readings(page), { 2: '【たそがれ】' });
       await home(page); await page.locator('[data-go="read-input"]').click(); await page.locator('#open-read').click();
-      assert.deepEqual(await save(page), data);
+      assert.deepEqual(await save(page), { ...data, version: 2, sourceRubies: [] });
       // Reading-mode edits cannot change the independent timing snapshot.
       await page.locator('#ruby-mode').click(); await page.locator('.reading-annotation').first().click();
       await page.locator('#ruby-input').fill('ゆうぐれ'); await page.locator('#ruby-save').click();
@@ -169,7 +169,7 @@ const readonly = async page => {
       assert.equal(await originalText(page), source + '変更');
       assert.equal(await page.locator('.reading-annotation').count(), 0);
       await home(page); await page.locator('[data-go="read-input"]').click(); await page.locator('#open-read').click();
-      data.annotations[0].text = 'ゆうぐれ'; assert.deepEqual(await save(page), data);
+      data.annotations[0].text = 'ゆうぐれ'; assert.deepEqual(await save(page), { ...data, version: 2, sourceRubies: [] });
       // Equal existing timing text needs no confirmation and resets old targets.
       await home(page); await page.locator('[data-go="time-input"]').click();
       await setDraft(page, '#time-text', source);
@@ -199,7 +199,7 @@ const readonly = async page => {
       await jp.locator('#prepare-time').click();
       assert.equal(await originalText(jp), jsonSource); assert.deepEqual(await readings(jp), expected);
       await home(jp); await jp.locator('[data-go="read-input"]').click(); await jp.locator('#open-read').click();
-      assert.deepEqual(await save(jp), manuscript);
+      assert.deepEqual(await save(jp), { ...manuscript, version: 2, sourceRubies: [] });
       // Plain text follows the same handoff, without inventing annotations.
       await jp.locator('#reader-back').click();
       const plain = { format: data.format, version: 1, text: '本文だけの原稿。', annotations: [] };
