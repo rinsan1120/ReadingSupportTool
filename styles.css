@@ -205,6 +205,10 @@ input[type=number] {
 .manuscript-canvas { position:absolute; top:0; color:#000; }
 .manuscript-piece { position:absolute; top:0; white-space:pre; overflow-wrap:normal; word-break:normal; }
 .manuscript-annotation { color:#17365d; }
+.manuscript-source-ruby { display:inline-block; white-space:nowrap; line-height:1.5; padding-top:.6em; text-indent:0; }
+.manuscript-source-ruby ruby { ruby-position:over; ruby-align:center; }
+.manuscript-source-ruby rt { font-size:.5em; line-height:1; font-weight:normal; color:#000; }
+.manuscript-ruby-reading { position:relative; }
 .manuscript-markers, .manuscript-pens { position:absolute; inset:0; overflow:visible; pointer-events:none; }
 .manuscript-markers { z-index:0; }
 .manuscript-markers rect { fill:#ffe588; }

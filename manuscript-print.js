@@ -61,6 +61,11 @@
       glyphsByLine.get(glyph.line).push(glyph);
     }
     let minX = 0, maxX = snapshot.width;
+    for (const line of lines) for (const piece of line.pieces) if (piece.sourceRuby) {
+      for (const box of [piece.sourceRuby.bounds, piece.sourceRuby.readingBounds]) {
+        minX = Math.min(minX, box.left); maxX = Math.max(maxX, box.left + box.width);
+      }
+    }
     for (const pen of writing.pens) {
       for (const point of pen.points) { minX = Math.min(minX, point.x - 1.4); maxX = Math.max(maxX, point.x + 1.4); }
       for (const [row, paths] of splitStroke(pen.points, lines)) lines[row].strokes.push({ id: pen.id, paths });
@@ -136,7 +141,7 @@
       cursor += gap + (group.at(-1).bottom - first.top) * scale; previous = group.at(-1);
     }
     root.replaceChildren();
-    const probes = [];
+    const probes = [], readingProbes = [];
     const scaledFont = { ...snapshot.font };
     for (const name of ['fontSize', 'lineHeight', 'letterSpacing', 'wordSpacing']) {
       if (scaledFont[name].endsWith('px')) scaledFont[name] = `${parseFloat(scaledFont[name]) * scale}px`;
@@ -156,10 +161,21 @@
         for (const piece of line.pieces) {
           const span = document.createElement('span'); span.className = 'manuscript-piece';
           if (piece.annotation !== null) { span.classList.add('manuscript-annotation'); span.dataset.annotation = piece.annotation; }
-          span.textContent = piece.text;
+          let inkNode = span;
+          if (piece.sourceRuby) {
+            const ruby = document.createElement('ruby'), rt = document.createElement('rt'), reading = document.createElement('span');
+            const base = document.createTextNode(piece.sourceRuby.base);
+            reading.className = 'manuscript-ruby-reading'; reading.textContent = piece.sourceRuby.reading;
+            rt.append(reading); ruby.append(base, rt); span.append(ruby);
+            span.classList.add('manuscript-source-ruby');
+            span.dataset.start = piece.sourceRuby.start; span.dataset.end = piece.sourceRuby.end;
+            inkNode = base;
+            readingProbes.push({ reading, canvas, left: piece.sourceRuby.readingBounds.left * scale,
+              top: (line.placedTop + piece.sourceRuby.readingBounds.top - line.top) * scale });
+          } else span.textContent = piece.text;
           span.style.left = `${piece.left * scale}px`;
           row.append(span);
-          probes.push({ span, top: (line.placedTop + piece.top - line.top) * scale, left: piece.left * scale });
+          probes.push({ span, inkNode, top: (line.placedTop + piece.top - line.top) * scale, left: piece.left * scale });
         }
         canvas.append(row);
       }
@@ -193,12 +209,20 @@
     // Match glyph boxes (including font fallback/emoji) rather than assuming a
     // font's ascent. Read in one batch before writing final frozen coordinates.
     const range = document.createRange();
-    const positions = probes.map(({ span, top, left }) => {
-      range.selectNodeContents(span);
+    const positions = probes.map(({ span, inkNode, top, left }) => {
+      range.selectNodeContents(inkNode);
       const ink = range.getBoundingClientRect(), box = span.getBoundingClientRect();
       return { span, top: top - (ink.top - box.top), left: left - (ink.left - box.left) };
     });
     positions.forEach(({ span, top, left }) => { span.style.top = `${top}px`; span.style.left = `${left}px`; });
+    // Ruby font metrics round differently after shrinking. Keep native ruby's
+    // shaping/alignment, then correct its reading ink to the frozen screen box.
+    const readingPositions = readingProbes.map(({ reading, canvas, left, top }) => {
+      range.selectNodeContents(reading);
+      const ink = range.getBoundingClientRect(), box = canvas.getBoundingClientRect();
+      return { reading, left: left - (ink.left - box.left), top: top - (ink.top - box.top) };
+    });
+    readingPositions.forEach(({ reading, left, top }) => { reading.style.left = `${left}px`; reading.style.top = `${top}px`; });
     root.classList.remove('print-measuring'); ready = true;
     return { pages: pages.length, scale, points: parseFloat(snapshot.font.fontSize) * scale * .75,
       marks: writing.items.length - writing.hiddenPens, hiddenPens: writing.hiddenPens };

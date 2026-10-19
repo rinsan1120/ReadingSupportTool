@@ -102,7 +102,7 @@ const length = points => points.slice(1).reduce((sum, p, i) => sum + Math.hypot(
         const rect = el => { const r = el.getBoundingClientRect(); return { x: r.left - page.left, y: r.top - page.top, width: r.width, height: r.height }; };
         const ink = el => { const r = document.createRange(); r.selectNodeContents(el); const b = r.getBoundingClientRect(); return { x: b.left - page.left, y: b.top - page.top }; };
         return { width: page.width, height: page.height, scale: Number(canvas.dataset.scale), left: box.left - page.left,
-          rows: [...sheet.querySelectorAll('.manuscript-line')].map(row => ({ index: Number(row.dataset.sourceLine), text: row.textContent, first: ink(row.firstChild) })),
+          rows: [...sheet.querySelectorAll('.manuscript-line')].map(row => { const body = row.cloneNode(true); body.querySelectorAll('rt').forEach(rt => rt.remove()); return { index: Number(row.dataset.sourceLine), text: body.textContent, first: ink(row.firstChild.querySelector('ruby')?.firstChild || row.firstChild) }; }),
           markers: [...sheet.querySelectorAll('.manuscript-markers rect')].map(el => ({ offset: Number(el.dataset.offset), ...rect(el) })),
           pens: [...sheet.querySelectorAll('.manuscript-pens path[data-mark-id]')].map(el => ({ id: Number(el.dataset.markId), row: Number(el.dataset.sourceLine), d: el.getAttribute('d'), stroke: Number(el.getAttribute('stroke-width')) })),
           memos: [...sheet.querySelectorAll('.manuscript-memo')].map(el => ({ id: Number(el.dataset.markId), offset: Number(el.dataset.offset), text: el.lastChild.textContent, font: parseFloat(getComputedStyle(el).fontSize), ...rect(el) })),
@@ -147,7 +147,8 @@ const length = points => points.slice(1).reduce((sum, p, i) => sum + Math.hypot(
       assert.ok(printed.filter(p => p.pens.some(pen => pen.id === 6)).length >= 2, 'stroke crosses pages');
       assert.ok(Math.abs(drawnLength - length(raw)) < .01, 'split stroke preserves the entire shape without gaps or duplicates');
       assert.equal(printed.flatMap(p => p.memos).length, 4);
-      assert.equal(await page.locator('#manuscript-print b, #manuscript-print img, #manuscript-print ruby, #manuscript-print rt').count(), 0, 'safe text, no source ruby PDF implementation');
+      assert.equal(await page.locator('#manuscript-print b, #manuscript-print img').count(), 0, 'safe text');
+      assert.equal(await page.locator('#manuscript-print rt').count(), data.sourceRubies.length, 'source ruby coexists with all writing layers');
       await page.locator('#manuscript-print').evaluate(el => el.classList.remove('print-measuring'));
       await page.evaluate(() => { window.print = () => {}; }); await page.locator('#pdf-print').click(); await page.emulateMedia({ media: 'print' });
       await page.pdf({ path: path.join(output, `markings-${width}.pdf`), preferCSSPageSize: true, printBackground: true, displayHeaderFooter: false });

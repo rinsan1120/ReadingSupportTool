@@ -313,6 +313,20 @@
           if (begin >= end) continue;
           range.setStart(part.node, begin - part.start); range.setEnd(part.node, end - part.start);
           rects.push(...[...range.getClientRects()].filter(r => r.height > 0));
+          if (part.run.sourceRuby) {
+            const base = range.getBoundingClientRect();
+            const unit = part.node.parentElement.closest('.source-ruby-unit');
+            const unitRect = unit.getBoundingClientRect();
+            const readingRange = document.createRange(); readingRange.selectNodeContents(unit.querySelector('rt'));
+            const readingRect = readingRange.getBoundingClientRect();
+            const bounds = rect => ({ left: rect.left - origin.left, top: rect.top - origin.top, width: rect.width, height: rect.height });
+            // Native ruby is atomic on screen. Freeze its base/reading pairing
+            // and actual occupied box, including ink above the normal line.
+            rects.push(unitRect, readingRect);
+            pieces.push({ text: part.node.data, left: base.left - origin.left, top: base.top - origin.top, annotation: null,
+              sourceRuby: { ...part.run.sourceRuby, base: part.node.data, bounds: bounds(unitRect), readingBounds: bounds(readingRect) } });
+            continue;
+          }
           // Preserve tab stops through the next text's measured X position;
           // resetting a tab inside an independently positioned span would drift.
           for (const match of block.text.slice(begin, end).matchAll(/[^\r\n\t\u2028\u2029]+/gu)) {
