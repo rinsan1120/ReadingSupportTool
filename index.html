@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1325">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="description" content="文章を読みやすく整え、自分の朗読速度から作品の朗読時間を調べるツール。">
+  <title>朗読支援ツール（仮）</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="samples.js" defer></script>
+  <script src="reader.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="site-header"><button class="brand" data-go="home"><span aria-hidden="true">☾</span> 朗読支援ツール <small>（仮）</small></button><span class="header-note">声にする、その時間に。</span></header>
+  <main>
+    <section id="home" class="view narrow" aria-labelledby="home-title">
+      <p class="eyebrow">READING SUPPORT</p><h1 id="home-title" tabindex="-1">ことばに、<br>静かな余白を。</h1>
+      <p class="lead">読みやすいかたちで、あなたのペースで。<br>朗読のための、小さな道具です。</p>
+      <div class="entry-grid">
+        <button class="entry" data-go="read-input"><span class="entry-number">01 / READ</span><strong>文章を読む <span aria-hidden="true">↗</span></strong><span>好きな文章を貼り付けて、<br>読みやすい表示で朗読する。</span></button>
+        <button class="entry" data-go="time-input"><span class="entry-number">02 / MEASURE</span><strong>朗読時間を調べる <span aria-hidden="true">↗</span></strong><span>自分の朗読速度を測って、<br>作品全体の所要時間を見積もる。</span></button>
+      </div><p class="privacy">本文は外部へ送信せず、自動保存もしません。<br>再読み込み・タブ終了で入力本文は失われます。</p>
+    </section>
+    <section id="read-input" class="view narrow" hidden aria-labelledby="read-title">
+      <button class="back" data-go="home">← ホーム</button><p class="eyebrow">READ</p><h1 id="read-title" tabindex="-1">文章を読む</h1>
+      <label for="read-text">朗読する作品の本文</label><textarea id="read-text" rows="12" placeholder="全文でも、一部でも。ここに文章を貼り付けてください。" spellcheck="false" autocomplete="off"></textarea>
+      <div class="inline spread"><p id="read-count" class="muted">0文字</p><button id="clear-read" class="quiet">本文を削除</button></div>
+      <p class="privacy">本文はこの画面を開いている間だけ保持します。再読み込み・タブ終了前に、元の文章をお手元に残してください。</p>
+      <button id="open-read" class="primary">表示を確認して読む →</button>
+    </section>
+    <section id="time-input" class="view narrow" hidden aria-labelledby="time-title">
+      <button class="back" data-go="home">← ホーム</button><p class="eyebrow">MEASURE</p><h1 id="time-title" tabindex="-1">朗読時間を調べる</h1>
+      <fieldset><legend>朗読速度の計測に使う文章</legend>
+        <label class="choice"><input type="radio" name="source" value="sample" checked> 用意された例文を読む</label>
+        <div id="sample-options" class="inset inline"><label>長さ<select id="sample-level"><option value="200">200字級</option><option value="400" selected>400字級</option><option value="600">600字級</option></select></label><label>雰囲気<select id="sample-mood"><option>おまかせ</option><option>ゆったり</option><option>ふつう</option><option>軽快</option><option>会話多め</option></select></label></div>
+        <p id="sample-info" class="inset muted"></p>
+        <label class="choice"><input type="radio" name="source" value="custom"> 用意した文章を読む</label>
+        <div id="custom-input" hidden><label for="time-text">朗読する作品の本文</label><textarea id="time-text" rows="8" spellcheck="false" autocomplete="off"></textarea><p id="time-count" class="muted">計測する本文：0文字</p><p class="privacy">本文は自動保存・外部送信しません。再読み込み・タブ終了で失われます。</p></div>
+      </fieldset>
+      <div class="target-field"><label for="target-count">時間を知りたい作品全体の文字数</label><div class="inline"><input id="target-count" type="number" min="1" max="1000000000" step="1" inputmode="numeric" placeholder="例：6000"><span>文字</span></div><p class="muted">計測に使う文章とは別の、作品全体の文字数です。</p><button id="apply-count" class="quiet" hidden>貼り付けた文字数を反映</button></div>
+      <div class="inline"><button id="prepare-time" class="primary">文章を確認して計測へ →</button><button id="existing-results" hidden>これまでの結果を見る</button></div>
+    </section>
+    <section id="reading" class="view reading-view" hidden aria-labelledby="reading-title">
+      <div class="reader-toolbar"><button id="reader-back" class="quiet">← 入力へ</button><h1 id="reading-title" tabindex="-1">文章を読む</h1><button id="operations" aria-haspopup="dialog">操作</button></div>
+      <div id="preparation" class="preparation"><p id="preparation-info"></p><div class="inline"><button id="before-settings">表示設定</button><button id="start" class="primary">計測を始める</button></div><p class="muted">全文を読み終えたら「読了」を押してください。別タブや別アプリに移ると、その回の計測は無効になります。</p></div>
+      <p id="layout-status" class="layout-status" role="status"></p>
+      <article id="reader" aria-label="朗読本文"></article>
+      <div id="measurement-bar" class="measurement-bar" hidden><span id="elapsed" aria-live="off">0:00</span><button id="finish" class="primary">読了</button></div>
+      <div id="countdown" class="countdown" hidden role="status" aria-live="assertive"></div>
+    </section>
+    <section id="results" class="view narrow" hidden aria-labelledby="result-title"><button class="back" data-go="home">← ホーム</button><p class="eyebrow">YOUR READING PACE</p><h1 id="result-title" tabindex="-1">朗読時間の目安</h1><p id="estimate" class="estimate"></p><p id="result-summary" class="muted"></p><label for="result-target">時間を知りたい作品全体の文字数</label><div class="inline"><input id="result-target" type="number" min="1" max="1000000000" step="1" inputmode="numeric"><span>文字</span></div><p class="muted">間の取り方や作品によって、実際の時間は変わります。</p><div class="inline"><button id="again" class="primary">もう一度計測する</button><button id="reset-history" class="quiet">全履歴をリセット</button></div><h2>計測履歴</h2><ul id="history" class="history"></ul><p class="privacy">確定した数値の結果だけを、このタブ内に保存します。本文は保存しません。</p></section>
+  </main>
+  <footer id="footer">静かに読む。自分の速さを知る。<span>朗読支援ツール（仮）</span></footer>
+  <dialog id="operation-dialog"><div class="dialog-heading"><h2>操作</h2><button data-close="operation-dialog" aria-label="操作を閉じる">閉じる</button></div><button id="open-settings">表示設定</button><button id="wake">画面点灯維持：OFF</button><p id="wake-status" class="muted" role="status"></p><button id="edit-from-menu">入力画面へ戻る</button><button id="home-from-menu">ホームへ戻る</button></dialog>
+  <dialog id="settings-dialog"><div class="dialog-heading"><h2>表示設定</h2><button data-close="settings-dialog">閉じる</button></div><label for="columns">1行の文字数目安 <output id="columns-value">28</output></label><input id="columns" type="range" min="16" max="50" value="28"><label for="line-height">行間 <output id="line-height-value">1.8</output></label><input id="line-height" type="range" min="1.2" max="2.6" step="0.1" value="1.8"><label for="break-lines">自動区切り <output id="break-lines-value">5表示行ごと</output></label><input id="break-lines" type="range" min="0" max="10" value="5"><p class="muted">文字の大きさは保ち、画面に収まる幅で折り返します。空行では区切りをリセットします。</p></dialog>
+  <p id="notice" class="notice" role="status" hidden></p>
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title">操作の確認</h2><p id="confirm-message"></p><div class="inline"><button id="confirm-cancel">キャンセル</button><button id="confirm-ok" class="primary">削除する</button></div></dialog>
+</body>
+</html>
