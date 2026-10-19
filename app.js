@@ -198,11 +198,15 @@
     preparingPDF = true;
     try {
       await document.fonts.ready;
+      // Let ResizeObserver/reader layout and its writing layer settle together
+      // before freezing glyphs and resolving source-anchored strokes.
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       if (view !== 'reading' || mode !== 'read') return;
       const snapshot = window.Reader.printSnapshot();
       pdfAnchor = window.Reader.capture();
-      const result = window.ManuscriptPrint.prepare(snapshot);
-      $('pdf-layout-info').textContent = `画面の行構成を固定して約${result.pages}ページ。文字サイズは約${result.points.toFixed(1)}pt（縮小率${Math.round(result.scale * 100)}%）です。`;
+      const writing = window.ManuscriptWriting.printSnapshot();
+      const result = window.ManuscriptPrint.prepare(snapshot, writing);
+      $('pdf-layout-info').textContent = `画面の行構成を固定して約${result.pages}ページ。文字サイズは約${result.points.toFixed(1)}pt（縮小率${Math.round(result.scale * 100)}%）です。確定済みの書き込み${result.marks}件を含みます。${result.hiddenPens ? ` 折り返し・周辺文字の配置が変わり、一時非表示になっている赤ペン${result.hiddenPens}件はPDFに含まれません。キャンセルして元の表示設定へ戻すと再表示できます。データはJSONに保存できます。` : ''}`;
       $('pdf-small-warning').hidden = result.points >= 9;
       $('pdf-small-warning').textContent = '文字が小さくなるため、キャンセルして本文幅を狭くするか文字サイズを大きくしてから出力することをおすすめします。長い読み仮名がある場合は、内容の短縮もご検討ください。';
       $('operation-dialog').close(); $('pdf-dialog').showModal();
@@ -264,7 +268,7 @@
       url = URL.createObjectURL(blob);
       link.href = url; link.download = 'reading-manuscript.json';
       document.body.append(link); link.click(); $('operation-dialog').close();
-      if (readMarks.hasMarks) notify('本文・読み仮名・書き込みのJSONダウンロードを開始しました。PDFへの書き込み反映は未対応です。');
+      if (readMarks.hasMarks) notify('本文・読み仮名・書き込みのJSONダウンロードを開始しました。');
     } catch (error) { notify(`原稿ファイルを保存できません。${error.message}`); }
     finally {
       link.remove();

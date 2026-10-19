@@ -205,6 +205,15 @@ input[type=number] {
 .manuscript-canvas { position:absolute; top:0; color:#000; }
 .manuscript-piece { position:absolute; top:0; white-space:pre; overflow-wrap:normal; word-break:normal; }
 .manuscript-annotation { color:#17365d; }
+.manuscript-markers, .manuscript-pens { position:absolute; inset:0; overflow:visible; pointer-events:none; }
+.manuscript-markers { z-index:0; }
+.manuscript-markers rect { fill:#ffe588; }
+.manuscript-line { position:relative; z-index:1; }
+.manuscript-pens { z-index:2; }
+.manuscript-pens path { fill:none; stroke:#c52228; stroke-linecap:round; stroke-linejoin:round; }
+.manuscript-pens .manuscript-note-link { stroke:#9a6868; stroke-width:.6; }
+.manuscript-memo { position:absolute; z-index:3; width:112px; padding:0; margin:0; border:0; font:12px/1.45 system-ui,sans-serif; letter-spacing:0; color:#8b1e24; background:white; white-space:pre-wrap; overflow-wrap:anywhere; }
+.manuscript-memo small { display:block; font:10px/1.4 system-ui,sans-serif; color:#555; }
 #pdf-dialog h2 { margin-top:0; }
 #pdf-dialog p { line-height:1.8; }
 #pdf-small-warning { color:#fcd58a; }

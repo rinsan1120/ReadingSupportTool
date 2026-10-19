@@ -140,7 +140,7 @@ const counts = page => page.evaluate(() => ({ pen: document.querySelectorAll('#w
       await page.locator('#writing-off').click();
       const retained = await counts(page); assert.equal(retained.memo, 1);
       assert.equal(await page.locator('.writing-memo').isDisabled(), true);
-      assert.match(await page.locator('#writing-status').textContent(), /JSON.*保存できます/);
+      assert.match(await page.locator('#writing-status').textContent(), /JSON保存・PDF出力に対応/);
       // Native touch scroll returns when OFF, without creating marks.
       if (cdp) {
         const beforeScroll = await page.evaluate(() => scrollY);
@@ -185,9 +185,11 @@ const counts = page => page.evaluate(() => ({ pen: document.querySelectorAll('#w
         await tool(page, 'memo'); await glyph(page, fox);
         await page.screenshot({ path: path.join(process.env.READER_TEST_ARTIFACTS, `writing-${width}.png`) });
       }
-      // Writing is omitted from PDF pages, and remains intact after cancel.
+      // Confirmed writing enters the independent print layers and survives cancel.
       await page.locator('#operations').click(); await page.locator('#export-pdf').click();
-      assert.equal(await page.locator('#manuscript-print .writing-memo, #manuscript-print svg').count(), 0);
+      await page.locator('#pdf-dialog').waitFor({ state: 'visible' });
+      assert.ok(await page.locator('#manuscript-print .manuscript-pens path[data-mark-id]').count());
+      assert.equal(await page.locator('#manuscript-print .manuscript-memo').count(), 1);
       await page.locator('#pdf-cancel').click(); assert.deepEqual(await counts(page), retained);
       const beforePrintPath = await page.locator('#writing-pen path').getAttribute('d');
       await page.locator('#operations').click(); await page.locator('#export-pdf').click();
@@ -246,7 +248,7 @@ const counts = page => page.evaluate(() => ({ pen: document.querySelectorAll('#w
       assert.equal(await page.locator('#writing-markers rect').first().getAttribute('data-start'), '2');
       assert.equal(await page.locator('#writing-markers rect').first().getAttribute('data-end'), '13', 'ZWJ family is one marked grapheme at original UTF-16 boundaries');
       assert.equal(await originalText(page), unicode); assert.deepEqual(checkSaved(await save(page), unicodeData), [{ id: 1, type: 'marker', start: 2, end: 13 }]);
-      console.log(`PASS ${width}px: pen/marker/memo, edits/eraser/undo, source anchors/reflow, touch scrolling, ruby isolation, replacement protection, JSON marks, unchanged PDF/timing`);
+      console.log(`PASS ${width}px: pen/marker/memo, edits/eraser/undo, source anchors/reflow, touch scrolling, ruby isolation, replacement protection, JSON/PDF marks, unchanged timing`);
       await context.close();
     }
   } finally { await browser.close(); }

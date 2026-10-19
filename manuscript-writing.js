@@ -248,7 +248,7 @@
         }
         stage.style.minHeight = bottom ? `${Math.ceil(bottom + 16)}px` : '';
       } else stage.style.minHeight = '';
-      const message = `書き込み${model.items.length}件：原稿ファイル（JSON）に保存できます。PDFへの反映は未対応です。${hidden ? ` 折り返しの変化により赤ペン${hidden}件を一時非表示にしています。元の配置に戻すと再表示します。` : ''}`;
+      const message = `書き込み${model.items.length}件：JSON保存・PDF出力に対応しています。${hidden ? ` 折り返しの変化により赤ペン${hidden}件を一時非表示にしています。これらはPDFに含まれません。元の配置に戻すと再表示します。` : ''}`;
       const status = $('writing-status'), hide = !enabled && !model.hasMarks;
       if (status.hidden !== hide || status.textContent !== message) {
         const anchor = window.Reader.capture(), height = status.getBoundingClientRect().height;
@@ -369,6 +369,18 @@
   addEventListener('afterprint', () => requestAnimationFrame(render));
   matchMedia('print').addEventListener('change', e => { if (!e.matches) requestAnimationFrame(render); });
   window.ManuscriptWriting = {
+    printSnapshot() {
+      if (!model) return { source: '', items: [], pens: [], hiddenPens: 0 };
+      const geometry = window.Reader.getWritingGeometry(), pens = [];
+      let hiddenPens = 0;
+      // Reuse exactly the live stroke visibility/anchor rules; pending gestures
+      // and memo edits live outside items and are deliberately not exported.
+      for (const item of model.items) if (item.type === 'pen') {
+        const points = strokePoints(item, geometry);
+        if (points) pens.push({ id: item.id, points }); else hiddenPens++;
+      }
+      return { source: model.source, items: copy(model.items), pens, hiddenPens };
+    },
     show(next) { cancelPending(); model = next; enabled = false; controls(); render(); },
     leave() { cancelPending(); enabled = false; model = null; controls(); render(); },
     setMode, cancelPending,

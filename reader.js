@@ -325,11 +325,22 @@
         const center = firstRect.top + firstRect.height / 2 - origin.top;
         const top = Math.min(center - parseFloat(computed.lineHeight) / 2, ...rects.map(r => r.top - origin.top));
         const bottom = Math.max(center + parseFloat(computed.lineHeight) / 2, ...rects.map(r => r.bottom - origin.top));
-        lines.push({ top, bottom, autoBefore: Math.max(0, shift - previousShift), pieces });
+        lines.push({ top, bottom, center, autoBefore: Math.max(0, shift - previousShift), pieces });
         previousShift = shift;
       }
     }
-    return { width: origin.width, font, lines };
+    const geometry = getWritingGeometry();
+    // Both print text and writing use the same frozen line table. Associate
+    // original graphemes by baseline, never by an overlay's DOM coordinates.
+    const glyphs = geometry.glyphs.map(glyph => {
+      const y = glyph.y + glyph.height / 2;
+      let lo = 0, hi = lines.length;
+      while (lo < hi) { const mid = (lo + hi) >>> 1; if (lines[mid].center < y) lo = mid + 1; else hi = mid; }
+      const next = Math.min(lo, lines.length - 1), previous = Math.max(0, next - 1);
+      const line = Math.abs(lines[previous].center - y) < Math.abs(lines[next].center - y) ? previous : next;
+      return { ...glyph, line };
+    });
+    return { width: origin.width, font, lines, glyphs };
   }
   function updateMode(on) {
     rubyMode = Boolean(annotations && annotationsEditable && on);
