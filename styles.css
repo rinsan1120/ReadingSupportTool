@@ -287,6 +287,36 @@ footer {
   overflow-wrap:anywhere
 }
 .reader-actions { display:flex; gap:8px; flex-shrink:0; }
+.reader-controls { position:sticky; top:0; z-index:5; background:var(--bg); }
+.reader-controls .reader-toolbar { position:static; }
+#writing-toolbar { padding:8px 16px; border-bottom:1px solid var(--border); background:var(--panel); }
+.writing-tools { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; max-width:600px; margin:auto; }
+.writing-tools button { min-height:40px; padding:8px 4px; font-size:14px; white-space:nowrap; }
+.writing-tools button[aria-pressed=true] { background:var(--blue); color:var(--bg); border-color:var(--blue); }
+.writing-options { display:flex; align-items:center; justify-content:center; gap:8px; margin-top:6px; }
+.writing-options span { color:var(--muted); font-size:11px; }
+.writing-options button { font-size:12px; padding:7px; min-height:34px; }
+#writing-tool-help { margin:6px 0 0; font-size:12px; text-align:center; color:var(--muted); line-height:1.5; }
+.writing-status { margin:12px 16px 0; color:var(--muted); font-size:12px; line-height:1.6; }
+#reader-stage { display:grid; grid-template-columns:minmax(0,1fr); position:relative; isolation:isolate; }
+#reader-stage.has-writing-memos { grid-template-columns:minmax(0,1fr) 112px; }
+.reader-text-area { display:flow-root; min-width:0; }
+#reader-stage #reader { position:relative; z-index:1; }
+#writing-markers, #writing-pen, #writing-memos { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+#writing-markers { z-index:0; overflow:hidden; }
+#writing-markers rect { fill:rgba(255,209,72,.38); }
+#writing-pen { z-index:2; overflow:hidden; }
+#writing-pen path { fill:none; stroke:#ff6b6b; stroke-width:2.8; stroke-linecap:round; stroke-linejoin:round; }
+#writing-memos { z-index:3; }
+.writing-memo { position:absolute; width:104px; padding:6px; font:14px/1.5 system-ui; text-align:left; color:#ffb0ac; background:var(--panel); border:1px solid #ff8b8659; border-radius:6px; overflow-wrap:anywhere; letter-spacing:0; }
+.writing-memo small { display:block; color:var(--muted); font-size:10px; }
+.writing-memo:disabled { opacity:1; cursor:default; }
+.writing-active { user-select:none; -webkit-user-select:none; touch-action:pan-y; }
+.writing-active .writing-memo:not(:disabled) { pointer-events:auto; }
+.writing-drag { touch-action:none; cursor:crosshair; }
+#writing-memo-dialog { position:fixed; inset:auto 0; top:var(--editor-center,50dvh); transform:translateY(-50%); margin:0 auto; max-height:var(--editor-height,calc(100dvh - 24px)); }
+#writing-memo-dialog h2 { margin:0 0 8px; }
+#writing-memo-input { width:100%; min-height:46px; padding:10px; border:1px solid #7897c157; border-radius:8px; background:#080f1e; color:var(--text); font-size:16px; }
 #ruby-mode[aria-pressed=true] { background:var(--blue); color:var(--bg); border-color:var(--blue); }
 .ruby-help { margin:8px 16px; color:var(--muted); font-size:12px; text-align:center; }
 .reading-annotation { color:#fcd58a; }

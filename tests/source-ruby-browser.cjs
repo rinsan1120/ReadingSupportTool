@@ -9,7 +9,7 @@ const directory = path.resolve(__dirname, '..');
 const fixture = fs.readFileSync(path.join(__dirname, 'fixtures/aozora-ruby.html'), 'utf8');
 const server = http.createServer((req, res) => {
   const name = req.url === '/' ? 'index.html' : req.url.slice(1);
-  if (!['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-print.js', 'app.js'].includes(name)) { res.writeHead(404).end(); return; }
+  if (!['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-writing.js', 'manuscript-print.js', 'app.js'].includes(name)) { res.writeHead(404).end(); return; }
   res.setHeader('Content-Type', (name.endsWith('.js') ? 'text/javascript' : name.endsWith('.css') ? 'text/css' : 'text/html') + '; charset=utf-8');
   res.end(fs.readFileSync(path.join(directory, name)));
 });

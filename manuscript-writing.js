@@ -1,0 +1,287 @@
+/* Prototype writing stays in a separate, memory-only model. No JSON/storage or
+ * PDF output: the reader's original text and ruby models remain authoritative. */
+(() => {
+  const copy = value => structuredClone(value);
+  window.ManuscriptMarks = class {
+    constructor(source = '') { this.source = source; this.items = []; this.history = []; this.nextId = 1; }
+    get hasMarks() { return this.items.length > 0; }
+    remember() { this.history.push(copy(this.items)); if (this.history.length > 40) this.history.shift(); }
+    add(item) { this.remember(); this.items.push({ ...copy(item), id: this.nextId++ }); }
+    remove(id) { if (!this.items.some(item => item.id === id)) return; this.remember(); this.items = this.items.filter(item => item.id !== id); }
+    editMemo(id, text) {
+      const item = this.items.find(item => item.id === id && item.type === 'memo');
+      if (!item || item.text === text) return;
+      this.remember(); item.text = text;
+    }
+    undo() { if (this.history.length) this.items = this.history.pop(); }
+  };
+  const $ = id => document.getElementById(id);
+  const root = $('reader'), stage = $('reader-stage'), toolbar = $('writing-toolbar');
+  const markers = $('writing-markers'), pens = $('writing-pen'), memos = $('writing-memos');
+  const editor = $('writing-memo-dialog'), input = $('writing-memo-input');
+  let model = null, enabled = false, tool = 'pen', gesture = null, draftMemo = null, rendering = false;
+  let paintedPens = [], paintedMarkers = [];
+  const help = {
+    pen: '本文付近をドラッグして赤い線。スクロールは「書き込みOFF」で。',
+    marker: '最初の文字から最後の文字へなぞって強調。スクロールは「書き込みOFF」で。',
+    memo: '本文付近をタップしてメモ。右のメモをタップすると編集できます。',
+    eraser: '線・マーカー・メモをタップすると、その書き込みを削除します。'
+  };
+  const svg = (name, attributes, parent) => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', name);
+    Object.entries(attributes).forEach(([key, value]) => el.setAttribute(key, value)); parent.append(el); return el;
+  };
+  const localPoint = e => {
+    const rect = root.getBoundingClientRect(); return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+  const center = glyph => ({ x: glyph.x + glyph.width / 2, y: glyph.y + glyph.height / 2 });
+  function nearest(point, geometry, max = 3) {
+    let best = null, distance = max * geometry.fontSize;
+    for (const glyph of geometry.glyphs) {
+      const dx = Math.max(glyph.x - point.x, 0, point.x - glyph.x - glyph.width);
+      const dy = Math.max(glyph.y - point.y, 0, point.y - glyph.y - glyph.height);
+      const d = Math.hypot(dx, dy);
+      if (d < distance) { best = glyph; distance = d; }
+    }
+    return best;
+  }
+  function rectangles(start, end, geometry) {
+    const result = [];
+    for (const glyph of geometry.glyphs) {
+      if (glyph.end <= start || glyph.start >= end) continue;
+      const last = result.at(-1);
+      if (last && Math.abs(last.y - glyph.y) < 2 && Math.abs(last.height - glyph.height) < 2 && glyph.x >= last.x && glyph.x - last.x - last.width < geometry.fontSize * 1.1) {
+        last.width = Math.max(last.width, glyph.x + glyph.width - last.x);
+      } else result.push({ x: glyph.x, y: glyph.y, width: glyph.width, height: glyph.height });
+    }
+    return result;
+  }
+  function releaseGesture() {
+    const previous = gesture; gesture = null;
+    if (previous && stage.hasPointerCapture(previous.id)) stage.releasePointerCapture(previous.id);
+  }
+  function cancelPending() {
+    releaseGesture(); draftMemo = null;
+    if (editor.open) editor.close();
+    render();
+  }
+  function controls() {
+    toolbar.hidden = !enabled;
+    $('writing-mode').setAttribute('aria-pressed', String(enabled));
+    $('writing-mode').textContent = `書き込み：${enabled ? 'ON' : 'OFF'}`;
+    stage.classList.toggle('writing-active', enabled);
+    stage.classList.toggle('writing-drag', enabled && tool !== 'memo');
+    document.querySelectorAll('[data-writing-tool]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.writingTool === tool)));
+    if ($('writing-tool-help').textContent !== help[tool]) $('writing-tool-help').textContent = help[tool];
+    $('writing-undo').disabled = !model?.history.length;
+  }
+  function setMode(on) {
+    const anchor = window.Reader.capture();
+    cancelPending(); enabled = Boolean(model && on);
+    if (enabled) window.Reader.setRubyMode(false);
+    controls(); render(); window.Reader.restore(anchor);
+  }
+  function strokePoints(item, geometry) {
+    const glyph = geometry.byOffset.get(item.offset);
+    if (!glyph) return null;
+    const origin = center(glyph), font = geometry.fontSize;
+    const xs = item.points.map(p => p.x), ys = item.points.map(p => p.y);
+    const complex = Math.max(...xs) - Math.min(...xs) > 2.5 || Math.max(...ys) - Math.min(...ys) > .9;
+    if (complex && item.layoutKey !== geometry.layoutKey) return null;
+    // Witnesses are original characters near the line as it was drawn. If
+    // their relative positions change after rewrapping, keep the stroke data
+    // but hide it rather than point at unrelated words.
+    for (const witness of item.witnesses) {
+      const current = geometry.byOffset.get(witness.offset);
+      if (!current) return null;
+      const c = center(current);
+      if (Math.hypot((c.x - origin.x) / font - witness.x, (c.y - origin.y) / font - witness.y) > .7) return null;
+    }
+    return item.points.map(p => ({ x: origin.x + p.x * font, y: origin.y + p.y * font }));
+  }
+  function render() {
+    if (rendering || document.body.classList.contains('manuscript-printing')) return;
+    rendering = true;
+    try {
+      const reserve = Boolean(model?.items.some(item => item.type === 'memo'));
+      if (stage.classList.contains('has-writing-memos') !== reserve) {
+        const anchor = window.Reader.capture(); stage.classList.toggle('has-writing-memos', reserve);
+        window.Reader.refresh(anchor);
+      }
+      markers.replaceChildren(); pens.replaceChildren(); memos.replaceChildren();
+      paintedPens = []; paintedMarkers = [];
+      if (!reserve) stage.style.minHeight = '';
+      controls();
+      if (!model || root.closest('[hidden]')) { $('writing-status').hidden = true; return; }
+      let hidden = 0;
+      if (model.items.length || gesture) {
+        const geometry = window.Reader.getWritingGeometry(), rect = root.getBoundingClientRect(), outer = stage.getBoundingClientRect();
+        const ox = rect.left - outer.left, oy = rect.top - outer.top;
+        const markerGroup = svg('g', { transform: `translate(${ox} ${oy})` }, markers);
+        const penGroup = svg('g', { transform: `translate(${ox} ${oy})` }, pens);
+        const items = [...model.items];
+        if (gesture?.preview) items.push(gesture.preview);
+        const noteItems = [];
+        for (const item of items) {
+          if (item.type === 'marker') {
+            const boxes = rectangles(item.start, item.end, geometry);
+            for (const box of boxes) svg('rect', { ...box, rx: 2, 'data-mark-id': item.id ?? 'draft', 'data-start': item.start, 'data-end': item.end }, markerGroup);
+            paintedMarkers.push({ id: item.id, boxes });
+          } else if (item.type === 'pen') {
+            const points = strokePoints(item, geometry);
+            if (!points) { hidden++; continue; }
+            svg('path', { d: points.map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' '), 'data-mark-id': item.id ?? 'draft', 'data-offset': item.offset }, penGroup);
+            paintedPens.push({ id: item.id, points });
+          } else {
+            const glyph = geometry.byOffset.get(item.offset);
+            if (glyph) noteItems.push({ item, glyph });
+          }
+        }
+        noteItems.sort((a, b) => a.glyph.y - b.glyph.y || a.item.id - b.item.id);
+        let bottom = 0;
+        for (const { item, glyph } of noteItems) {
+          const button = document.createElement('button'); button.type = 'button';
+          button.className = 'writing-memo'; button.dataset.markId = item.id;
+          const context = document.createElement('small'), content = document.createElement('span');
+          context.textContent = `「${Array.from(model.source.slice(item.offset)).slice(0, 5).join('').replace(/\s/g, ' ')}」`;
+          content.textContent = item.text; button.append(context, content);
+          button.setAttribute('aria-label', `文字メモ「${item.text}」を${tool === 'eraser' ? '削除' : '編集'}`);
+          button.disabled = !enabled || !['memo', 'eraser'].includes(tool);
+          button.style.left = `${Math.min(outer.width - 112, Math.max(ox + rect.width + 4, ox + glyph.x + item.dx * geometry.fontSize))}px`;
+          button.style.top = `${Math.max(bottom, oy + glyph.y + item.dy * geometry.fontSize)}px`;
+          button.onclick = () => {
+            if (!enabled) return;
+            if (tool === 'eraser') { model.remove(item.id); render(); }
+            else if (tool === 'memo') openMemo(item);
+          };
+          memos.append(button); bottom = parseFloat(button.style.top) + button.getBoundingClientRect().height + 6;
+        }
+        stage.style.minHeight = bottom ? `${Math.ceil(bottom + 16)}px` : '';
+      } else stage.style.minHeight = '';
+      const message = `書き込み${model.items.length}件：試作機能のためJSON・PDFに保存できません。${hidden ? ` 折り返しの変化により赤ペン${hidden}件を一時非表示にしています。元の配置に戻すと再表示します。` : ''}`;
+      const status = $('writing-status'), hide = !enabled && !model.hasMarks;
+      if (status.hidden !== hide || status.textContent !== message) {
+        const anchor = window.Reader.capture(), height = status.getBoundingClientRect().height;
+        status.hidden = hide; status.textContent = message;
+        if (Math.abs(status.getBoundingClientRect().height - height) > .5) window.Reader.restore(anchor);
+      }
+    } finally { rendering = false; }
+  }
+  function fitEditor() {
+    const viewport = window.visualViewport, height = viewport?.height || innerHeight;
+    editor.style.setProperty('--editor-center', `${(viewport?.offsetTop || 0) + height / 2}px`);
+    editor.style.setProperty('--editor-height', `${Math.max(120, height - 24)}px`);
+  }
+  function openMemo(item) {
+    draftMemo = { ...item }; input.value = item.text || '';
+    $('writing-memo-delete').hidden = !item.id;
+    $('writing-memo-save').disabled = !input.value.trim();
+    fitEditor(); editor.showModal(); input.focus({ preventScroll: true });
+  }
+  const distanceToSegment = (p, a, b) => {
+    const dx = b.x - a.x, dy = b.y - a.y, length = dx * dx + dy * dy;
+    const t = length ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / length)) : 0;
+    return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
+  };
+  function erase(point) {
+    const ids = new Set();
+    for (const pen of paintedPens) if (pen.points.some((p, i) => i && distanceToSegment(point, pen.points[i - 1], p) < 10)) ids.add(pen.id);
+    for (const marker of paintedMarkers) if (marker.boxes.some(r => point.x >= r.x && point.x <= r.x + r.width && point.y >= r.y && point.y <= r.y + r.height)) ids.add(marker.id);
+    const target = model.items.findLast(item => ids.has(item.id));
+    if (target) { model.remove(target.id); render(); }
+  }
+  function updateStroke(point) {
+    const g = window.Reader.getWritingGeometry(), origin = gesture.origin, font = g.fontSize;
+    const points = gesture.preview.points, last = points.at(-1), next = { x: (point.x - origin.x) / font, y: (point.y - origin.y) / font };
+    if (Math.hypot(next.x - last.x, next.y - last.y) * font < 2) return;
+    points.push(next);
+    if (points.length > 2000) gesture.preview.points = points.filter((_, i) => i % 2 === 0 || i === points.length - 1);
+    const witness = nearest(point, g);
+    if (witness && !gesture.preview.witnesses.some(w => w.offset === witness.start)) {
+      const c = center(witness); gesture.preview.witnesses.push({ offset: witness.start, x: (c.x - origin.x) / font, y: (c.y - origin.y) / font });
+    }
+  }
+  stage.addEventListener('pointerdown', e => {
+    if (!enabled) return;
+    if (!e.isPrimary) { releaseGesture(); render(); return; }
+    if (e.button !== 0 || e.target.closest('.writing-memo') || editor.open) return;
+    if ([...memos.children].some(note => {
+      const r = note.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    })) return;
+    const geometry = window.Reader.getWritingGeometry(), point = localPoint(e), glyph = nearest(point, geometry);
+    if (!glyph && tool !== 'eraser') return;
+    if (tool !== 'memo') e.preventDefault();
+    gesture = { id: e.pointerId, first: point, glyph, scroll: scrollY, moved: false };
+    stage.setPointerCapture(e.pointerId);
+    if (tool === 'pen') {
+      gesture.origin = center(glyph);
+      gesture.preview = { type: 'pen', offset: glyph.start, layoutKey: geometry.layoutKey, points: [{ x: (point.x - gesture.origin.x) / geometry.fontSize, y: (point.y - gesture.origin.y) / geometry.fontSize }], witnesses: [{ offset: glyph.start, x: 0, y: 0 }] };
+    }
+    if (tool === 'marker') gesture.preview = { type: 'marker', start: glyph.start, end: glyph.end };
+    render();
+  });
+  stage.addEventListener('pointermove', e => {
+    if (!gesture || gesture.id !== e.pointerId) return;
+    const point = localPoint(e);
+    if (Math.hypot(point.x - gesture.first.x, point.y - gesture.first.y) > 8) gesture.moved = true;
+    if (tool === 'pen') updateStroke(point);
+    if (tool === 'marker') {
+      const end = nearest(point, window.Reader.getWritingGeometry());
+      if (end) gesture.preview = { type: 'marker', start: Math.min(gesture.glyph.start, end.start), end: Math.max(gesture.glyph.end, end.end) };
+    }
+    if (tool === 'pen' || tool === 'marker') render();
+  });
+  stage.addEventListener('pointerup', e => {
+    if (!gesture || gesture.id !== e.pointerId) return;
+    const point = localPoint(e);
+    if (Math.hypot(point.x - gesture.first.x, point.y - gesture.first.y) > 8) gesture.moved = true;
+    if (tool === 'pen') updateStroke(point);
+    if (tool === 'marker') {
+      const last = nearest(point, window.Reader.getWritingGeometry());
+      if (last) gesture.preview = { type: 'marker', start: Math.min(gesture.glyph.start, last.start), end: Math.max(gesture.glyph.end, last.end) };
+    }
+    const completed = gesture; releaseGesture();
+    if (tool === 'pen' && completed.preview.points.length > 1) model.add(completed.preview);
+    if (tool === 'marker') model.add(completed.preview);
+    if (!completed.moved && Math.abs(scrollY - completed.scroll) < 2) {
+      if (tool === 'memo') openMemo({ type: 'memo', offset: completed.glyph.start, dx: .4, dy: 0, text: '' });
+      if (tool === 'eraser') erase(point);
+    }
+    render();
+  });
+  stage.addEventListener('pointercancel', () => { releaseGesture(); render(); });
+  stage.addEventListener('lostpointercapture', () => { if (gesture) { gesture = null; render(); } });
+  document.querySelectorAll('[data-writing-tool]').forEach(button => button.onclick = () => { cancelPending(); tool = button.dataset.writingTool; controls(); render(); });
+  $('writing-off').onclick = () => setMode(false);
+  $('writing-undo').onclick = () => { cancelPending(); model?.undo(); render(); };
+  input.addEventListener('input', () => { $('writing-memo-save').disabled = !input.value.trim(); });
+  input.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.isComposing || e.keyCode === 229)) e.preventDefault(); });
+  $('writing-memo-form').addEventListener('submit', e => {
+    e.preventDefault(); const text = input.value.trim();
+    if (!draftMemo || !text || text.length > 40 || /[\r\n\u2028\u2029]/u.test(text)) return;
+    if (draftMemo.id) model.editMemo(draftMemo.id, text); else model.add({ ...draftMemo, text });
+    cancelPending();
+  });
+  $('writing-memo-delete').onclick = () => { if (draftMemo?.id) model.remove(draftMemo.id); cancelPending(); };
+  $('writing-memo-cancel').onclick = cancelPending;
+  editor.addEventListener('cancel', e => { e.preventDefault(); cancelPending(); });
+  editor.addEventListener('close', () => { draftMemo = null; });
+  window.visualViewport?.addEventListener('resize', fitEditor);
+  window.visualViewport?.addEventListener('scroll', fitEditor);
+  root.addEventListener('reader-layout', () => { releaseGesture(); render(); });
+  root.addEventListener('reader-ruby-mode', e => { if (e.detail) setMode(false); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) cancelPending(); });
+  addEventListener('scroll', () => {
+    if (gesture && Math.abs(scrollY - gesture.scroll) > 2) { releaseGesture(); render(); }
+  }, { passive: true });
+  // Printing temporarily hides the live reader. Do not measure or reposition
+  // overlays against its zero-size boxes; repaint once the normal page returns.
+  addEventListener('afterprint', () => requestAnimationFrame(render));
+  matchMedia('print').addEventListener('change', e => { if (!e.matches) requestAnimationFrame(render); });
+  window.ManuscriptWriting = {
+    show(next) { cancelPending(); model = next; enabled = false; controls(); render(); },
+    leave() { cancelPending(); enabled = false; model = null; controls(); render(); },
+    setMode, cancelPending,
+    get enabled() { return enabled; }
+  };
+})();

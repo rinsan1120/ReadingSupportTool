@@ -7,6 +7,8 @@
   let phase = 'idle', began = 0, countdownTimer = 0, elapsedTimer = 0, noticeTimer = 0;
   let measuredCount = 0, measuredType = 'sample', wakeLock = null, wakePending = false, wakeGeneration = 0;
   let readAnnotations = new window.ReadingAnnotations();
+  let readMarks = new window.ManuscriptMarks();
+  const writingLoss = () => readMarks.hasMarks ? ' 試作の書き込みはファイル保存できず、この置き換えで失われます。' : '';
   // A textarea normalizes CRLF/CR to LF. Retain the exact imported source until
   // its displayed input is edited, otherwise UTF-16 annotation offsets drift.
   let readInputSnapshot = null;
@@ -56,7 +58,7 @@
   }
   setTarget(target);
   function show(next) {
-    if (view === 'reading' && next !== 'reading') { window.ManuscriptPrint.clear(); window.Reader.leave(); cancelMeasurement(); releaseWake(); }
+    if (view === 'reading' && next !== 'reading') { window.ManuscriptWriting.leave(); window.ManuscriptPrint.clear(); window.Reader.leave(); cancelMeasurement(); releaseWake(); }
     document.querySelectorAll('dialog[open]').forEach(d => d.close());
     document.querySelectorAll('.view').forEach(el => el.hidden = el.id !== next);
     view = next; $('footer').hidden = next === 'reading';
@@ -64,6 +66,7 @@
     $('existing-results').hidden = !history.length;
     $('annotation-retention').hidden = !hasReadings(readAnnotations);
     $('time-annotation-retention').hidden = !hasReadings(timeAnnotations);
+    $('writing-retention').hidden = !readMarks.hasMarks;
     window.scrollTo(0, 0);
     $(next).querySelector('h1')?.focus({ preventScroll: true });
   }
@@ -106,24 +109,25 @@
       const whole = begin === 0 && end === el.value.length;
       if (ruby) {
         imported = window.HTMLRubyImporter.parse(html);
-        if (!whole && hasReadings(retained)) {
-          notify('読み仮名がある原稿の途中にはHTMLルビを貼り付けできません。本文全体を選択して置き換えるか、別の原稿として取り込んでください。'); return;
+        if (!whole && (hasReadings(retained) || (id === 'read-text' && readMarks.hasMarks))) {
+          notify('読み仮名・書き込みがある原稿の途中にはHTMLルビを貼り付けできません。本文全体を選択して置き換えるか、別の原稿として取り込んでください。'); return;
         }
         plain = imported.source;
         const combined = el.value.slice(0, begin) + plain + el.value.slice(end);
         imported = window.ReadingAnnotations.fromJSON(JSON.stringify({ ...imported.toJSON(), text: combined,
           sourceRubies: imported.sourceRubies.map(r => ({ ...r, start: r.start + begin, end: r.end + begin })) }));
       }
-      const replacingReadings = ruby && whole && hasReadings(retained);
+      const replacingReadings = ruby && whole && (hasReadings(retained) || (id === 'read-text' && readMarks.hasMarks));
       if (((el.value && end > begin) || replacingReadings) && !await ask(replacingReadings ?
-        '現在の本文と読み仮名を、貼り付けた文章と元の読み仮名で置き換えますか？' : '選択中の本文を貼り付けた文章で置き換えますか？', '置き換える')) return;
+        '現在の本文と読み仮名を、貼り付けた文章と元の読み仮名で置き換えますか？' + (id === 'read-text' ? writingLoss() : '') : '選択中の本文を貼り付けた文章で置き換えますか？', '置き換える')) return;
       if (view !== previousView || el.value !== previous) return;
       el.setRangeText(plain, begin, end, 'end');
       if (imported) {
-        if (id === 'read-text') { readAnnotations = imported; readInputSnapshot = el.value; }
+        if (id === 'read-text') { readAnnotations = imported; readMarks = new window.ManuscriptMarks(imported.source); readInputSnapshot = el.value; }
         else { timeAnnotations = imported; timeInputSnapshot = el.value; }
         $('annotation-retention').hidden = !hasReadings(readAnnotations);
         $('time-annotation-retention').hidden = !hasReadings(timeAnnotations);
+        $('writing-retention').hidden = !readMarks.hasMarks;
         if (imported.sourceRubies.length) notify(`元の読み仮名を${imported.sourceRubies.length}件取り込みました`);
       }
       el.dispatchEvent(new Event('input'));
@@ -139,12 +143,12 @@
     if (el.value && el.selectionStart === 0 && el.selectionEnd === el.value.length && (deleting || replacing)) {
       e.preventDefault();
       const next = deleting ? '' : (e.data || '');
-      if (await ask('入力済みの本文全体を削除・置換しますか？', deleting ? '削除する' : '置き換える')) {
+      if (await ask('入力済みの本文全体を削除・置換しますか？' + (id === 'read-text' && readMarks.hasMarks ? ' 本文を変えて別の原稿を開くと、ファイル保存できない試作の書き込みは失われます。' : ''), deleting ? '削除する' : '置き換える')) {
         el.setRangeText(next, 0, el.value.length, 'end'); el.dispatchEvent(new Event('input'));
       }
     }
   }));
-  $('clear-read').onclick = async () => { if ($('read-text').value && await ask('入力した本文を削除しますか？')) { $('read-text').value = ''; $('read-text').dispatchEvent(new Event('input')); } };
+  $('clear-read').onclick = async () => { if ($('read-text').value && await ask('入力した本文を削除しますか？' + (readMarks.hasMarks ? ' 本文を変えて別の原稿を開くと、ファイル保存できない試作の書き込みは失われます。' : ''))) { $('read-text').value = ''; $('read-text').dispatchEvent(new Event('input')); } };
   $('apply-count').onclick = () => { setTarget(countText($('time-text').value) || '', true); persist(); };
   $('target-count').addEventListener('input', () => { setTarget($('target-count').value, true); persist(); });
   $('preparation-target').addEventListener('input', () => { setTarget($('preparation-target').value, true); persist(); });
@@ -159,8 +163,9 @@
     openingReader = true;
     try {
       if (nextMode === 'read' && text !== readAnnotations.source) {
-        if (hasReadings(readAnnotations) && !await ask('本文が変更されています。この文章を開くと、登録済みの読み仮名はすべて削除されます。本文を差し替えますか？', '差し替える')) return;
+        if ((hasReadings(readAnnotations) || readMarks.hasMarks) && !await ask('本文が変更されています。この文章を開くと、登録済みの読み仮名はすべて削除されます。本文を差し替えますか？' + writingLoss(), '差し替える')) return;
         readAnnotations.reset(text);
+        readMarks = new window.ManuscriptMarks(text);
         readInputSnapshot = $('read-text').value;
       }
       if (nextMode === 'time' && sourceType === 'custom' && timeAnnotations && text !== timeAnnotations.source) {
@@ -179,10 +184,12 @@
     $('export-manuscript').hidden = mode !== 'read';
     $('export-pdf').hidden = mode !== 'read';
     $('measure-current').hidden = mode !== 'read';
+    $('writing-mode').hidden = mode !== 'read'; $('writing-save-help').hidden = mode !== 'read';
     measuredCount = countText(text); measuredType = sourceType;
     updatePreparationInfo();
     const model = mode === 'read' ? readAnnotations : sourceType === 'custom' ? timeAnnotations : null;
     window.Reader.show(text, model, { editable: mode === 'read' });
+    window.ManuscriptWriting.show(mode === 'read' ? readMarks : null);
   }
   $('open-read').onclick = () => openReader('read'); $('prepare-time').onclick = () => openReader('time');
   let preparingPDF = false, pdfAnchor = null;
@@ -256,6 +263,7 @@
       url = URL.createObjectURL(blob);
       link.href = url; link.download = 'reading-manuscript.json';
       document.body.append(link); link.click(); $('operation-dialog').close();
+      if (readMarks.hasMarks) notify('本文と読み仮名のJSONダウンロードを開始しました。試作の書き込みは含まれません。');
     } catch { notify('原稿ファイルのダウンロードを開始できませんでした。'); }
     finally {
       link.remove();
@@ -277,10 +285,11 @@
       const restored = window.ReadingAnnotations.fromJSON(json);
       if (view !== 'read-input') return;
       if (($('read-text').value || readAnnotations.source || readAnnotations.entries.length) &&
-        !await ask('現在の本文と読み仮名を、選択した原稿ファイルの内容で置き換えますか？未保存の変更は失われます。', '置き換える')) return;
+        !await ask('現在の本文と読み仮名を、選択した原稿ファイルの内容で置き換えますか？未保存の変更は失われます。' + writingLoss(), '置き換える')) return;
       // All validation and confirmation have succeeded. Commit together, using
       // the same model and rendering path as manually entered manuscripts.
       readAnnotations = restored;
+      readMarks = new window.ManuscriptMarks(restored.source);
       $('read-text').value = restored.source;
       readInputSnapshot = $('read-text').value;
       $('read-text').dispatchEvent(new Event('input'));
@@ -292,7 +301,8 @@
   $('reader-back').onclick = () => show(mode === 'time' ? 'time-input' : 'read-input');
   $('edit-from-menu').onclick = () => $('reader-back').click();
   $('home-from-menu').onclick = () => show('home');
-  $('operations').onclick = () => { closeSettings(); $('open-settings').disabled = phase !== 'idle'; $('operation-dialog').showModal(); };
+  $('operations').onclick = () => { window.ManuscriptWriting.cancelPending(); closeSettings(); $('open-settings').disabled = phase !== 'idle'; $('operation-dialog').showModal(); };
+  $('writing-mode').onclick = () => { closeSettings(); $('operation-dialog').close(); window.ManuscriptWriting.setMode(!window.ManuscriptWriting.enabled); };
   document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.dataset.close === 'settings-dialog' ? closeSettings() : $(b.dataset.close).close());
   const settingsMobile = matchMedia('(max-width: 600px)');
   const settingNames = ['columns', 'line-height', 'break-lines'];

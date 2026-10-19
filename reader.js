@@ -6,6 +6,8 @@
   let source = '', settings = { width: 900, fontSize: 22, height: 1.8, breaks: 5 };
   let blocks = [], lastAvailable = 0, lastMobile = false, scheduled = 0;
   let savedAnchor = null;
+  let writingGeometry = null;
+  const readingEdge = () => document.querySelector('.reader-controls').getBoundingClientRect().bottom + 12;
   let annotations = null, annotationsEditable = true, rubyMode = false, draft = null, editAnchor = null;
   const rubyButton = document.getElementById('ruby-mode');
   const rubyHelp = document.getElementById('ruby-help');
@@ -107,7 +109,7 @@
   }
   function capture() {
     if (printing() || root.closest('[hidden]')) return savedAnchor;
-    const edge = document.querySelector('.reader-toolbar').getBoundingClientRect().bottom + 12;
+    const edge = readingEdge();
     let best = null;
     for (const block of blocks) {
       if (block.el.getBoundingClientRect().bottom < edge) continue;
@@ -135,7 +137,7 @@
     if (rect) {
       const panel = document.getElementById('settings-dialog');
       const panelTop = mobile.matches && panel.open ? panel.getBoundingClientRect().top : Infinity;
-      const edge = document.querySelector('.reader-toolbar').getBoundingClientRect().bottom + 12;
+      const edge = readingEdge();
       const y = Math.min(anchor.y, Math.max(edge, panelTop - rect.height - 12));
       window.scrollBy(0, rect.top - y);
       savedAnchor = { ...anchor, y };
@@ -169,6 +171,7 @@
   }
   function layout(anchor = capture()) {
     if (printing() || root.closest('[hidden]')) return;
+    writingGeometry = null;
     const available = availableWidth();
     const maxWidth = Math.min(1400, available);
     const minWidth = Math.min(480, maxWidth);
@@ -266,6 +269,31 @@
     lastAvailable = available;
     lastMobile = mobile.matches;
     restore(anchor);
+    root.dispatchEvent(new Event('reader-layout'));
+  }
+  // Optional writing layer: original grapheme boxes only, independent of rt and
+  // manual readings. Cache lazily per layout; coordinates stay relative to the
+  // reader so scrolling never invalidates them or changes annotation offsets.
+  function getWritingGeometry() {
+    if (writingGeometry) return writingGeometry;
+    const origin = root.getBoundingClientRect(), glyphs = [];
+    for (const block of blocks) for (const part of block.parts) {
+      if (part.run.annotation) continue;
+      for (const s of segmenter.segment(part.node.data)) {
+        range.setStart(part.node, s.index); range.setEnd(part.node, s.index + s.segment.length);
+        const rect = range.getBoundingClientRect();
+        if (!rect.width || !rect.height || !s.segment.trim()) continue;
+        const start = part.run.sourceStart + part.start - part.run.start + s.index;
+        glyphs.push({ start, end: start + s.segment.length, text: s.segment,
+          x: rect.left - origin.left, y: rect.top - origin.top, width: rect.width, height: rect.height });
+      }
+    }
+    const fontSize = parseFloat(getComputedStyle(root).fontSize);
+    let flowHash = 2166136261;
+    for (const char of JSON.stringify([annotations?.entries, annotations?.sourceRubies, draft])) flowHash = Math.imul(flowHash ^ char.charCodeAt(0), 16777619);
+    writingGeometry = { glyphs, byOffset: new Map(glyphs.map(g => [g.start, g])), fontSize, width: origin.width,
+      layoutKey: `${(origin.width / fontSize).toFixed(2)}:${settings.height}:${settings.breaks}:${flowHash >>> 0}` };
+    return writingGeometry;
   }
   function printSnapshot() {
     if (draft) throw new Error('読み仮名を登録またはキャンセルしてからPDF出力してください。');
@@ -309,6 +337,7 @@
     rubyButton.textContent = `ルビ：${rubyMode ? 'ON' : 'OFF'}`;
     rubyHelp.hidden = !rubyMode;
     root.classList.toggle('ruby-mode', rubyMode);
+    root.dispatchEvent(new CustomEvent('reader-ruby-mode', { detail: rubyMode }));
   }
   function fitEditor() {
     const viewport = window.visualViewport;
@@ -448,7 +477,8 @@
       if (next.breaks !== undefined) settings.breaks = next.breaks;
       layout(anchor);
     },
-    capture, restore, printSnapshot,
+    capture, restore, printSnapshot, getWritingGeometry,
+    setRubyMode(on) { const anchor = capture(); finishEdit(); updateMode(on); layout(anchor); },
     refresh(anchor = savedAnchor) { savedAnchor = anchor; layout(anchor); }
   };
 })();
