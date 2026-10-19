@@ -285,7 +285,7 @@ footer {
   font-family:"Yu Mincho","Hiragino Mincho ProN","Noto Serif CJK JP",serif;
   font-size:22px;
   line-height:1.8;
-  width:min(28em,calc(100% - 40px));
+  width:min(616px,calc(100% - 40px));
   margin:40px auto 0;
   padding-bottom:160px;
   overflow-wrap:anywhere;
@@ -487,7 +487,7 @@ fieldset {
 }
 #reader {
   font-size:22px;
-  width:min(28em,calc(100% - 32px));
+  width:min(616px,calc(100% - 32px));
   margin-top:28px
 }
 .measurement-bar button {

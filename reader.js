@@ -6,6 +6,9 @@
   let source = '', settings = { columns: 28, height: 1.8, breaks: 5 };
   let blocks = [], lastWidth = 0, scheduled = 0;
   let savedAnchor = null;
+  let columnsChosen = false;
+  const columnsInput = document.getElementById('columns');
+  const columnsOutput = document.getElementById('columns-value');
   const range = document.createRange();
   function point(block, offset) {
     const part = block.parts.find(p => offset >= p.start && offset < p.end) || block.parts.at(-1);
@@ -74,7 +77,19 @@
   }
   function layout(anchor = capture()) {
     if (root.closest('[hidden]')) return;
-    root.style.width = `min(${settings.columns}em, calc(100% - ${innerWidth <= 600 ? 32 : 40}px))`;
+    // Width is independent of type size. Derive a full-width Japanese em from
+    // the available content box, keeping every selectable step effective.
+    const width = root.getBoundingClientRect().width;
+    if (!width) return;
+    const minColumns = Math.max(1, Math.ceil(width / 36));
+    const maxColumns = Math.max(minColumns, Math.floor(width / 18));
+    const preferred = columnsChosen ? settings.columns : Math.round(width / 22);
+    settings.columns = Math.min(maxColumns, Math.max(minColumns, preferred));
+    columnsInput.min = minColumns;
+    columnsInput.max = maxColumns;
+    columnsInput.value = settings.columns;
+    columnsOutput.textContent = settings.columns;
+    root.style.fontSize = `${width / settings.columns}px`;
     root.style.lineHeight = settings.height;
     root.replaceChildren(); blocks = [];
     // Empty original lines are natural boundaries; retain all whitespace verbatim.
@@ -144,7 +159,12 @@
   document.fonts.ready.then(() => { if (source) layout(savedAnchor); });
   window.Reader = {
     show(text) { source = text; savedAnchor = null; layout(null); },
-    configure(next) { settings = { ...settings, ...next }; layout(); },
+    configure(next) {
+      if (next.columns !== undefined && next.columns !== settings.columns) columnsChosen = true;
+      const anchor = capture();
+      settings = { ...settings, ...next };
+      layout(anchor);
+    },
     capture, restore,
     refresh() { layout(savedAnchor); }
   };
