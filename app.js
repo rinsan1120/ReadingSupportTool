@@ -694,7 +694,7 @@
   }
   function toolbarLocked() {
     return !toolbarMobile.matches || view !== 'reading' || phase === 'countdown'
-      || (mode === 'time' && phase === 'idle') || window.ManuscriptWriting.enabled
+      || window.ManuscriptWriting.enabled
       || $('ruby-mode').getAttribute('aria-pressed') === 'true'
       || Boolean(document.querySelector('dialog[open]'))
       || Boolean(document.activeElement?.matches('input,textarea,select'));
