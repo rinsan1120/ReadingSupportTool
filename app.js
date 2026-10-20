@@ -145,7 +145,7 @@
       ? `読む文字数の目安：${validPartialLimit() ? Number(partialLimit) : '未設定'}文字\n実際に読む文字数：${measuredCount}文字${timingRange?.full ? '（全文が対象です。）' : ''}\n作品全体の文字数：${total}`
       : `計測する本文：${measuredCount}文字 ／ 作品全体：${total}`;
     $('finish').textContent = measuredPartial ? '計測終了' : '読了';
-    $('preparation-guidance').textContent = (measuredPartial ? '表示された文章を読み終えたら「計測終了」を押してください。' : '全文を読み終えたら「読了」を押してください。') + '別タブや別アプリに移ると、その回の計測は無効になります。';
+    $('preparation-guidance').textContent = (measuredPartial ? '表示された文章を読み終えたら「計測終了」を押してください。' : '全文を読み終えたら「読了」を押してください。') + '計測中に入力画面やホームへ戻る、または別のタブ・アプリへ移動すると、その回の計測結果は保存されません。';
   }
   setTarget(target);
   function show(next) {
@@ -309,6 +309,7 @@
   $('open-read').onclick = () => openReader('read'); $('prepare-time').onclick = () => openReader('time');
   let preparingPDF = false, pdfAnchor = null;
   $('export-pdf').onclick = async () => {
+    if (!readyForDirectAction()) return;
     if (view !== 'reading' || mode !== 'read' || preparingPDF) return;
     preparingPDF = true;
     try {
@@ -349,6 +350,7 @@
   addEventListener('afterprint', finishPDF);
   matchMedia('print').addEventListener('change', e => { if (!e.matches) finishPDF(); });
   $('measure-current').onclick = async () => {
+    if (!readyForDirectAction()) return;
     if (view !== 'reading' || mode !== 'read' || openingReader) return;
     const text = readAnnotations.source, count = countText(text);
     if (!count) { $('operation-dialog').close(); notify('計測する文字を含む本文を用意してください。'); return; }
@@ -379,6 +381,7 @@
     finally { openingReader = false; }
   };
   $('export-manuscript').onclick = () => {
+    if (!readyForDirectAction()) return;
     if (view !== 'reading' || mode !== 'read') return;
     let url;
     const link = document.createElement('a');
@@ -424,10 +427,9 @@
     finally { importing = false; $('import-manuscript').disabled = false; }
   });
   $('reader-back').onclick = () => show(mode === 'time' ? 'time-input' : 'read-input');
-  $('edit-from-menu').onclick = () => $('reader-back').click();
   $('home-from-menu').onclick = () => show('home');
-  $('operations').onclick = () => { window.ManuscriptWriting.cancelPending(); closeSettings(); $('open-settings').disabled = phase !== 'idle'; $('operation-dialog').showModal(); };
-  $('writing-mode').onclick = () => { closeSettings(); $('operation-dialog').close(); window.ManuscriptWriting.setMode(!window.ManuscriptWriting.enabled); };
+  $('operations').onclick = () => { if (!readyForDirectAction()) return; wakeUI($('wake-status').textContent); closeSettings(); $('open-settings').disabled = phase !== 'idle'; $('operation-dialog').showModal(); };
+  $('writing-mode').onclick = () => { if (!readyForDirectAction()) return; closeSettings(); $('operation-dialog').close(); window.ManuscriptWriting.setMode(!window.ManuscriptWriting.enabled); };
   document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.dataset.close === 'settings-dialog' ? closeSettings() : $(b.dataset.close).close());
   const settingsMobile = matchMedia('(max-width: 600px)');
   const layoutSettings = ['columns', 'line-height', 'break-lines'];
@@ -640,7 +642,17 @@
   $('existing-results').onclick = () => show('results');
   $('again').onclick = () => show('time-input');
   $('reset-history').onclick = async () => { if (await ask('すべての計測履歴を削除しますか？')) { history = []; persist(); renderResults(); } };
+  function readyForDirectAction() {
+    if (!window.ManuscriptWriting.hasPending) return true;
+    window.ManuscriptWriting.focusPending();
+    notify('入力中の書き込みを確定またはキャンセルしてから操作してください。');
+    return false;
+  }
   function wakeUI(message = '') {
+    const handheld = navigator.userAgentData?.mobile === true || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+      || (/Mac/.test(navigator.platform) && navigator.maxTouchPoints > 1)
+      || (navigator.maxTouchPoints > 0 && matchMedia('(pointer: coarse) and (hover: none)').matches);
+    $('wake').hidden = $('wake-status').hidden = !handheld || !('wakeLock' in navigator);
     $('wake').textContent = `画面点灯維持：${wakeLock && !wakeLock.released ? 'ON' : 'OFF'}`;
     $('wake-status').textContent = message;
     $('wake').disabled = wakePending || !('wakeLock' in navigator);
@@ -672,4 +684,40 @@
   document.addEventListener('visibilitychange', () => { if (document.hidden) interrupt(); });
   addEventListener('pagehide', interrupt);
   $('existing-results').hidden = !history.length;
+  // Only transform the controls: do not change the text or annotation layout.
+  const toolbarSurface = document.querySelector('.reader-controls');
+  const toolbarMobile = matchMedia('(max-width: 600px)');
+  let toolbarY = window.scrollY, toolbarTravel = 0, toolbarDirection = 0, toolbarIgnoreUntil = 0;
+  function revealToolbar() {
+    toolbarSurface.classList.remove('is-scroll-hidden');
+    toolbarY = window.scrollY; toolbarTravel = 0; toolbarDirection = 0;
+  }
+  function toolbarLocked() {
+    return !toolbarMobile.matches || view !== 'reading' || phase === 'countdown'
+      || (mode === 'time' && phase === 'idle') || window.ManuscriptWriting.enabled
+      || $('ruby-mode').getAttribute('aria-pressed') === 'true'
+      || Boolean(document.querySelector('dialog[open]'))
+      || Boolean(document.activeElement?.matches('input,textarea,select'));
+  }
+  addEventListener('scroll', () => {
+    const y = Math.max(0, window.scrollY), delta = y - toolbarY; toolbarY = y;
+    if (toolbarLocked() || y < 40 || performance.now() < toolbarIgnoreUntil) { revealToolbar(); return; }
+    if (Math.abs(delta) < 2) return;
+    const direction = Math.sign(delta);
+    if (direction !== toolbarDirection) { toolbarTravel = 0; toolbarDirection = direction; }
+    toolbarTravel += Math.abs(delta);
+    if (toolbarTravel >= (direction > 0 ? 64 : 32)) {
+      toolbarSurface.classList.toggle('is-scroll-hidden', direction > 0); toolbarTravel = 0;
+    }
+  }, { passive:true });
+  toolbarSurface.addEventListener('focusin', revealToolbar);
+  $('reader').addEventListener('reader-ruby-mode', revealToolbar);
+  document.addEventListener('reader-writing-mode', revealToolbar);
+  $('reader').addEventListener('reader-layout', revealToolbar);
+  document.querySelectorAll('dialog').forEach(dialog => new MutationObserver(revealToolbar).observe(dialog, { attributes:true, attributeFilter:['open'] }));
+  new MutationObserver(revealToolbar).observe($('reading'), { attributes:true, attributeFilter:['hidden'] });
+  function resetToolbarViewport() { toolbarIgnoreUntil = performance.now() + 250; revealToolbar(); }
+  addEventListener('resize', resetToolbarViewport);
+  addEventListener('orientationchange', resetToolbarViewport);
+  window.visualViewport?.addEventListener('resize', resetToolbarViewport);
 })();

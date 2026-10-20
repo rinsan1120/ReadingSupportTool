@@ -367,7 +367,8 @@
   function updateMode(on) {
     rubyMode = Boolean(annotations && annotationsEditable && on);
     rubyButton.setAttribute('aria-pressed', String(rubyMode));
-    rubyButton.textContent = `ルビ：${rubyMode ? 'ON' : 'OFF'}`;
+    rubyButton.querySelector('.button-state').textContent = rubyMode ? 'ON' : 'OFF';
+    rubyButton.setAttribute('aria-label', `読み仮名編集：${rubyMode ? 'ON' : 'OFF'}`);
     rubyHelp.hidden = !rubyMode;
     root.classList.toggle('ruby-mode', rubyMode);
     root.dispatchEvent(new CustomEvent('reader-ruby-mode', { detail: rubyMode }));

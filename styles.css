@@ -652,3 +652,34 @@ html { scrollbar-gutter: stable; }
   #settings-dialog label { margin-bottom: 0; }
   #settings-dialog input[type=range] { margin: 4px 0 0; min-height: 40px; }
 }
+
+/* The sticky control footprint stays in flow when its surface slides away. */
+.reader-toolbar { display:grid; grid-template-columns:auto minmax(80px,1fr) repeat(6,auto); grid-template-areas:"back title ruby save pdf writing measure menu"; gap:8px; padding:10px 16px; }
+#normal-tools { display:contents; }
+#reader-back { grid-area:back; } #reading-title { grid-area:title; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#ruby-mode { grid-area:ruby; } #export-manuscript { grid-area:save; } #export-pdf { grid-area:pdf; } #writing-mode { grid-area:writing; } #measure-current { grid-area:measure; } #operations { grid-area:menu; }
+.reader-toolbar button,.writing-tools button { display:flex; justify-content:center; align-items:center; gap:5px; min-height:44px; padding:8px; white-space:nowrap; }
+.tool-icon { width:21px; height:24px; flex:none; }
+.button-state { font-size:10px; border:1px solid currentColor; border-radius:3px; padding:1px 2px; }
+.reader-toolbar button[aria-pressed=true],.writing-tools button[aria-pressed=true] { outline:2px solid var(--blue); outline-offset:1px; box-shadow:inset 0 -3px 0 currentColor; }
+.writing-tools { grid-template-columns:repeat(6,1fr); max-width:850px; }
+.reader-controls { transition:transform .18s ease; }
+@media(max-width:600px) {
+  .reader-toolbar { grid-template-columns:48px minmax(0,1fr) 48px 48px; grid-template-areas:"back title save menu" "normal normal normal normal"; gap:0 4px; padding:6px 8px; }
+  #normal-tools { display:grid; grid-area:normal; grid-template-columns:repeat(4,minmax(0,1fr)); gap:4px; margin-top:6px; }
+  #normal-tools button { grid-area:auto; }
+  .reader-toolbar button { flex-direction:column; gap:0; padding:4px 2px; font-size:11px; }
+  .reader-toolbar .button-state { position:absolute; margin-left:44px; margin-top:-20px; font-size:8px; padding:0 1px; }
+  #writing-toolbar { padding:0 8px 6px; }
+  .writing-tools { gap:3px; }
+  .writing-tools button { flex-direction:column; padding:4px 0; gap:0; font-size:10px; min-width:0; }
+  .writing-tools .tool-icon { width:18px; height:22px; }
+  .writing-options,#writing-tool-help { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); margin:0; }
+  .reader-controls.is-scroll-hidden { transform:translateY(calc(-100% - 1px)); pointer-events:none; }
+}
+@media(prefers-reduced-motion:reduce) { .reader-controls { transition:none; } }
+
+@media(min-width:601px) and (max-width:1000px) {
+  .reader-toolbar { grid-template-columns:auto minmax(40px,1fr) repeat(6,auto); gap:5px; padding:8px; }
+  .reader-toolbar button { flex-direction:column; gap:1px; font-size:11px; padding:5px; }
+}

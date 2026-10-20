@@ -160,7 +160,13 @@
   function controls() {
     toolbar.hidden = !enabled;
     $('writing-mode').setAttribute('aria-pressed', String(enabled));
-    $('writing-mode').textContent = `書き込み：${enabled ? 'ON' : 'OFF'}`;
+    $('writing-mode').querySelector('.button-state').textContent = enabled ? 'ON' : 'OFF';
+    $('writing-mode').setAttribute('aria-label', `書き込み：${enabled ? 'ON' : 'OFF'}`);
+    const controls = document.querySelector('.reader-controls');
+    const changed = controls.classList.contains('is-writing') !== enabled;
+    controls.classList.toggle('is-writing', enabled);
+    $('normal-tools').hidden = enabled || !editable;
+    if (changed) stage.dispatchEvent(new CustomEvent('reader-writing-mode', { bubbles: true }));
     stage.classList.toggle('writing-active', enabled);
     stage.classList.toggle('writing-drag', enabled && tool !== 'memo');
     document.querySelectorAll('[data-writing-tool]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.writingTool === tool)));
@@ -394,6 +400,8 @@
     setMode, cancelPending,
     get hasMarks() { return Boolean(model?.hasMarks); },
     get hasPens() { return Boolean(model?.items.some(item => item.type === 'pen')); },
+    get hasPending() { return Boolean(gesture || draftMemo); },
+    focusPending() { if (editor.open) $('writing-memo-input').focus(); },
     get enabled() { return enabled; }
   };
 })();
