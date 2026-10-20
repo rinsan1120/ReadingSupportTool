@@ -11,7 +11,6 @@
   const readingEdge = () => document.querySelector('.reader-controls').getBoundingClientRect().bottom + 12;
   let annotations = null, annotationsEditable = true, rubyMode = false, draft = null, editAnchor = null;
   let readingChangeGuard = async () => true, readingChangePending = false, editorSuspended = false;
-  const rubyButton = document.getElementById('ruby-mode');
   const rubyHelp = document.getElementById('ruby-help');
   const editor = document.getElementById('ruby-dialog');
   const rubyInput = document.getElementById('ruby-input');
@@ -366,9 +365,6 @@
   }
   function updateMode(on) {
     rubyMode = Boolean(annotations && annotationsEditable && on);
-    rubyButton.setAttribute('aria-pressed', String(rubyMode));
-    rubyButton.querySelector('.button-state').textContent = rubyMode ? 'ON' : 'OFF';
-    rubyButton.setAttribute('aria-label', `読み仮名編集：${rubyMode ? 'ON' : 'OFF'}`);
     rubyHelp.hidden = !rubyMode;
     root.classList.toggle('ruby-mode', rubyMode);
     root.dispatchEvent(new CustomEvent('reader-ruby-mode', { detail: rubyMode }));
@@ -449,10 +445,6 @@
   editor.addEventListener('cancel', e => { e.preventDefault(); finishEdit(); });
   editor.addEventListener('close', () => { if (!editor.open && !editorSuspended) finishEdit(); });
   let editModeGuard = async () => true;
-  rubyButton.onclick = async () => {
-    if (!await editModeGuard(rubyMode)) return;
-    const anchor = capture(); updateMode(!rubyMode); layout(anchor);
-  };
   // A click is accepted only after a short stationary pointer gesture. Native
   // scrolling/selection stays enabled; cancellation or movement rejects a tap.
   let gesture = null;
@@ -522,7 +514,7 @@
       finishEdit(); source = text; annotations = model;
       displayEnd = editable ? null : end;
       annotationsEditable = editable;
-      rubyButton.hidden = !model || !editable; updateMode(false);
+      updateMode(false);
       savedAnchor = null; layout(null);
     },
     leave() { finishEdit(); updateMode(false); },
@@ -546,6 +538,10 @@
     setEditModeGuard(guard) { editModeGuard = guard; },
     setReadingChangeGuard(guard) { readingChangeGuard = guard; },
     setRubyMode(on) { const anchor = capture(); finishEdit(); updateMode(on); layout(anchor); },
+    async activateRubyMode() {
+      if (!await editModeGuard(true)) return false;
+      const anchor = capture(); finishEdit(); updateMode(true); layout(anchor); return true;
+    },
     refresh(anchor = savedAnchor) { savedAnchor = anchor; layout(anchor); }
   };
 })();

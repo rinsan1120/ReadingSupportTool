@@ -795,7 +795,6 @@
   function toolbarLocked() {
     return !toolbarMobile.matches || view !== 'reading' || phase === 'countdown'
       || window.ManuscriptWriting.enabled
-      || $('ruby-mode').getAttribute('aria-pressed') === 'true'
       || Boolean(document.querySelector('dialog[open]'))
       || Boolean(document.activeElement?.matches('input,textarea,select'));
   }

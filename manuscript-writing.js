@@ -117,6 +117,7 @@
     pen: '本文付近をドラッグして赤い線。スクロールは「書き込みOFF」で。',
     marker: '最初の文字から最後の文字へなぞって強調。スクロールは「書き込みOFF」で。',
     memo: '本文付近をタップしてメモ。右のメモをタップすると編集できます。',
+    ruby: '文字の前後をタップして読み仮名を追加。読み仮名を選ぶと編集できます。',
     eraser: '線・マーカー・メモをタップすると、その書き込みを削除します。'
   };
   const svg = (name, attributes, parent) => {
@@ -168,7 +169,7 @@
     $('normal-tools').hidden = enabled || !editable;
     if (changed) stage.dispatchEvent(new CustomEvent('reader-writing-mode', { bubbles: true }));
     stage.classList.toggle('writing-active', enabled);
-    stage.classList.toggle('writing-drag', enabled && tool !== 'memo');
+    stage.classList.toggle('writing-drag', enabled && !['memo', 'ruby'].includes(tool));
     document.querySelectorAll('[data-writing-tool]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.writingTool === tool)));
     $('marker-colors').hidden = !enabled || tool !== 'marker';
     document.querySelectorAll('[data-marker-color]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.markerColor === markerColor)));
@@ -178,8 +179,8 @@
   function setMode(on) {
     if (on && !editable) return;
     const anchor = window.Reader.capture();
-    cancelPending(); enabled = Boolean(model && on);
-    if (enabled) window.Reader.setRubyMode(false);
+    cancelPending(); window.Reader.setRubyMode(false); enabled = Boolean(model && on);
+    if (!enabled && tool === 'ruby') tool = 'pen';
     controls(); render(); window.Reader.restore(anchor);
   }
   function strokePoints(item, geometry) {
@@ -306,6 +307,7 @@
   }
   stage.addEventListener('pointerdown', e => {
     if (!enabled || !editable) return;
+    if (tool === 'ruby') return;
     if (!e.isPrimary) { releaseGesture(); render(); return; }
     if (e.button !== 0 || e.target.closest('.writing-memo') || editor.open) return;
     if ([...memos.children].some(note => {
@@ -354,7 +356,15 @@
   });
   stage.addEventListener('pointercancel', () => { releaseGesture(); render(); });
   stage.addEventListener('lostpointercapture', () => { if (gesture) { gesture = null; render(); } });
-  document.querySelectorAll('[data-writing-tool]').forEach(button => button.onclick = () => { if (!editable) return; cancelPending(); tool = button.dataset.writingTool; controls(); render(); });
+  document.querySelectorAll('[data-writing-tool]').forEach(button => button.onclick = async () => {
+    if (!editable) return;
+    const next = button.dataset.writingTool;
+    cancelPending();
+    if (next === 'ruby') {
+      if (!await window.Reader.activateRubyMode()) return;
+    } else window.Reader.setRubyMode(false);
+    tool = next; controls(); render();
+  });
   document.querySelectorAll('[data-marker-color]').forEach(button => button.onclick = () => { if (!editable) return; cancelPending(); markerColor = button.dataset.markerColor; controls(); render(); });
   $('writing-off').onclick = () => setMode(false);
   $('writing-undo').onclick = () => { if (!editable) return; cancelPending(); model?.undo(); render(); };
@@ -373,7 +383,6 @@
   window.visualViewport?.addEventListener('resize', fitEditor);
   window.visualViewport?.addEventListener('scroll', fitEditor);
   root.addEventListener('reader-layout', () => { releaseGesture(); render(); });
-  root.addEventListener('reader-ruby-mode', e => { if (e.detail) setMode(false); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) cancelPending(); });
   addEventListener('scroll', () => {
     if (gesture && Math.abs(scrollY - gesture.scroll) > 2) { releaseGesture(); render(); }
