@@ -116,7 +116,8 @@ const readonly = async page => {
       }
       // Changing the estimate never changes the measured source count.
       await page.locator('#preparation-target').fill(''); await page.locator('#start').click();
-      assert.equal(await page.locator('#countdown').isVisible(), false);
+      assert.equal(await page.locator('#countdown').textContent(), '3');
+      await page.locator('#reader-back').click(); await page.locator('#prepare-time').click();
       await page.locator('#preparation-target').fill(String(count * 3));
       assert.equal(await page.locator('#target-count').inputValue(), String(count * 3));
       await page.evaluate(() => window.scrollTo(0, 700));
@@ -139,6 +140,10 @@ const readonly = async page => {
       assert.equal(result.target, count * 3);
       const speed = (200 + count) / (30 + result.history[1].seconds) * 60;
       assert.match(await page.locator('#result-summary').textContent(), new RegExp(`平均${Math.round(speed).toLocaleString()}文字/分`));
+      await page.locator('#result-target').fill('');
+      assert.equal(await page.locator('#estimate').textContent(), `平均${Math.round(speed).toLocaleString()}文字/分`);
+      await page.locator('#result-target').fill(String(count * 3));
+      assert.match(await page.locator('#estimate').textContent(), /分$/);
       assert.deepEqual(Object.keys(result.history[1]).sort(), ['characters', 'seconds', 'type']);
       await page.locator('#again').click();
       assert.equal(await page.locator('#time-text').inputValue(), source);

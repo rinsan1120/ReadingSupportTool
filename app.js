@@ -263,7 +263,7 @@
       timeAnnotations && $('time-text').value === timeInputSnapshot ? timeAnnotations.source : $('time-text').value;
     const retainedRead = nextMode === 'read' && $('read-text').value === readInputSnapshot;
     if (!countText(text) && !retainedRead) { notify('朗読する文章を入力してください。'); return; }
-    if (nextMode === 'time' && !validTarget(target)) { notify('作品全体の文字数を1〜1,000,000,000の整数で入力してください。'); $('target-count').focus(); return; }
+    if (nextMode === 'time' && target !== '' && !validTarget(target)) { notify('作品全体の文字数を1〜1,000,000,000の整数で入力してください。'); $('target-count').focus(); return; }
     if (nextMode === 'time' && sourceType === 'custom' && partialOn && !validPartialLimit()) {
       notify('読む文字数の目安は正の整数で入力してください。'); $('partial-limit').focus(); return;
     }
@@ -591,7 +591,7 @@
   $('start').onclick = () => {
     if (phase !== 'idle' || document.hidden) return;
     if (measuredPartial && (!validPartialLimit() || !measuredCount)) { notify('読む文字数の目安は正の整数で入力してください。'); return; }
-    if (!validTarget(target)) { notify('作品全体の文字数を1〜1,000,000,000の整数で入力してください。'); $('preparation-target').focus(); return; }
+    if (target !== '' && !validTarget(target)) { notify('作品全体の文字数を1〜1,000,000,000の整数で入力してください。'); $('preparation-target').focus(); return; }
     $('operation-dialog').close(); $('settings-dialog').close();
     phase = 'countdown'; $('start').disabled = true; $('open-settings').disabled = true;
     ['preparation-partial-enabled', 'preparation-partial-limit'].forEach(id => $(id).disabled = true);
@@ -626,7 +626,8 @@
     const seconds = history.reduce((sum, r) => sum + r.seconds, 0);
     const speed = seconds > 0 ? characters / seconds * 60 : 0;
     const minutes = Number(target) / speed;
-    $('estimate').textContent = speed && validTarget(target) ? `約${(minutes < 10 ? Math.max(.1, Math.round(minutes * 10) / 10) : Math.round(minutes)).toLocaleString()}分` : 'まだ推定できません';
+    $('estimate').textContent = history.length && target === '' ? `平均${Math.round(speed).toLocaleString()}文字/分`
+      : speed && validTarget(target) ? `約${(minutes < 10 ? Math.max(.1, Math.round(minutes * 10) / 10) : Math.round(minutes)).toLocaleString()}分` : 'まだ推定できません';
     $('result-summary').textContent = history.length ? `${history.length}回の計測 ／ 合計${characters.toLocaleString()}文字・実測${seconds.toFixed(1)}秒 ／ 平均${Math.round(speed).toLocaleString()}文字/分` : '文章を一度読むと、朗読時間の目安が分かります。';
     $('history').replaceChildren();
     history.forEach((record, i) => {
