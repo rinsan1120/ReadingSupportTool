@@ -10,7 +10,7 @@
   let writingGeometry = null;
   const readingEdge = () => document.querySelector('.reader-controls').getBoundingClientRect().bottom + 12;
   let annotations = null, annotationsEditable = true, rubyMode = false, draft = null, editAnchor = null;
-  let readingChangeGuard = async () => true, readingChangePending = false;
+  let readingChangeGuard = async () => true, readingChangePending = false, editorSuspended = false;
   const rubyButton = document.getElementById('ruby-mode');
   const rubyHelp = document.getElementById('ruby-help');
   const editor = document.getElementById('ruby-dialog');
@@ -418,7 +418,18 @@
     if ((!remove && existing?.text === text) || (remove && !existing)) { finishEdit(); return; }
     readingChangePending = true;
     try {
-      if (!await readingChangeGuard()) { rubyInput.focus({ preventScroll: true }); return; }
+      // Suspend the editor without committing or discarding its draft while
+      // the writing-position confirmation is shown.
+      editorSuspended = true; editor.close();
+      let approved;
+      try { approved = await readingChangeGuard(); }
+      finally {
+        editorSuspended = false;
+        if (draft === currentDraft && annotations === model) {
+          editor.showModal(); rubyInput.focus({ preventScroll: true });
+        }
+      }
+      if (!approved) return;
       if (draft !== currentDraft || annotations !== model || !editor.open) return;
       if (remove) model.remove(currentDraft.offset);
       else if (!model.set(currentDraft.offset, text)) return;
@@ -436,8 +447,10 @@
   document.getElementById('ruby-delete').onclick = () => commitReading(true);
   document.getElementById('ruby-cancel').onclick = finishEdit;
   editor.addEventListener('cancel', e => { e.preventDefault(); finishEdit(); });
-  editor.addEventListener('close', () => { if (!editor.open) finishEdit(); });
-  rubyButton.onclick = () => {
+  editor.addEventListener('close', () => { if (!editor.open && !editorSuspended) finishEdit(); });
+  let editModeGuard = async () => true;
+  rubyButton.onclick = async () => {
+    if (!await editModeGuard(rubyMode)) return;
     const anchor = capture(); updateMode(!rubyMode); layout(anchor);
   };
   // A click is accepted only after a short stationary pointer gesture. Native
@@ -528,6 +541,9 @@
       layout(anchor);
     },
     capture, restore, printSnapshot, getWritingGeometry,
+    get hasPending() { return Boolean(draft); },
+    focusPending() { if (editor.open) rubyInput.focus({ preventScroll: true }); },
+    setEditModeGuard(guard) { editModeGuard = guard; },
     setReadingChangeGuard(guard) { readingChangeGuard = guard; },
     setRubyMode(on) { const anchor = capture(); finishEdit(); updateMode(on); layout(anchor); },
     refresh(anchor = savedAnchor) { savedAnchor = anchor; layout(anchor); }

@@ -11,10 +11,10 @@
   <script src="samples.js" defer></script>
   <script src="reading-annotations.js" defer></script>
   <script src="html-ruby.js" defer></script>
-  <script src="reader.js" defer></script>
+  <script src="reader.js?v=save-confirmation" defer></script>
   <script src="manuscript-writing.js" defer></script>
   <script src="manuscript-print.js" defer></script>
-  <script src="app.js?v=2fb2b09" defer></script>
+  <script src="app.js?v=save-confirmation" defer></script>
 </head>
 <body>
   <header class="site-header"><button class="brand" data-go="home"><span aria-hidden="true">☾</span> 朗読支援ツール <small>（仮）</small></button></header>
@@ -31,7 +31,7 @@
       <button class="back" data-go="home">← ホーム</button><p class="eyebrow">READ</p><h1 id="read-title" tabindex="-1">文章を読む</h1>
       <label for="read-text">朗読する作品の本文</label><textarea id="read-text" rows="12" placeholder="全文でも、一部でも。ここに文章を貼り付けてください。" spellcheck="false" autocomplete="off"></textarea>
       <div class="inline spread"><p id="read-count" class="muted">0文字</p><button id="clear-read" class="quiet">本文を削除</button></div>
-      <p id="annotation-retention" class="muted" hidden>読み仮名を保持しています。本文を変更して朗読画面を開く場合は、読み仮名の削除を確認します。</p>
+      <p id="annotation-retention" class="muted" hidden>読み仮名・書き込みを保持しています。本文を変更して朗読画面を開く場合は、これらの削除を確認します。</p>
       <p id="writing-retention" class="muted" hidden>仮保存中の文章を表示しています。<br>画面を更新した場合は、この仮保存は消去されます。</p>
       <div class="inline"><button id="import-manuscript">原稿ファイルを読み込む</button><input id="manuscript-file" type="file" accept=".json,application/json" hidden>
       <button id="open-read" class="primary">表示を確認して読む →</button></div>
@@ -103,6 +103,18 @@
     </form>
   </dialog>
   <dialog id="writing-memo-dialog" aria-labelledby="writing-memo-title"><form id="writing-memo-form"><h2 id="writing-memo-title">文字メモ</h2><p class="muted">本文の右側に表示します。</p><label for="writing-memo-input">短いメモ（40文字以内）</label><input id="writing-memo-input" type="text" maxlength="40" required autocomplete="off" enterkeyhint="done"><div class="ruby-editor-actions"><button id="writing-memo-cancel" type="button">キャンセル</button><button id="writing-memo-delete" type="button" hidden>削除</button><button id="writing-memo-save" type="submit" class="primary" disabled>登録</button></div></form></dialog>
+  <dialog id="save-navigation-dialog" aria-labelledby="save-navigation-title">
+    <h2 id="save-navigation-title">原稿を保存しますか？</h2>
+    <div id="save-navigation-prompt">
+      <p>文章は仮保存状態です。読み仮名・赤ペンなどの書き込み情報は、<br>文章を編集した場合削除されます。</p>
+      <div class="inline"><button id="save-navigation-cancel">キャンセル</button><button id="save-navigation-discard">保存せず移動</button><button id="save-navigation-download" class="primary">原稿を保存</button></div>
+    </div>
+    <div id="save-navigation-started" hidden>
+      <p>ダウンロードを開始しました</p><p>端末に保存されたことをご確認ください。</p>
+      <div class="inline"><button id="save-navigation-return">朗読画面に戻る</button><button id="save-navigation-move" class="primary">移動する</button></div>
+    </div>
+    <p id="save-navigation-error" role="alert"></p>
+  </dialog>
   <dialog id="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title">操作の確認</h2><p id="confirm-message"></p><div class="inline"><button id="confirm-cancel">キャンセル</button><button id="confirm-ok" class="primary">削除する</button></div></dialog>
 </body>
 </html>
