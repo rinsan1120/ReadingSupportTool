@@ -470,6 +470,28 @@ footer {
   line-height:1.4;
   margin:28px 0 12px
 }
+.result-tabs {
+  display:flex;
+  gap:8px;
+  border-bottom:1px solid var(--border);
+  margin:0 0 22px
+}
+.result-tab {
+  flex:1;
+  border:0;
+  border-bottom:3px solid transparent;
+  border-radius:8px 8px 0 0;
+  background:transparent;
+  color:var(--muted)
+}
+.result-tab[aria-selected="true"] {
+  color:var(--blue);
+  border-bottom-color:var(--accent);
+  background:#182942
+}
+.result-description { color:var(--muted); line-height:1.8; margin:0 }
+[role="tabpanel"] label { display:block; margin:20px 0 8px }
+[role="tabpanel"] .inline input { max-width:260px }
 .history {
   list-style:none;
   padding:0

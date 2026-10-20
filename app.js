@@ -3,7 +3,7 @@
   const $ = id => document.getElementById(id);
   const STORAGE = 'reading-support-results-v1';
   let view = 'home', mode = 'read', sourceType = 'sample', sample = null;
-  let history = [], target = '', targetManual = false;
+  let history = [], target = '', targetManual = false, plannedMinutes = '20';
   let phase = 'idle', began = 0, countdownTimer = 0, elapsedTimer = 0, noticeTimer = 0;
   let measuredCount = 0, measuredType = 'sample', wakeLock = null, wakePending = false, wakeGeneration = 0;
   let partialOn = false, partialLimit = '200', measuredPartial = false, timingRange = null;
@@ -123,9 +123,10 @@
     }
   }
   function validTarget(value) { const n = Number(value); return Number.isSafeInteger(n) && n > 0 && n <= 1e9; }
+  function validMinutes(value) { const n = Number(value); return value !== '' && Number.isFinite(n) && n > 0; }
   function notify(message) { $('notice').textContent = message; $('notice').hidden = false; clearTimeout(noticeTimer); noticeTimer = setTimeout(() => $('notice').hidden = true, 6500); }
   function persist() {
-    try { sessionStorage.setItem(STORAGE, JSON.stringify({ version: 1, history, target: validTarget(target) ? Number(target) : null })); }
+    try { sessionStorage.setItem(STORAGE, JSON.stringify({ version: 1, history, target: validTarget(target) ? Number(target) : null, plannedMinutes: validMinutes(plannedMinutes) ? Number(plannedMinutes) : 20 })); }
     catch { notify('このブラウザでは結果を保存できません。この画面を開いている間は利用できます。'); }
   }
   try {
@@ -134,6 +135,7 @@
       history = stored.history.filter(r => Number.isSafeInteger(r.characters) && r.characters > 0 && Number.isFinite(r.seconds) && r.seconds > 0 && ['sample', 'custom'].includes(r.type))
         .map(r => ({ characters: r.characters, seconds: r.seconds, type: r.type }));
       if (validTarget(stored.target)) { target = String(stored.target); targetManual = true; }
+      if (validMinutes(stored.plannedMinutes)) plannedMinutes = String(stored.plannedMinutes);
     }
   } catch { /* Storage is optional; text is never stored. */ }
   function setTarget(value, manual = false) {
@@ -150,12 +152,13 @@
     $('preparation-guidance').textContent = (measuredPartial ? '表示された文章を読み終えたら「計測終了」を押してください。' : '全文を読み終えたら「読了」を押してください。') + '計測中に入力画面やホームへ戻る、または別のタブ・アプリへ移動すると、その回の計測結果は保存されません。';
   }
   setTarget(target);
+  $('planned-minutes').value = plannedMinutes;
   function show(next) {
     if (view === 'reading' && next !== 'reading') { window.ManuscriptWriting.leave(); window.ManuscriptPrint.clear(); window.Reader.leave(); cancelMeasurement(); releaseWake(); }
     document.querySelectorAll('dialog[open]').forEach(d => d.close());
     document.querySelectorAll('.view').forEach(el => el.hidden = el.id !== next);
     view = next; $('footer').hidden = next === 'reading';
-    if (next === 'results') renderResults();
+    if (next === 'results') { selectResultTab('time'); renderResults(); }
     $('existing-results').hidden = !history.length;
     $('annotation-retention').hidden = !hasReadings(readAnnotations);
     $('time-annotation-retention').hidden = !hasReadings(timeAnnotations) && !timeMarks?.hasMarks;
@@ -259,6 +262,22 @@
   $('target-count').addEventListener('input', () => { setTarget($('target-count').value, true); persist(); });
   $('preparation-target').addEventListener('input', () => { setTarget($('preparation-target').value, true); persist(); });
   $('result-target').addEventListener('input', () => { setTarget($('result-target').value, true); persist(); renderResults(); });
+  $('planned-minutes').addEventListener('input', () => { plannedMinutes = $('planned-minutes').value; persist(); renderResults(); });
+  function selectResultTab(tab) {
+    const time = tab === 'time';
+    $('result-time-tab').setAttribute('aria-selected', String(time)); $('result-time-tab').tabIndex = time ? 0 : -1;
+    $('result-speed-tab').setAttribute('aria-selected', String(!time)); $('result-speed-tab').tabIndex = time ? -1 : 0;
+    $('result-time-panel').hidden = !time; $('result-speed-panel').hidden = time;
+  }
+  [['result-time-tab', 'time'], ['result-speed-tab', 'speed']].forEach(([id, tab]) => {
+    $(id).addEventListener('click', () => selectResultTab(tab));
+    $(id).addEventListener('keydown', event => {
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.key === 'Home' || event.key === 'End') {
+        event.preventDefault(); const next = event.key === 'Home' ? 'time' : event.key === 'End' ? 'speed' : tab === 'time' ? 'speed' : 'time';
+        selectResultTab(next); $(`result-${next}-tab`).focus();
+      }
+    });
+  });
   async function openReader(nextMode) {
     if (openingReader) return;
     const pasted = nextMode === 'read' && pendingReadPaste?.input === $('read-text').value ? pendingReadPaste.model : null;
@@ -696,9 +715,14 @@
     const seconds = history.reduce((sum, r) => sum + r.seconds, 0);
     const speed = seconds > 0 ? characters / seconds * 60 : 0;
     const minutes = Number(target) / speed;
-    $('estimate').textContent = history.length && target === '' ? `平均${Math.round(speed).toLocaleString()}文字/分`
-      : speed && validTarget(target) ? `約${(minutes < 10 ? Math.max(.1, Math.round(minutes * 10) / 10) : Math.round(minutes)).toLocaleString()}分` : 'まだ推定できません';
-    $('result-summary').textContent = history.length ? `${history.length}回の計測 ／ 合計${characters.toLocaleString()}文字・実測${seconds.toFixed(1)}秒 ／ 平均${Math.round(speed).toLocaleString()}文字/分` : '文章を一度読むと、朗読時間の目安が分かります。';
+    $('time-estimate').textContent = !history.length ? '計測結果がありません'
+      : target === '' ? '作品の文字数を入力してください'
+        : !validTarget(target) ? '作品の文字数を正しく入力してください'
+          : `約${(minutes < 10 ? Math.max(.1, Math.round(minutes * 10) / 10) : Math.round(minutes)).toLocaleString()}分`;
+    $('speed-estimate').textContent = !history.length ? '計測結果がありません'
+      : !validMinutes(plannedMinutes) ? '予定時間を正しく入力してください'
+        : `約${Math.round(Number(plannedMinutes) * speed).toLocaleString()}文字`;
+    $('result-summary').textContent = history.length ? `合計${characters.toLocaleString()}文字・実測${seconds.toFixed(1)}秒 ／ 平均${Math.round(speed).toLocaleString()}文字/分` : '';
     $('history').replaceChildren();
     history.forEach((record, i) => {
       const li = document.createElement('li'), detail = document.createElement('div'), small = document.createElement('small'), remove = document.createElement('button');
