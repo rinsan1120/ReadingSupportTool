@@ -6,6 +6,7 @@
   let history = [], target = '', targetManual = false;
   let phase = 'idle', began = 0, countdownTimer = 0, elapsedTimer = 0, noticeTimer = 0;
   let measuredCount = 0, measuredType = 'sample', wakeLock = null, wakePending = false, wakeGeneration = 0;
+  let partialOn = false, partialLimit = '200', measuredPartial = false, timingRange = null;
   let readAnnotations = new window.ReadingAnnotations();
   let readMarks = new window.ManuscriptMarks();
   const writingLoss = () => readMarks.hasMarks ? ' 現在の書き込みも失われます。残すには、置き換え前に「原稿を保存」でJSONへ保存してください。' : '';
@@ -51,6 +52,74 @@
     return Array.from(derived.replace(/\s/gu, '')).length;
   }
   window.countReadingCharacters = countText;
+  function validPartialLimit() { const n = Number(partialLimit); return Number.isSafeInteger(n) && n > 0; }
+  function partialReadingRange(text, limit) {
+    // Keep original UTF-16 endpoints beside the same code points counted by
+    // countText. Removed ruby/note text can never supply the stopping period.
+    let offset = 0;
+    let units = Array.from(text, char => { const start = offset; offset += char.length; return { char, start, end: offset }; });
+    function strip(pattern, basePrefix = null) {
+      const removals = [];
+      for (const m of units.map(u => u.char).join('').matchAll(pattern)) {
+        if (basePrefix === null) removals.push({ start: m.index, end: m.index + m[0].length, attach: true });
+        else {
+          if (basePrefix) removals.push({ start: m.index, end: m.index + basePrefix, attach: false });
+          removals.push({ start: m.index + basePrefix + m[1].length, end: m.index + m[0].length, attach: true });
+        }
+      }
+      if (!removals.length) return;
+      let position = 0, index = 0;
+      const kept = [];
+      for (const unit of units) {
+        while (index < removals.length && removals[index].end <= position) index++;
+        const removal = removals[index];
+        if (removal && position >= removal.start && position < removal.end) {
+          // Include a base character's original ruby suffix when it ends the
+          // range, so the displayed prefix remains countable by countText too.
+          if (removal.attach && kept.length) kept.at(-1).end = unit.end;
+        } else kept.push(unit);
+        position += unit.char.length;
+      }
+      units = kept;
+    }
+    strip(/［＃[^\r\n]*?］/g);
+    strip(/｜([^｜《》\r\n]+)《[^《》\r\n]+》/g, 1);
+    strip(/([\p{Script=Han}々〆ヵヶ]+)《[^《》\r\n]+》/gu, 0);
+    let count = 0, end = text.length;
+    for (const unit of units) {
+      if (/\s/u.test(unit.char)) continue;
+      count++;
+      if (count > limit && unit.char === '。') { end = unit.end; break; }
+    }
+    while (end < text.length && /[」』）】〕〉》］｝〗〙〛’”»›)\]}]/u.test(text[end])) end++;
+    // Count against the full manuscript's parsed units: a cutoff can be inside
+    // a ruby base, where reparsing the prefix alone would count a stray ｜.
+    const actualCount = units.reduce((sum, unit) => sum + (unit.start < end && !/\s/u.test(unit.char) ? 1 : 0), 0);
+    return { end, count: actualCount, full: end === text.length };
+  }
+  function customTimingText() {
+    return timeAnnotations && $('time-text').value === timeInputSnapshot ? timeAnnotations.source : $('time-text').value;
+  }
+  function syncPartialInputs() {
+    const valid = validPartialLimit();
+    const text = view === 'reading' && mode === 'time' && sourceType === 'custom' ? displayedText : customTimingText();
+    const range = partialOn && valid ? partialReadingRange(text, Number(partialLimit)) : null;
+    ['partial', 'preparation-partial'].forEach(prefix => {
+      $(`${prefix}-enabled`).checked = partialOn;
+      $(`${prefix}-limit`).value = partialLimit;
+      $(`${prefix}-fields`).hidden = !partialOn;
+      $(`${prefix}-count`).textContent = !valid ? '読む文字数の目安は正の整数で入力してください。'
+        : `実際に読む文字数：${range?.count ?? 0}文字${range?.full ? '（全文が対象です。）' : ''}`;
+    });
+    if (view === 'reading' && mode === 'time' && phase === 'idle') {
+      measuredPartial = sourceType === 'custom' && partialOn;
+      timingRange = measuredPartial ? range : null;
+      measuredCount = measuredPartial ? timingRange?.count ?? 0 : countText(displayedText);
+      window.Reader.setDisplayEnd(measuredPartial ? timingRange?.end ?? 0 : null);
+      updatePreparationInfo();
+      $('start').disabled = measuredPartial && (!valid || !measuredCount);
+    }
+  }
   function validTarget(value) { const n = Number(value); return Number.isSafeInteger(n) && n > 0 && n <= 1e9; }
   function notify(message) { $('notice').textContent = message; $('notice').hidden = false; clearTimeout(noticeTimer); noticeTimer = setTimeout(() => $('notice').hidden = true, 6500); }
   function persist() {
@@ -72,7 +141,11 @@
   }
   function updatePreparationInfo() {
     const total = validTarget(target) ? `${Number(target).toLocaleString()}文字` : '未設定';
-    $('preparation-info').textContent = `計測する本文：${measuredCount}文字 ／ 作品全体：${total}`;
+    $('preparation-info').textContent = measuredPartial
+      ? `読む文字数の目安：${validPartialLimit() ? Number(partialLimit) : '未設定'}文字\n実際に読む文字数：${measuredCount}文字${timingRange?.full ? '（全文が対象です。）' : ''}\n作品全体の文字数：${total}`
+      : `計測する本文：${measuredCount}文字 ／ 作品全体：${total}`;
+    $('finish').textContent = measuredPartial ? '計測終了' : '読了';
+    $('preparation-guidance').textContent = (measuredPartial ? '表示された文章を読み終えたら「計測終了」を押してください。' : '全文を読み終えたら「読了」を押してください。') + '別タブや別アプリに移ると、その回の計測は無効になります。';
   }
   setTarget(target);
   function show(next) {
@@ -102,12 +175,24 @@
     $('custom-input').hidden = sourceType !== 'custom'; $('apply-count').hidden = sourceType !== 'custom';
     $('sample-options').hidden = sourceType !== 'sample'; $('sample-info').hidden = sourceType !== 'sample';
     if (sourceType === 'custom' && !targetManual) setTarget(countText($('time-text').value) || '');
+    syncPartialInputs();
   }));
   $('read-text').addEventListener('input', () => $('read-count').textContent = `${countText($('read-text').value)}文字`);
   $('time-text').addEventListener('input', () => {
     const count = countText($('time-text').value);
     $('time-count').textContent = `計測する本文：${count}文字`;
     if (!targetManual) setTarget(count || '');
+    syncPartialInputs();
+  });
+  ['partial', 'preparation-partial'].forEach(prefix => {
+    $(`${prefix}-enabled`).addEventListener('change', () => {
+      if (phase !== 'idle') return;
+      partialOn = $(`${prefix}-enabled`).checked; syncPartialInputs();
+    });
+    $(`${prefix}-limit`).addEventListener('input', () => {
+      if (phase !== 'idle') return;
+      partialLimit = $(`${prefix}-limit`).value; syncPartialInputs();
+    });
   });
   // Only plain source enters the textarea. Commit the separately validated
   // ruby ranges together with it after replacement confirmation has succeeded.
@@ -179,6 +264,9 @@
     const retainedRead = nextMode === 'read' && $('read-text').value === readInputSnapshot;
     if (!countText(text) && !retainedRead) { notify('朗読する文章を入力してください。'); return; }
     if (nextMode === 'time' && !validTarget(target)) { notify('作品全体の文字数を1〜1,000,000,000の整数で入力してください。'); $('target-count').focus(); return; }
+    if (nextMode === 'time' && sourceType === 'custom' && partialOn && !validPartialLimit()) {
+      notify('読む文字数の目安は正の整数で入力してください。'); $('partial-limit').focus(); return;
+    }
     openingReader = true;
     try {
       if (nextMode === 'read' && text !== readAnnotations.source) {
@@ -208,11 +296,15 @@
     $('export-pdf').hidden = mode !== 'read';
     $('measure-current').hidden = mode !== 'read';
     $('writing-mode').hidden = mode !== 'read';
-    measuredCount = countText(text); measuredType = sourceType;
+    measuredPartial = mode === 'time' && sourceType === 'custom' && partialOn;
+    timingRange = measuredPartial && validPartialLimit() ? partialReadingRange(text, Number(partialLimit)) : null;
+    measuredCount = measuredPartial ? timingRange?.count ?? 0 : countText(text); measuredType = sourceType;
+    $('preparation-partial').hidden = mode !== 'time' || sourceType !== 'custom';
     updatePreparationInfo();
     const model = mode === 'read' ? readAnnotations : sourceType === 'custom' ? timeAnnotations : null;
-    window.Reader.show(text, model, { editable: mode === 'read' });
+    window.Reader.show(text, model, { editable: mode === 'read', end: measuredPartial ? timingRange?.end ?? 0 : null });
     window.ManuscriptWriting.show(mode === 'read' ? readMarks : sourceType === 'custom' && timeMarks?.source === text ? timeMarks : null, { editable: mode === 'read' });
+    syncPartialInputs();
   }
   $('open-read').onclick = () => openReader('read'); $('prepare-time').onclick = () => openReader('time');
   let preparingPDF = false, pdfAnchor = null;
@@ -491,13 +583,16 @@
     clearTimeout(countdownTimer); clearInterval(elapsedTimer);
     phase = 'idle'; $('countdown').hidden = true; $('measurement-bar').hidden = true;
     $('start').disabled = false;
+    ['preparation-partial-enabled', 'preparation-partial-limit'].forEach(id => $(id).disabled = false);
   }
   const clock = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
   $('start').onclick = () => {
     if (phase !== 'idle' || document.hidden) return;
+    if (measuredPartial && (!validPartialLimit() || !measuredCount)) { notify('読む文字数の目安は正の整数で入力してください。'); return; }
     if (!validTarget(target)) { notify('作品全体の文字数を1〜1,000,000,000の整数で入力してください。'); $('preparation-target').focus(); return; }
     $('operation-dialog').close(); $('settings-dialog').close();
     phase = 'countdown'; $('start').disabled = true; $('open-settings').disabled = true;
+    ['preparation-partial-enabled', 'preparation-partial-limit'].forEach(id => $(id).disabled = true);
     // Remove preparation controls and scroll to the beginning BEFORE counting.
     $('preparation').hidden = true; $('measurement-bar').hidden = false; $('finish').disabled = true;
     $('elapsed').textContent = '準備中'; window.scrollTo(0, 0);

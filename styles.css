@@ -223,6 +223,17 @@ input[type=number] {
 #pdf-dialog p { line-height:1.8; }
 #pdf-small-warning { color:#fcd58a; }
 #confirm-message { white-space: pre-line; }
+.partial-measurement { margin: 16px 0; }
+.partial-measurement .choice { margin-bottom: 0; }
+#preparation-info { white-space: pre-line; }
+.reading-end-marker {
+  margin: 28px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font: 14px/1.8 system-ui, sans-serif;
+  text-align: center;
+}
 @page { size:A4 portrait; margin:15mm; }
 @media print {
   html:has(body.manuscript-printing) { background:#fff!important; color-scheme:light; scrollbar-gutter:auto; }

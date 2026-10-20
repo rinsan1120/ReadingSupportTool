@@ -4,6 +4,7 @@
   const root = document.getElementById('reader');
   const status = document.getElementById('layout-status');
   let source = '', settings = { width: 900, fontSize: 22, height: 1.8, breaks: 5 };
+  let displayEnd = null;
   let blocks = [], lastAvailable = 0, lastMobile = false, scheduled = 0;
   let savedAnchor = null;
   let writingGeometry = null;
@@ -67,6 +68,7 @@
     const positioned = entries.map(entry => ({ entry, at: rubies.find(r => entry.offset > r.start && entry.offset < r.end)?.end ?? entry.offset }));
     positioned.sort((a, b) => a.at - b.at || a.entry.offset - b.entry.offset);
     for (const { entry, at } of positioned) {
+      if (displayEnd !== null && displayEnd < source.length && (entry.offset >= displayEnd || at > displayEnd)) continue;
       if (entry.offset < start || entry.offset > start + text.length) continue;
       addSource(at);
       add(`【${entry.text}】`, entry.offset, entry.offset, true, entry === draft);
@@ -195,11 +197,12 @@
     root.style.lineHeight = settings.height;
     root.replaceChildren(); blocks = [];
     // Empty original lines are natural boundaries; retain all whitespace verbatim.
-    const chunks = source.split(/((?:\r\n|\n|\r)[\t \u3000]*(?:\r\n|\n|\r)(?:[\t \u3000]*(?:\r\n|\n|\r))*)/);
+    const visibleText = displayEnd === null ? source : source.slice(0, displayEnd);
+    const chunks = visibleText.split(/((?:\r\n|\n|\r)[\t \u3000]*(?:\r\n|\n|\r)(?:[\t \u3000]*(?:\r\n|\n|\r))*)/);
     let start = 0, pendingText = '', pendingStart = 0;
     const positions = [...(annotations?.entries || []), ...(draft ? [draft] : [])].map(a => a.offset);
     const flushText = () => {
-      if (pendingText || (!source && positions.includes(0))) {
+      if (pendingText || (!visibleText && displayEnd === null && positions.includes(0))) {
         const el = document.createElement('div'); el.className = 'text-block';
         const block = { el, ...compose(pendingText, pendingStart), start: pendingStart, sourceEnd: pendingStart + pendingText.length, parts: [], lines: [] };
         appendRuns(block, el);
@@ -214,7 +217,7 @@
       const annotatedGap = index % 2 && positions.some(offset =>
         (offset > start && offset < start + text.length) ||
         (start === 0 && offset === 0) ||
-        (start + text.length === source.length && offset === source.length));
+        (start + text.length === visibleText.length && offset === visibleText.length));
       if (index % 2 && !annotatedGap) {
         flushText();
         const gap = document.createElement('div'); gap.className = 'natural-gap';
@@ -267,6 +270,10 @@
       }
     });
     status.textContent = unsupported ? 'この文章の一部では折り返しを優先し、自動区切りを適用していません。' : '';
+    if (displayEnd !== null && visibleText) {
+      const marker = document.createElement('p'); marker.className = 'reading-end-marker';
+      marker.textContent = 'ここまでが計測対象です。'; root.append(marker);
+    }
     lastAvailable = available;
     lastMobile = mobile.matches;
     restore(anchor);
@@ -497,13 +504,18 @@
   addEventListener('scroll', () => { savedAnchor = capture(); }, { passive: true });
   document.fonts.ready.then(() => { if (source) layout(savedAnchor); });
   window.Reader = {
-    show(text, model = null, { editable = true } = {}) {
+    show(text, model = null, { editable = true, end = null } = {}) {
       finishEdit(); source = text; annotations = model;
+      displayEnd = editable ? null : end;
       annotationsEditable = editable;
       rubyButton.hidden = !model || !editable; updateMode(false);
       savedAnchor = null; layout(null);
     },
     leave() { finishEdit(); updateMode(false); },
+    setDisplayEnd(end) {
+      if (annotationsEditable || displayEnd === end) return;
+      const anchor = capture(); displayEnd = end; layout(anchor);
+    },
     configure(next) {
       const anchor = capture();
       if (next.width !== undefined && !mobile.matches) settings.width = next.width;
