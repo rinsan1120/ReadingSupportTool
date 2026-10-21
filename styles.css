@@ -710,3 +710,5 @@ html { scrollbar-gutter: stable; }
 .memo-editable, .memo-editable .memo-tail, .memo-editable .memo-tip-layer { touch-action:none; }
 
 .memo-tip-layer { z-index:2; }
+
+.result-retention { margin:8px 0 0; }

@@ -5,7 +5,7 @@
   let view = 'home', mode = 'read', sourceType = 'sample', sample = null;
   let history = [], target = '', targetManual = false, plannedMinutes = '20';
   let phase = 'idle', began = 0, countdownTimer = 0, elapsedTimer = 0, noticeTimer = 0;
-  let measuredCount = 0, measuredType = 'sample', wakeLock = null, wakePending = false, wakeGeneration = 0;
+  let measuredCount = 0, measuredType = 'sample', lastMeasuredCustomText = null, wakeLock = null, wakePending = false, wakeGeneration = 0;
   let partialOn = false, partialLimit = '200', measuredPartial = false, timingRange = null;
   let readAnnotations = new window.ReadingAnnotations();
   let readMarks = new window.ManuscriptMarks();
@@ -708,7 +708,10 @@
     if (phase !== 'running') return;
     const seconds = (stopped - began) / 1000;
     cancelMeasurement();
-    if (Number.isFinite(seconds) && seconds > 0) { history.push({ characters: measuredCount, seconds, type: measuredType }); persist(); }
+    if (Number.isFinite(seconds) && seconds > 0) {
+      lastMeasuredCustomText = measuredType === 'custom' ? displayedText : null;
+      history.push({ characters: measuredCount, seconds, type: measuredType }); persist();
+    }
     show('results');
   };
   function renderResults() {
@@ -724,6 +727,11 @@
       : !validMinutes(plannedMinutes) ? '予定時間を正しく入力してください'
         : `約${Math.round(Number(plannedMinutes) * speed).toLocaleString()}文字`;
     $('result-summary').textContent = history.length ? `合計${characters.toLocaleString()}文字・実測${seconds.toFixed(1)}秒 ／ 平均${Math.round(speed).toLocaleString()}文字/分` : '';
+    const lastMeasurement = history.at(-1);
+    const currentText = $('time-text').value.replace(/\r\n?/g, '\n');
+    const retainedCustomText = lastMeasurement?.type === 'custom' && currentText && currentText === lastMeasuredCustomText?.replace(/\r\n?/g, '\n');
+    $('again').textContent = lastMeasurement?.type === 'custom' ? '入力した文章に戻る' : '計測設定に戻る';
+    $('result-retention').hidden = !retainedCustomText;
     $('history').replaceChildren();
     history.forEach((record, i) => {
       const li = document.createElement('li'), detail = document.createElement('div'), small = document.createElement('small'), remove = document.createElement('button');
