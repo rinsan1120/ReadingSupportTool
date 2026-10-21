@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b1325">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="description" content="文章を読みやすく整え、自分の朗読速度から作品の朗読時間を調べるツール。">
-  <title>朗読支援ツール（仮）</title>
+  <title>よみじたく | 朗読支援サイト</title>
   <link rel="stylesheet" href="styles.css?v=reader-toolbar">
   <script src="samples.js" defer></script>
   <script src="reading-annotations.js?v=memo-bubbles" defer></script>
@@ -17,10 +17,10 @@
   <script src="app.js?v=reader-toolbar" defer></script>
 </head>
 <body>
-  <header class="site-header"><button class="brand" data-go="home"><span aria-hidden="true">☾</span> 朗読支援ツール <small>（仮）</small></button></header>
+  <header class="site-header"><button class="brand" data-go="home"><span aria-hidden="true">☾</span> よみじたく <small>朗読支援サイト</small></button></header>
   <main>
     <section id="home" class="view narrow" aria-labelledby="home-title">
-      <p class="eyebrow">READING SUPPORT</p><h1 id="home-title" tabindex="-1">ことばに、<br>静かな余白を。</h1>
+      <p class="eyebrow">READING SUPPORT</p><h1 id="home-title" tabindex="-1">声にする前の、ひと支度。</h1>
       <p class="lead">読みやすいかたちで、あなたのペースで。<br>朗読のための、小さな道具です。</p>
       <div class="entry-grid">
         <button class="entry" data-go="read-input"><span class="entry-number">01 / READ</span><strong>文章を読む <span aria-hidden="true">↗</span></strong><span>好きな文章を貼り付けて、<br>読みやすい表示で朗読する。</span></button>
@@ -85,7 +85,7 @@
       <div id="result-speed-panel" role="tabpanel" aria-labelledby="result-speed-tab" hidden><p class="result-description">あなたの朗読速度から想定される時間当たりの朗読文字数</p><p id="speed-estimate" class="estimate" aria-live="polite"></p><label for="planned-minutes">予定している朗読時間</label><div class="inline"><input id="planned-minutes" type="number" min="0.000001" step="any" inputmode="decimal" value="20"><span>分</span></div></div>
       <p id="result-summary" class="muted"></p><p class="muted">間の取り方や作品によって、実際の時間は変わります。</p><div class="inline"><button id="again" class="primary">計測設定に戻る</button><button id="reset-history" class="quiet">全履歴をリセット</button></div><p id="result-retention" class="muted result-retention" hidden>ホームへ戻っても文章は残ります。再読み込みやタブを閉じると失われます。</p><h2>計測履歴</h2><ul id="history" class="history"></ul><p class="privacy">確定した数値の結果だけを、このタブ内に保存します。本文は保存しません。</p></section>
   </main>
-  <footer id="footer"><span>朗読支援ツール（仮）</span></footer>
+  <footer id="footer"><span>よみじたく 〜 朗読支援サイト 〜</span></footer>
   <dialog id="settings-dialog" aria-labelledby="settings-title">
     <div class="dialog-heading"><h2 id="settings-title">表示設定</h2><button data-close="settings-dialog">閉じる</button></div>
     <div id="settings-tabs" class="settings-tabs" role="tablist" aria-label="調整する項目" hidden>
