@@ -4,6 +4,7 @@
   const STORAGE = 'reading-support-results-v1';
   let view = 'home', mode = 'read', sourceType = 'sample', sample = null;
   let history = [], target = '', targetManual = false, plannedMinutes = '20';
+  let readMeasurementReturn = null;
   let phase = 'idle', began = 0, countdownTimer = 0, elapsedTimer = 0, noticeTimer = 0;
   let measuredCount = 0, measuredType = 'sample', lastMeasuredCustomText = null, wakeLock = null, wakePending = false, wakeGeneration = 0;
   let partialOn = false, partialLimit = '200', measuredPartial = false, timingRange = null;
@@ -316,6 +317,7 @@
   });
   async function openReader(nextMode) {
     if (openingReader) return;
+    if (nextMode === 'time') readMeasurementReturn = null;
     const pasted = nextMode === 'read' && pendingReadPaste?.input === $('read-text').value ? pendingReadPaste.model : null;
     const text = nextMode === 'read' ? (pasted ? pasted.source : $('read-text').value === readInputSnapshot ? readAnnotations.source : $('read-text').value) : sourceType === 'sample' ? sample.text :
       timeAnnotations && $('time-text').value === timeInputSnapshot ? timeAnnotations.source : $('time-text').value;
@@ -342,14 +344,14 @@
     } finally { openingReader = false; }
     displayReader(nextMode, text);
   }
-  function displayReader(nextMode, text) {
+  function displayReader(nextMode, text, readerReturnState = null) {
     mode = nextMode;
     displayedText = text;
     const paper = timingPaper[sourceType];
     if (mode === 'time' && paper.text !== text) { paper.text = text; paper.on = false; }
     applyPaper(mode === 'read' ? readPaper : paper.on);
     show('reading');
-    $('reading-title').textContent = mode === 'time' ? (sourceType === 'sample' ? sample.title : '朗読速度の計測') : '文章を読む';
+    $('reading-title').textContent = mode === 'time' ? (sourceType === 'sample' ? sample.title : '朗読速度の計測') : '原稿画面';
     $('preparation').hidden = mode !== 'time'; $('measurement-bar').hidden = true;
     $('toolbar-settings').disabled = phase !== 'idle';
     $('export-manuscript').hidden = mode !== 'read';
@@ -364,6 +366,10 @@
     const model = mode === 'read' ? readAnnotations : sourceType === 'custom' ? timeAnnotations : null;
     window.Reader.show(text, model, { editable: mode === 'read', end: measuredPartial ? timingRange?.end ?? 0 : null });
     window.ManuscriptWriting.show(mode === 'read' ? readMarks : sourceType === 'custom' && timeMarks?.source === text ? timeMarks : null, { editable: mode === 'read' });
+    if (mode === 'read' && readerReturnState) {
+      Object.entries(readerReturnState.settings).forEach(([id, value]) => { $(id).value = value; applySetting(id, Number(value)); });
+      if (readerReturnState.anchor) requestAnimationFrame(() => window.Reader.restore(readerReturnState.anchor));
+    }
     syncPartialInputs();
   }
   $('open-read').onclick = () => openReader('read'); $('prepare-time').onclick = () => openReader('time');
@@ -412,6 +418,7 @@
     if (view !== 'reading' || mode !== 'read' || openingReader) return;
     const text = readAnnotations.source, count = countText(text);
     if (!count) { notify('計測する文字を含む本文を用意してください。'); return; }
+    const readerReturnAnchor = window.Reader.capture();
     openingReader = true;
     try {
       const inputText = text.replace(/\r\n?/g, '\n');
@@ -433,7 +440,9 @@
       custom.checked = true; custom.dispatchEvent(new Event('change'));
       $('time-text').dispatchEvent(new Event('input'));
       setTarget(count, true);
+      const settings = Object.fromEntries(['reader-width', 'columns', 'line-height', 'break-lines'].map(id => [id, $(id).value]));
       displayReader('time', text);
+      readMeasurementReturn = { anchor: readerReturnAnchor, settings };
     } catch (error) { notify(`計測用の原稿を準備できません。${error.message}`); }
     finally { openingReader = false; }
   };
@@ -499,6 +508,7 @@
   let navigationTarget = null;
   function requestNavigation(next) {
     if (navigationTarget !== null || editWarningPending) return;
+    if ((view === 'results' || (view === 'reading' && mode === 'time')) && next !== 'reading') readMeasurementReturn = null;
     if (view !== 'reading' || mode !== 'read') { show(next); return; }
     if (!readyForDirectAction()) return;
     if (!hasReadings(readAnnotations) && !readMarks.hasMarks) { show(next); return; }
@@ -766,7 +776,7 @@
     const lastMeasurement = history.at(-1);
     const currentText = $('time-text').value.replace(/\r\n?/g, '\n');
     const retainedCustomText = lastMeasurement?.type === 'custom' && currentText && currentText === lastMeasuredCustomText?.replace(/\r\n?/g, '\n');
-    $('again').textContent = lastMeasurement?.type === 'custom' ? '入力した文章に戻る' : '計測設定に戻る';
+    $('again').textContent = readMeasurementReturn ? '原稿に戻る' : lastMeasurement?.type === 'custom' ? '入力した文章に戻る' : '計測設定に戻る';
     $('result-retention').hidden = !retainedCustomText;
     $('history').replaceChildren();
     history.forEach((record, i) => {
@@ -774,14 +784,23 @@
       detail.textContent = `${i + 1}回目 · ${record.characters.toLocaleString()}文字 / ${record.seconds.toFixed(1)}秒`;
       small.textContent = `${record.type === 'sample' ? '例文' : '用意した文章'}・${Math.round(record.characters / record.seconds * 60).toLocaleString()}文字/分`;
       detail.append(small); remove.textContent = '削除'; remove.setAttribute('aria-label', `${i + 1}回目の計測結果を削除`);
-      remove.onclick = () => { history.splice(i, 1); persist(); renderResults(); };
+      remove.onclick = () => { readMeasurementReturn = null; history.splice(i, 1); persist(); renderResults(); };
       li.append(detail, remove); $('history').append(li);
     });
     $('reset-history').disabled = !history.length;
   }
-  $('existing-results').onclick = () => show('results');
-  $('again').onclick = () => show('time-input');
-  $('reset-history').onclick = async () => { if (await ask('すべての計測履歴を削除しますか？')) { history = []; persist(); renderResults(); } };
+  $('existing-results').onclick = () => { readMeasurementReturn = null; show('results'); };
+  $('again').onclick = () => {
+    if (view === 'results' && readMeasurementReturn) {
+      const returnState = readMeasurementReturn;
+      readMeasurementReturn = null;
+      show('reading');
+      displayReader('read', readAnnotations.source, returnState);
+      return;
+    }
+    show('time-input');
+  };
+  $('reset-history').onclick = async () => { if (await ask('すべての計測履歴を削除しますか？')) { readMeasurementReturn = null; history = []; persist(); renderResults(); } };
   function readyForDirectAction() {
     if (window.Reader.hasPending) {
       window.Reader.focusPending();
