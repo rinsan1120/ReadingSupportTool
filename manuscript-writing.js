@@ -191,7 +191,7 @@
     const controls = document.querySelector('.reader-controls');
     const changed = controls.classList.contains('is-writing') !== enabled;
     controls.classList.toggle('is-writing', enabled);
-    $('normal-tools').hidden = enabled || !editable;
+    ['export-pdf', 'measure-current', 'writing-mode'].forEach(id => { $(id).hidden = enabled || !editable; });
     if (changed) stage.dispatchEvent(new CustomEvent('reader-writing-mode', { bubbles: true }));
     stage.classList.toggle('writing-active', enabled);
     stage.classList.toggle('writing-drag', enabled && !['memo', 'ruby', 'move'].includes(tool));

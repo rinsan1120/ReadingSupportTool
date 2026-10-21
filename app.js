@@ -316,7 +316,7 @@
     show('reading');
     $('reading-title').textContent = mode === 'time' ? (sourceType === 'sample' ? sample.title : '朗読速度の計測') : '文章を読む';
     $('preparation').hidden = mode !== 'time'; $('measurement-bar').hidden = true;
-    $('open-settings').disabled = false;
+    $('toolbar-settings').disabled = phase !== 'idle';
     $('export-manuscript').hidden = mode !== 'read';
     $('export-pdf').hidden = mode !== 'read';
     $('measure-current').hidden = mode !== 'read';
@@ -349,8 +349,8 @@
       const result = window.ManuscriptPrint.prepare(snapshot, writing);
       $('pdf-small-warning').hidden = result.points >= 9;
       $('pdf-small-warning').textContent = '文字が小さくなるため、キャンセルして本文幅を狭くするか文字サイズを大きくしてから出力することをおすすめします。長い読み仮名がある場合は、内容の短縮もご検討ください。';
-      $('operation-dialog').close(); $('pdf-dialog').showModal();
-    } catch (error) { window.ManuscriptPrint.clear(); $('operation-dialog').close(); notify(error.message); }
+      $('pdf-dialog').showModal();
+    } catch (error) { window.ManuscriptPrint.clear(); notify(error.message); }
     finally { preparingPDF = false; }
   };
   $('pdf-cancel').onclick = () => $('pdf-dialog').close();
@@ -376,14 +376,13 @@
     if (!readyForDirectAction()) return;
     if (view !== 'reading' || mode !== 'read' || openingReader) return;
     const text = readAnnotations.source, count = countText(text);
-    if (!count) { $('operation-dialog').close(); notify('計測する文字を含む本文を用意してください。'); return; }
+    if (!count) { notify('計測する文字を含む本文を用意してください。'); return; }
     openingReader = true;
     try {
       const inputText = text.replace(/\r\n?/g, '\n');
-      $('operation-dialog').close();
       if ($('time-text').value && $('time-text').value !== inputText &&
         !await ask('計測用入力欄の本文を、この文章で置き換えますか？入力済みの計測用本文・読み仮名・書き込みは失われます。「文章を読む」の原稿は保持します。', '置き換える')) {
-        $('operation-dialog').showModal(); return;
+        return;
       }
       // Take an independent snapshot so changing either mode cannot mutate the
       // other manuscript. Keep original CRLF/CR and UTF-16 offsets in the model.
@@ -413,7 +412,7 @@
       const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
       url = URL.createObjectURL(blob);
       link.href = url; link.download = 'reading-manuscript.json';
-      document.body.append(link); link.click(); $('operation-dialog').close();
+      document.body.append(link); link.click();
       window.ManuscriptWriting.setMode(false);
       window.Reader.setRubyMode(false);
       savedManuscript = true;
@@ -468,8 +467,7 @@
     if (view !== 'reading' || mode !== 'read') { show(next); return; }
     if (!readyForDirectAction()) return;
     if (!hasReadings(readAnnotations) && !readMarks.hasMarks) { show(next); return; }
-    const menuWasOpen = $('operation-dialog').open;
-    closeSettings(); $('operation-dialog').close();
+    closeSettings();
     if (document.querySelector('dialog[open]')) return;
     navigationTarget = next;
     const dialog = $('save-navigation-dialog'), scroll = window.scrollY;
@@ -491,7 +489,6 @@
     dialog.addEventListener('close', () => {
       navigationTarget = null;
       if (view === 'reading') {
-        if (menuWasOpen && dialog.returnValue !== 'reader') $('operation-dialog').showModal();
         window.scrollTo(0, scroll);
       }
     }, { once: true });
@@ -500,7 +497,7 @@
   async function approveEditing(alreadyEnabled) {
     if (editWarningPending || navigationTarget !== null || !readyForDirectAction()) return false;
     if (alreadyEnabled || !savedManuscript) return true;
-    closeSettings(); $('operation-dialog').close();
+    closeSettings();
     if (document.querySelector('dialog[open]')) return false;
     editWarningPending = true;
     try {
@@ -510,11 +507,10 @@
     } finally { editWarningPending = false; }
   }
   $('reader-back').onclick = () => requestNavigation(mode === 'time' ? 'time-input' : 'read-input');
-  $('home-from-menu').onclick = () => requestNavigation('home');
-  $('operations').onclick = () => { if (!readyForDirectAction()) return; wakeUI($('wake-status').textContent); closeSettings(); $('open-settings').disabled = phase !== 'idle'; $('operation-dialog').showModal(); };
+  $('toolbar-settings').onclick = () => { if (!readyForDirectAction()) return; openSettings(); };
   $('writing-mode').onclick = async () => {
     if (!await approveEditing(window.ManuscriptWriting.enabled)) return;
-    closeSettings(); $('operation-dialog').close();
+    closeSettings();
     window.ManuscriptWriting.setMode(!window.ManuscriptWriting.enabled);
   };
   window.Reader.setEditModeGuard(approveEditing);
@@ -576,7 +572,6 @@
   function openSettings() {
     if (phase !== 'idle') return;
     const anchor = window.Reader.capture();
-    $('operation-dialog').close();
     updateSettingsControls();
     if (!$('settings-dialog').open) {
       settingsApproved = false; settingsSession++; rememberSettings();
@@ -584,7 +579,7 @@
     }
     reserveSettingsSpace(); window.Reader.restore(anchor);
   }
-  $('before-settings').onclick = openSettings; $('open-settings').onclick = openSettings;
+  $('before-settings').onclick = openSettings;
   $('settings-dialog').addEventListener('close', () => {
     reserveSettingsSpace();
     if (!$('settings-dialog').open) { discardSetting(); settingsApproved = false; settingsSession++; }
@@ -671,7 +666,7 @@
   document.addEventListener('pointercancel', () => { if (pendingSetting) discardSetting(); pointerAdjusting = false; });
   function cancelMeasurement() {
     clearTimeout(countdownTimer); clearInterval(elapsedTimer);
-    phase = 'idle'; $('paper-mode').disabled = false; $('countdown').hidden = true; $('measurement-bar').hidden = true;
+    phase = 'idle'; $('paper-mode').disabled = false; $('toolbar-settings').disabled = false; $('countdown').hidden = true; $('measurement-bar').hidden = true;
     $('start').disabled = false;
     ['preparation-partial-enabled', 'preparation-partial-limit'].forEach(id => $(id).disabled = false);
   }
@@ -680,8 +675,8 @@
     if (phase !== 'idle' || document.hidden) return;
     if (measuredPartial && (!validPartialLimit() || !measuredCount)) { notify('読む文字数の目安は正の整数で入力してください。'); return; }
     if (target !== '' && !validTarget(target)) { notify('作品全体の文字数を1〜1,000,000,000の整数で入力してください。'); $('preparation-target').focus(); return; }
-    $('operation-dialog').close(); $('settings-dialog').close();
-    phase = 'countdown'; $('paper-mode').disabled = true; $('start').disabled = true; $('open-settings').disabled = true;
+    $('settings-dialog').close();
+    phase = 'countdown'; $('paper-mode').disabled = true; $('start').disabled = true; $('toolbar-settings').disabled = true;
     ['preparation-partial-enabled', 'preparation-partial-limit'].forEach(id => $(id).disabled = true);
     // Remove preparation controls and scroll to the beginning BEFORE counting.
     $('preparation').hidden = true; $('measurement-bar').hidden = false; $('finish').disabled = true;
@@ -755,13 +750,15 @@
     notify('入力中の書き込みを確定またはキャンセルしてから操作してください。');
     return false;
   }
-  function wakeUI(message = '') {
+  function wakeUI() {
     const handheld = navigator.userAgentData?.mobile === true || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
       || (/Mac/.test(navigator.platform) && navigator.maxTouchPoints > 1)
       || (navigator.maxTouchPoints > 0 && matchMedia('(pointer: coarse) and (hover: none)').matches);
-    $('wake').hidden = $('wake-status').hidden = !handheld || !('wakeLock' in navigator);
-    $('wake').textContent = `画面点灯維持：${wakeLock && !wakeLock.released ? 'ON' : 'OFF'}`;
-    $('wake-status').textContent = message;
+    const on = Boolean(wakeLock && !wakeLock.released);
+    $('wake').hidden = !handheld || !('wakeLock' in navigator);
+    $('wake').querySelector('.button-state').textContent = wakePending ? '…' : on ? 'ON' : 'OFF';
+    $('wake').setAttribute('aria-pressed', String(on));
+    $('wake').setAttribute('aria-label', `画面点灯維持：${on ? 'ON' : 'OFF'}`);
     $('wake').disabled = wakePending || !('wakeLock' in navigator);
   }
   async function releaseWake() {
@@ -771,16 +768,16 @@
   $('wake').onclick = async () => {
     if (wakeLock) { await releaseWake(); return; }
     if (view !== 'reading' || document.hidden || wakePending) return;
-    const generation = ++wakeGeneration; wakePending = true; wakeUI('取得中…');
+    const generation = ++wakeGeneration; wakePending = true; wakeUI();
     try {
       const acquired = await navigator.wakeLock.request('screen');
       if (generation !== wakeGeneration || view !== 'reading' || document.hidden) { await acquired.release(); return; }
       wakeLock = acquired;
-      acquired.addEventListener('release', () => { if (wakeLock === acquired) { wakeLock = null; wakeUI('点灯維持を解除しました。必要なときは再度ONにしてください。'); } });
-    } catch { wakeUI('点灯維持を取得できませんでした。通常どおり朗読できます。'); }
-    finally { wakePending = false; wakeUI($('wake-status').textContent === '取得中…' ? '' : $('wake-status').textContent); }
+      acquired.addEventListener('release', () => { if (wakeLock === acquired) { wakeLock = null; wakeUI(); notify('点灯維持を解除しました。必要なときは再度ONにしてください。'); } });
+    } catch { wakeUI(); notify('点灯維持を取得できませんでした。通常どおり朗読できます。'); }
+    finally { wakePending = false; wakeUI(); }
   };
-  wakeUI('wakeLock' in navigator ? '初期状態はOFFです。必要なときだけONにしてください。' : 'このブラウザは画面点灯維持に対応していません。');
+  wakeUI();
   function interrupt() {
     if (phase !== 'idle') {
       cancelMeasurement(); $('preparation').hidden = mode !== 'time';
