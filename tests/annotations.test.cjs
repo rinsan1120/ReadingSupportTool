@@ -92,7 +92,7 @@ test('reject the complete file on every schema/offset/content failure with a spe
   const cases = [
     ['{', /JSON/], ['null', /format/], ['[]', /format/], ['{}', /format/],
     [{ ...manuscript(), format: 'other' }, /format/],
-    [{ ...manuscript(), version: 4 }, /version/],
+    [{ ...manuscript(), version: 5 }, /version/],
     [{ ...manuscript(), version: '1' }, /version/],
     [{ ...manuscript(), text: null }, /本文/],
     [{ ...manuscript(), annotations: {} }, /配列/],

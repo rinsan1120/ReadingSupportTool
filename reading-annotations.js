@@ -44,7 +44,7 @@
     }
     static fromData(data) {
       if (!data || typeof data !== 'object' || Array.isArray(data) || data.format !== 'reading-support-manuscript') throw new Error('原稿ファイルのformatが一致しません。');
-      if (![1, 2, 3].includes(data.version)) throw new Error('対応していないversionです。対応バージョンは1・2・3です。');
+      if (![1, 2, 3, 4].includes(data.version)) throw new Error('対応していないversionです。対応バージョンは1・2・3・4です。');
       if (typeof data.text !== 'string') throw new Error('本文textは文字列である必要があります。');
       if (data.text.length > this.MAX_TEXT_LENGTH) throw new Error('本文は200,000 UTF-16文字までです。');
       if (!Array.isArray(data.annotations)) throw new Error('annotationsは配列である必要があります。');

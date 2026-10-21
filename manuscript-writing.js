@@ -8,7 +8,7 @@
     static MAX_TOTAL_POINTS = 100000;
     static MAX_COORDINATE = 1000;
     static MARKER_COLORS = ['yellow', 'lightblue', 'pink'];
-    constructor(source = '') { this.source = source; this.items = []; this.history = []; this.nextId = 1; }
+    constructor(source = '') { this.source = source; this.items = []; this.history = []; this.nextId = 1; this.memoSettings = { fontSize: 16, opacity: .9 }; }
     get hasMarks() { return this.items.length > 0; }
     remember() { this.history.push(copy(this.items)); if (this.history.length > 40) this.history.shift(); }
     add(item) {
@@ -18,16 +18,24 @@
       this.nextId = this.nextId === Number.MAX_SAFE_INTEGER ? 1 : this.nextId + 1;
     }
     remove(id) { if (!this.items.some(item => item.id === id)) return; this.remember(); this.items = this.items.filter(item => item.id !== id); }
-    editMemo(id, text) {
+    editMemo(id, text) { this.updateMemo(id, { text }); }
+    updateMemo(id, changes) {
       const item = this.items.find(item => item.id === id && item.type === 'memo');
-      if (!item || item.text === text) return;
-      this.remember(); item.text = text;
+      if (!item || Object.entries(changes).every(([key, value]) => item[key] === value)) return;
+      this.remember(); Object.assign(item, copy(changes));
+    }
+    static settings(value = { fontSize: 16, opacity: .9 }) {
+      if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !['fontSize', 'opacity'].includes(key)) ||
+          !Number.isFinite(value.fontSize) || value.fontSize < 12 || value.fontSize > 28 ||
+          !Number.isFinite(value.opacity) || value.opacity < .2 || value.opacity > 1) throw new Error('メモ設定は文字サイズ12〜28、不透明度0.2〜1で指定してください。');
+      return { fontSize: value.fontSize, opacity: value.opacity };
     }
     undo() { if (this.history.length) this.items = this.history.pop(); }
-    static fromItems(items, manuscript) {
+    static fromItems(items, manuscript, settings) {
       if (!Array.isArray(items)) throw new Error('marksは配列である必要があります。');
       if (items.length > this.MAX_MARKS) throw new Error('書き込みは1,000件までです。');
       const restored = new this(manuscript.source), ids = new Set(), visible = new Set();
+      restored.memoSettings = this.settings(settings);
       if (!items.length) return restored;
       const boundaries = [...manuscript.boundaries];
       for (let i = 0; i < boundaries.length - 1; i++) {
@@ -49,7 +57,7 @@
         const label = `書き込み${index + 1}件目：`;
         const fields = {
           pen: ['id', 'type', 'offset', 'layoutKey', 'points', 'witnesses'],
-          marker: ['id', 'type', 'start', 'end', 'color'], memo: ['id', 'type', 'offset', 'dx', 'dy', 'text']
+          marker: ['id', 'type', 'start', 'end', 'color'], memo: ['id', 'type', 'offset', 'dx', 'dy', 'tx', 'ty', 'color', 'text']
         };
         if (!item || typeof item !== 'object' || Array.isArray(item) || typeof item.type !== 'string' || !Object.hasOwn(fields, item.type)) throw new Error(`${label}書き込み種類が不正です。`);
         object(item, fields[item.type], label);
@@ -65,8 +73,10 @@
           anchor(item.offset, label);
           if (item.type === 'memo') {
             coordinates({ x: item.dx, y: item.dy }, ['x', 'y'], label);
-            if (typeof item.text !== 'string' || !item.text.trim() || item.text.length > 40 || /[\r\n\u2028\u2029]/u.test(item.text)) throw new Error(`${label}メモは空白だけでない、改行を含まない40 UTF-16文字以内の文字列にしてください。`);
-            restored.items.push({ ...base, offset: item.offset, dx: item.dx, dy: item.dy, text: item.text });
+            coordinates({ x: item.tx, y: item.ty }, ['x', 'y'], label);
+            if (!this.MARKER_COLORS.includes(item.color)) throw new Error(`${label}メモの色が不正です。`);
+            if (typeof item.text !== 'string' || !item.text.trim() || item.text.length > 200) throw new Error(`${label}メモは空白だけでない200文字以内の文字列にしてください。`);
+            restored.items.push({ ...base, offset: item.offset, dx: item.dx, dy: item.dy, tx: item.tx, ty: item.ty, color: item.color, text: item.text });
           } else {
             if (typeof item.layoutKey !== 'string' || item.layoutKey.length > 100 || !/^\d+(?:\.\d+)?:\d+(?:\.\d+)?:\d+:\d+$/.test(item.layoutKey)) throw new Error(`${label}赤ペンのlayoutKeyが不正です。`);
             const [columns, height, breaks, hash] = item.layoutKey.split(':').map(Number);
@@ -95,14 +105,17 @@
       const data = window.ReadingAnnotations.parseJSON(json);
       const manuscript = window.ReadingAnnotations.fromData(data);
       if (data.version < 3 && data.marks !== undefined && (!Array.isArray(data.marks) || data.marks.length)) throw new Error('書き込みを含む原稿はversion 3で指定してください。');
-      const markings = this.fromItems(data.version === 3 ? data.marks : [], manuscript);
+      // Legacy notes retain content and anchor with a simple approximate placement.
+      const items = data.version >= 3 ? data.marks : [];
+      const converted = data.version === 3 && Array.isArray(items) ? items.map(item => item?.type === 'memo' ? { ...item, tx: 0, ty: 0, color: 'yellow' } : item) : items;
+      const markings = this.fromItems(converted, manuscript, data.version >= 4 ? data.memoSettings : undefined);
       return { manuscript, markings };
     }
     static serializeManuscript(manuscript, markings) {
       if (manuscript.source !== markings.source) throw new Error('本文と書き込みの原文が一致しません。本文を確認してから保存してください。');
       const validated = window.ReadingAnnotations.fromData(manuscript.toJSON());
-      const marks = this.fromItems(markings.items, validated).items;
-      const json = JSON.stringify({ ...validated.toJSON(), version: 3, marks }, null, 2);
+      const marks = this.fromItems(markings.items, validated, markings.memoSettings).items;
+      const json = JSON.stringify({ ...validated.toJSON(), version: 4, marks, memoSettings: this.settings(markings.memoSettings) }, null, 2);
       if (json.length > window.ReadingAnnotations.MAX_FILE_BYTES || new TextEncoder().encode(json).length > window.ReadingAnnotations.MAX_FILE_BYTES) throw new Error('原稿ファイルは10MiBまでです。');
       return json;
     }
@@ -112,13 +125,14 @@
   const markers = $('writing-markers'), pens = $('writing-pen'), memos = $('writing-memos');
   const editor = $('writing-memo-dialog'), input = $('writing-memo-input');
   let model = null, editable = true, enabled = false, tool = 'pen', markerColor = 'yellow', gesture = null, draftMemo = null, rendering = false;
+  let selectedMemo = null;
   let paintedPens = [], paintedMarkers = [];
   const help = {
     pen: '本文付近をドラッグして赤い線。スクロールは「書き込みOFF」で。',
     marker: '最初の文字から最後の文字へなぞって強調。スクロールは「書き込みOFF」で。',
-    memo: '本文付近をタップしてメモ。右のメモをタップすると編集できます。',
+    memo: '本文をタップして作成。本体・丸い足先をドラッグ。選択後にもう一度タップして編集。',
     ruby: '文字の前後をタップして読み仮名を追加。読み仮名を選ぶと編集できます。',
-    eraser: '線・マーカー・メモをタップすると、その書き込みを削除します。'
+    eraser: '線・マーカーをタップして削除。メモはメモツールで選択して×から削除。'
   };
   const svg = (name, attributes, parent) => {
     const el = document.createElementNS('http://www.w3.org/2000/svg', name);
@@ -154,8 +168,9 @@
     if (previous && stage.hasPointerCapture(previous.id)) stage.releasePointerCapture(previous.id);
   }
   function cancelPending() {
-    releaseGesture(); draftMemo = null;
+    releaseGesture(); draftMemo = null; selectedMemo = null;
     if (editor.open) editor.close();
+    if ($('memo-settings-dialog').open) $('memo-settings-dialog').close();
     render();
   }
   function controls() {
@@ -171,8 +186,13 @@
     stage.classList.toggle('writing-active', enabled);
     stage.classList.toggle('writing-drag', enabled && !['memo', 'ruby'].includes(tool));
     document.querySelectorAll('[data-writing-tool]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.writingTool === tool)));
-    $('marker-colors').hidden = !enabled || tool !== 'marker';
-    document.querySelectorAll('[data-marker-color]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.markerColor === markerColor)));
+    const selected = model?.items.find(item => item.id === selectedMemo);
+    $('marker-colors').hidden = !enabled || !['marker', 'memo'].includes(tool);
+    // Keep the toolbar's height stable when selecting a note during a drag.
+    $('marker-colors').style.visibility = tool === 'memo' && !selected ? 'hidden' : '';
+    $('marker-colors').setAttribute('aria-label', tool === 'memo' ? 'メモの色' : 'マーカーの色');
+    $('memo-settings-open').hidden = !enabled || tool !== 'memo';
+    document.querySelectorAll('[data-marker-color]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.markerColor === (tool === 'memo' ? selected?.color : markerColor))));
     if ($('writing-tool-help').textContent !== help[tool]) $('writing-tool-help').textContent = help[tool];
     $('writing-undo').disabled = !editable || !model?.history.length;
   }
@@ -201,28 +221,37 @@
     }
     return item.points.map(p => ({ x: origin.x + p.x * font, y: origin.y + p.y * font }));
   }
+  // Shared screen/PDF renderer: tail, background and ink share one opacity.
+  function bubble(item, settings, x, y, tx, ty, parent) {
+    const note = document.createElement('div'); note.className = 'writing-memo'; note.dataset.markId = item.id;
+    Object.assign(note.style, { left: `${x}px`, top: `${y}px`, fontSize: `${settings.fontSize}px`, opacity: settings.opacity });
+    note.dataset.color = item.color;
+    const tail = svg('svg', { class: 'memo-tail', width: 1, height: 1, 'aria-hidden': 'true' }, note);
+    const text = document.createElement('div'); text.className = 'memo-body'; text.textContent = item.text; note.append(text); parent.append(note);
+    const width = note.offsetWidth, height = note.offsetHeight;
+    const ex = tx - x, ey = ty - y;
+    const sx = Math.max(0, Math.min(width, ex)), sy = Math.max(0, Math.min(height, ey));
+    svg('path', { d: `M${sx},${sy} L${ex},${ey}` }, tail);
+    const handle = svg('svg', { class: 'memo-tip-layer', width: 1, height: 1, 'aria-hidden': 'true' }, note);
+    svg('circle', { cx: ex, cy: ey, r: 5, class: 'memo-tip' }, handle);
+    return note;
+  }
   function render() {
     if (rendering || document.body.classList.contains('manuscript-printing')) return;
     rendering = true;
     try {
-      const reserve = Boolean(model?.items.some(item => item.type === 'memo'));
-      if (stage.classList.contains('has-writing-memos') !== reserve) {
-        const anchor = window.Reader.capture(); stage.classList.toggle('has-writing-memos', reserve);
-        window.Reader.refresh(anchor);
-      }
       markers.replaceChildren(); pens.replaceChildren(); memos.replaceChildren();
       paintedPens = []; paintedMarkers = [];
-      if (!reserve) stage.style.minHeight = '';
       controls();
-      if (!model || root.closest('[hidden]')) { $('writing-status').hidden = true; return; }
+      if (!model || root.closest('[hidden]')) { stage.style.minHeight = ''; $('writing-status').hidden = true; return; }
       let hidden = 0;
       if (model.items.length || gesture) {
         const geometry = window.Reader.getWritingGeometry(), rect = root.getBoundingClientRect(), outer = stage.getBoundingClientRect();
         const ox = rect.left - outer.left, oy = rect.top - outer.top;
         const markerGroup = svg('g', { transform: `translate(${ox} ${oy})` }, markers);
         const penGroup = svg('g', { transform: `translate(${ox} ${oy})` }, pens);
-        const items = [...model.items];
-        if (gesture?.preview) items.push(gesture.preview);
+        const items = model.items.map(item => gesture?.memo?.id === item.id ? gesture.preview : item);
+        if (gesture?.preview && !gesture.memo) items.push(gesture.preview);
         const noteItems = [];
         for (const item of items) {
           if (item.type === 'marker') {
@@ -239,25 +268,20 @@
             if (glyph) noteItems.push({ item, glyph });
           }
         }
-        noteItems.sort((a, b) => a.glyph.y - b.glyph.y || a.item.id - b.item.id);
         let bottom = 0;
         for (const { item, glyph } of noteItems) {
-          const button = document.createElement(editable ? 'button' : 'div');
-          button.className = `writing-memo${editable ? '' : ' writing-memo-readonly'}`; button.dataset.markId = item.id;
-          button.textContent = item.text;
-          if (editable) {
-            button.type = 'button';
-            button.setAttribute('aria-label', `文字メモ「${item.text}」を${tool === 'eraser' ? '削除' : '編集'}`);
-            button.disabled = !enabled || !['memo', 'eraser'].includes(tool);
+          const origin = center(glyph), font = geometry.fontSize;
+          const x = Math.max(0, Math.min(outer.width - 180, ox + origin.x + item.dx * font));
+          const y = Math.max(0, oy + origin.y + item.dy * font);
+          const note = bubble(item, model.memoSettings, x, y, ox + origin.x + item.tx * font, oy + origin.y + item.ty * font, memos);
+          const active = editable && enabled && tool === 'memo';
+          note.classList.toggle('memo-editable', active);
+          note.classList.toggle('memo-selected', active && selectedMemo === item.id);
+          if (active && selectedMemo === item.id) {
+            const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'memo-remove';
+            remove.textContent = '×'; remove.setAttribute('aria-label', 'このメモを削除'); note.append(remove);
           }
-          button.style.left = `${Math.min(outer.width - 112, Math.max(ox + rect.width + 4, ox + glyph.x + item.dx * geometry.fontSize))}px`;
-          button.style.top = `${Math.max(bottom, oy + glyph.y + item.dy * geometry.fontSize)}px`;
-          if (editable) button.onclick = () => {
-            if (!enabled || !editable) return;
-            if (tool === 'eraser') { model.remove(item.id); render(); }
-            else if (tool === 'memo') openMemo(item);
-          };
-          memos.append(button); bottom = parseFloat(button.style.top) + button.getBoundingClientRect().height + 6;
+          bottom = Math.max(bottom, y + note.offsetHeight, oy + origin.y + item.ty * font + 12);
         }
         stage.style.minHeight = bottom ? `${Math.ceil(bottom + 16)}px` : '';
       } else stage.style.minHeight = '';
@@ -278,7 +302,7 @@
   function openMemo(item) {
     if (!editable || !enabled) return;
     draftMemo = { ...item }; input.value = item.text || '';
-    $('writing-memo-delete').hidden = !item.id;
+    $('writing-memo-delete').hidden = true;
     $('writing-memo-save').disabled = !input.value.trim();
     fitEditor(); editor.showModal(); input.focus({ preventScroll: true });
   }
@@ -305,16 +329,47 @@
       const c = center(witness); gesture.preview.witnesses.push({ offset: witness.start, x: (c.x - origin.x) / font, y: (c.y - origin.y) / font });
     }
   }
+  function updateMemoDrag(point) {
+    const g = window.Reader.getWritingGeometry(), start = gesture.memo, original = center(g.byOffset.get(start.offset));
+    const dx = point.x - gesture.first.x, dy = point.y - gesture.first.y, font = g.fontSize;
+    if (gesture.part === 'body') {
+      const box = stage.getBoundingClientRect(), rootBox = root.getBoundingClientRect();
+      const x = Math.max(box.left - rootBox.left, Math.min(box.right - rootBox.left - 180, gesture.body.x + dx));
+      const y = Math.max(box.top - rootBox.top, gesture.body.y + dy);
+      gesture.preview = { ...start, dx: (x - original.x) / font, dy: (y - original.y) / font };
+    } else {
+      const tip = { x: original.x + start.tx * font + dx, y: original.y + start.ty * font + dy };
+      const glyph = nearest(tip, g, Infinity), origin = glyph ? center(glyph) : original;
+      gesture.preview = { ...start, offset: glyph?.start ?? start.offset,
+        tx: (tip.x - origin.x) / font, ty: (tip.y - origin.y) / font,
+        dx: (original.x + start.dx * font - origin.x) / font, dy: (original.y + start.dy * font - origin.y) / font };
+    }
+    for (const key of ['dx', 'dy', 'tx', 'ty']) gesture.preview[key] = Math.max(-1000, Math.min(1000, gesture.preview[key]));
+  }
   stage.addEventListener('pointerdown', e => {
     if (!enabled || !editable) return;
     if (tool === 'ruby') return;
     if (!e.isPrimary) { releaseGesture(); render(); return; }
-    if (e.button !== 0 || e.target.closest('.writing-memo') || editor.open) return;
-    if ([...memos.children].some(note => {
-      const r = note.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
-    })) return;
+    if (e.button !== 0 || editor.open) return;
+    const note = e.target.closest('.writing-memo');
+    if (note) {
+      if (tool !== 'memo') return;
+      const item = model.items.find(item => item.id === Number(note.dataset.markId));
+      if (e.target.closest('.memo-remove')) {
+        e.preventDefault();
+        if (confirm('このメモを削除しますか？')) { model.remove(item.id); selectedMemo = null; render(); }
+        return;
+      }
+      e.preventDefault();
+      const point = localPoint(e), box = note.getBoundingClientRect(), rootBox = root.getBoundingClientRect();
+      gesture = { id: e.pointerId, first: point, scroll: scrollY, moved: false, memo: copy(item), preview: copy(item),
+        part: e.target.closest('.memo-tip') ? 'tip' : 'body', wasSelected: selectedMemo === item.id,
+        body: { x: box.left - rootBox.left, y: box.top - rootBox.top } };
+      selectedMemo = item.id; stage.setPointerCapture(e.pointerId); render(); return;
+    }
+    selectedMemo = null; controls();
     const geometry = window.Reader.getWritingGeometry(), point = localPoint(e), glyph = nearest(point, geometry);
-    if (!glyph && tool !== 'eraser') return;
+    if (!glyph && tool !== 'eraser') { render(); return; }
     if (tool !== 'memo') e.preventDefault();
     gesture = { id: e.pointerId, first: point, glyph, scroll: scrollY, moved: false };
     stage.setPointerCapture(e.pointerId);
@@ -329,6 +384,10 @@
     if (!editable || !gesture || gesture.id !== e.pointerId) return;
     const point = localPoint(e);
     if (Math.hypot(point.x - gesture.first.x, point.y - gesture.first.y) > 8) gesture.moved = true;
+    if (gesture.memo) {
+      if (gesture.moved) updateMemoDrag(point);
+      render(); return;
+    }
     if (tool === 'pen') updateStroke(point);
     if (tool === 'marker') {
       const end = nearest(point, window.Reader.getWritingGeometry());
@@ -340,6 +399,13 @@
     if (!editable || !gesture || gesture.id !== e.pointerId) return;
     const point = localPoint(e);
     if (Math.hypot(point.x - gesture.first.x, point.y - gesture.first.y) > 8) gesture.moved = true;
+    if (gesture.memo) {
+      if (gesture.moved) updateMemoDrag(point);
+      const completed = gesture; releaseGesture();
+      if (completed.moved) model.updateMemo(completed.memo.id, completed.preview);
+      else if (completed.wasSelected && completed.part === 'body') openMemo(completed.memo);
+      render(); return;
+    }
     if (tool === 'pen') updateStroke(point);
     if (tool === 'marker') {
       const last = nearest(point, window.Reader.getWritingGeometry());
@@ -349,7 +415,7 @@
     if (tool === 'pen' && completed.preview.points.length > 1) model.add(completed.preview);
     if (tool === 'marker') model.add(completed.preview);
     if (!completed.moved && Math.abs(scrollY - completed.scroll) < 2) {
-      if (tool === 'memo') openMemo({ type: 'memo', offset: completed.glyph.start, dx: .4, dy: 0, text: '' });
+      if (tool === 'memo') openMemo({ type: 'memo', offset: completed.glyph.start, dx: .6, dy: 1, tx: (point.x - center(completed.glyph).x) / window.Reader.getWritingGeometry().fontSize, ty: (point.y - center(completed.glyph).y) / window.Reader.getWritingGeometry().fontSize, color: markerColor, text: '' });
       if (tool === 'eraser') erase(point);
     }
     render();
@@ -365,18 +431,39 @@
     } else window.Reader.setRubyMode(false);
     tool = next; controls(); render();
   });
-  document.querySelectorAll('[data-marker-color]').forEach(button => button.onclick = () => { if (!editable) return; cancelPending(); markerColor = button.dataset.markerColor; controls(); render(); });
+  document.querySelectorAll('[data-marker-color]').forEach(button => button.onclick = () => {
+    if (!editable || !enabled) return;
+    if (tool === 'memo' && selectedMemo) model.updateMemo(selectedMemo, { color: button.dataset.markerColor });
+    else if (tool === 'marker') markerColor = button.dataset.markerColor;
+    render();
+  });
+  const settingsDialog = $('memo-settings-dialog');
+  $('memo-settings-open').onclick = () => {
+    if (!editable || !enabled || tool !== 'memo') return;
+    $('memo-font-size').value = model.memoSettings.fontSize; $('memo-opacity').value = model.memoSettings.opacity;
+    settingsDialog.showModal();
+  };
+  $('memo-settings-form').onsubmit = e => {
+    e.preventDefault();
+    if (editable && enabled && tool === 'memo') model.memoSettings = window.ManuscriptMarks.settings({ fontSize: Number($('memo-font-size').value), opacity: Number($('memo-opacity').value) });
+    settingsDialog.close(); render();
+  };
+  $('memo-settings-cancel').onclick = () => settingsDialog.close();
+  document.addEventListener('pointerdown', e => {
+    if (selectedMemo && !e.target.closest('.writing-memo, #marker-colors, #memo-settings-open, #memo-settings-dialog, #writing-memo-dialog')) { selectedMemo = null; render(); }
+  });
   $('writing-off').onclick = () => setMode(false);
-  $('writing-undo').onclick = () => { if (!editable) return; cancelPending(); model?.undo(); render(); };
+  $('writing-undo').onclick = () => { if (!editable || !enabled) return; cancelPending(); model?.undo(); render(); };
   input.addEventListener('input', () => { $('writing-memo-save').disabled = !input.value.trim(); });
   input.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.isComposing || e.keyCode === 229)) e.preventDefault(); });
   $('writing-memo-form').addEventListener('submit', e => {
     e.preventDefault(); const text = input.value.trim();
-    if (!editable || !enabled || !draftMemo || !text || text.length > 40 || /[\r\n\u2028\u2029]/u.test(text)) return;
+    if (!editable || !enabled || !draftMemo || !text || text.length > 200) return;
+    if (tool !== 'memo') return;
     if (draftMemo.id) model.editMemo(draftMemo.id, text); else model.add({ ...draftMemo, text });
     cancelPending();
   });
-  $('writing-memo-delete').onclick = () => { if (!editable) return; if (draftMemo?.id) model.remove(draftMemo.id); cancelPending(); };
+  $('writing-memo-delete').onclick = () => { if (!editable) return; if (enabled && tool === 'memo' && draftMemo?.id && confirm('このメモを削除しますか？')) model.remove(draftMemo.id); cancelPending(); };
   $('writing-memo-cancel').onclick = cancelPending;
   editor.addEventListener('cancel', e => { e.preventDefault(); cancelPending(); });
   editor.addEventListener('close', () => { draftMemo = null; });
@@ -392,6 +479,7 @@
   addEventListener('afterprint', () => requestAnimationFrame(render));
   matchMedia('print').addEventListener('change', e => { if (!e.matches) requestAnimationFrame(render); });
   window.ManuscriptWriting = {
+    bubble,
     printSnapshot() {
       if (!model) return { source: '', items: [], pens: [], hiddenPens: 0 };
       const geometry = window.Reader.getWritingGeometry(), pens = [];
@@ -402,15 +490,15 @@
         const points = strokePoints(item, geometry);
         if (points) pens.push({ id: item.id, points }); else hiddenPens++;
       }
-      return { source: model.source, items: copy(model.items), pens, hiddenPens };
+      return { source: model.source, items: copy(model.items), memoSettings: copy(model.memoSettings), pens, hiddenPens };
     },
     show(next, options = {}) { cancelPending(); model = next; editable = options.editable !== false; enabled = false; controls(); render(); },
     leave() { cancelPending(); enabled = false; model = null; controls(); render(); },
     setMode, cancelPending,
     get hasMarks() { return Boolean(model?.hasMarks); },
     get hasPens() { return Boolean(model?.items.some(item => item.type === 'pen')); },
-    get hasPending() { return Boolean(gesture || draftMemo); },
-    focusPending() { if (editor.open) $('writing-memo-input').focus(); },
+    get hasPending() { return Boolean(gesture || draftMemo || settingsDialog.open); },
+    focusPending() { if (editor.open) input.focus(); else if (settingsDialog.open) $('memo-font-size').focus(); },
     get enabled() { return enabled; }
   };
 })();

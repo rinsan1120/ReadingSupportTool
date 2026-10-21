@@ -392,7 +392,7 @@
       copied.entries = readAnnotations.entries.map(({ offset, text }) => ({ offset, text }));
       copied.sourceRubies = readAnnotations.sourceRubies.map(({ start, end, reading }) => ({ start, end, reading }));
       if (readMarks.source !== text) throw new Error('本文と書き込みの原文が一致しません。');
-      const copiedMarks = window.ManuscriptMarks.fromItems(readMarks.items, copied);
+      const copiedMarks = window.ManuscriptMarks.fromItems(readMarks.items, copied, readMarks.memoSettings);
       timeAnnotations = copied; timeMarks = copiedMarks;
       timingPaper.custom = { text, on: readPaper };
       $('time-text').value = text; timeInputSnapshot = $('time-text').value;

@@ -91,51 +91,30 @@
     const measurePage = document.createElement('section'); measurePage.className = 'manuscript-page'; root.append(measurePage);
     const bounds = measurePage.getBoundingClientRect();
     const memoItems = writing.items.filter(item => item.type === 'memo');
-    // The note rail uses a physical 9pt font, even if wide screen text shrinks.
-    // Measure text (not live memo DOM) before deciding where pages can end.
-    const memoWidth = 112, rail = memoItems.length ? memoWidth + 12 : 0;
+    const memoSettings = window.ManuscriptMarks.settings(writing.memoSettings);
     for (const item of memoItems) {
       const glyph = glyphs.get(item.offset), line = glyph && byLine.get(glyph.line);
       if (!line) throw new Error('文字メモの本文位置を確認できません。朗読画面を開き直してから出力してください。');
-      const el = document.createElement('div'); el.className = 'manuscript-memo'; el.dataset.markId = item.id; el.dataset.offset = item.offset;
-      el.textContent = item.text; measurePage.append(el);
-      groupByLine.get(line.index).memos.push({ item, glyph, el, height: el.getBoundingClientRect().height });
+      const el = window.ManuscriptWriting.bubble(item, memoSettings, 0, 0, 0, 0, measurePage);
+      if (el.offsetHeight > bounds.height - 4) throw new Error('メモが印刷領域の高さを超えています。メモの文字サイズまたは改行を減らして出力してください。');
+      groupByLine.get(line.index).memos.push({ item, glyph, height: el.offsetHeight });
     }
     const maxGroupHeight = groups.reduce((height, g) => Math.max(height, g.extentBottom - g.extentTop), 0);
-    const scale = Math.min(1, (bounds.width - rail) / (maxX - minX), (bounds.height - 1) / maxGroupHeight);
+    const scale = Math.min(1, bounds.width / (maxX - minX), (bounds.height - 1) / maxGroupHeight);
     const pages = []; let page, cursor = 0, previous = null;
-    const placeMemos = (group, top, bottom) => {
-      const placed = group.memos.map(memo => {
-        const ideal = top + (memo.glyph.y - group[0].top + memo.item.dy * parseFloat(snapshot.font.fontSize)) * scale;
-        const placedTop = Math.max(bottom, Math.min(bounds.height - memo.height, Math.max(0, ideal)));
-        bottom = placedTop + memo.height + 6;
-        return { ...memo, placedTop };
-      });
-      // A cluster near the footer may still fit by moving upward together.
-      // Only overflow into earlier notes (or past the page top) needs a break.
-      let ceiling = bounds.height;
-      for (let i = placed.length - 1; i >= 0; i--) {
-        placed[i].placedTop = Math.min(placed[i].placedTop, ceiling - placed[i].height);
-        ceiling = placed[i].placedTop - 6;
-      }
-      return placed;
-    };
     for (const group of groups) {
       const first = group[0], height = (group.extentBottom - first.top) * scale;
       let gap = Math.max(0, first.top - (previous?.bottom || 0)) * scale;
-      let memos = placeMemos(group, cursor + gap, page?.noteBottom || 0);
-      if (!page || cursor + gap + height > bounds.height - .5 || memos.some(m => m.placedTop < (page.noteBottom || 0))) {
+      if (!page || cursor + gap + height > bounds.height - .5) {
         if (page) gap = Math.max(0, gap - first.autoBefore * scale);
-        page = { lines: [], memos: [], noteBottom: 0 }; pages.push(page); cursor = 0;
+        page = { lines: [], memos: [] }; pages.push(page); cursor = 0;
         // Original blank lines consume available space, without empty pages.
         gap = Math.min(gap, Math.max(0, bounds.height - height - 1));
         gap = Math.max(gap, (first.top - group.extentTop) * scale);
-        memos = placeMemos(group, gap, 0);
-        if (memos.some(m => m.placedTop < 0)) throw new Error('同じ本文位置の文字メモが1ページに収まりません。メモを短くするか件数を減らしてから出力してください。');
       }
       const top = (cursor + gap) / scale;
       for (const line of group) page.lines.push({ ...line, placedTop: top + line.top - first.top });
-      page.memos.push(...memos); page.noteBottom = memos.length ? memos.at(-1).placedTop + memos.at(-1).height + 6 : page.noteBottom;
+      page.memos.push(...group.memos);
       cursor += gap + (group.at(-1).bottom - first.top) * scale; previous = group.at(-1);
     }
     root.replaceChildren();
@@ -150,8 +129,8 @@
       // Scale type and coordinates together rather than a CSS transform: print
       // engines may fragment/clip the unscaled overflow of a transformed canvas.
       canvas.dataset.scale = scale;
-      const left = (bounds.width - ((maxX - minX) * scale + rail)) / 2 - minX * scale;
-      Object.assign(canvas.style, scaledFont, { width: `${snapshot.width * scale + rail}px`, left: `${left}px` });
+      const left = (bounds.width - ((maxX - minX) * scale)) / 2 - minX * scale;
+      Object.assign(canvas.style, scaledFont, { width: `${snapshot.width * scale}px`, left: `${left}px` });
       const markerLayer = svg('svg', { class: 'manuscript-markers', width: snapshot.width * scale, height: bounds.height }, canvas);
       for (const line of pageLines) {
         const row = document.createElement('div'); row.className = 'manuscript-line';
@@ -194,13 +173,16 @@
         svg('path', { d, 'stroke-width': 2.8 * scale, 'data-mark-id': stroke.id, 'data-source-line': line.index }, penLayer);
       }
       for (const memo of memos) {
-        const railStart = maxX * scale + 12;
-        const noteLeft = Math.max(railStart, railStart + memo.item.dx * parseFloat(snapshot.font.fontSize) * scale);
-        memo.el.style.left = `${Math.min(noteLeft, bounds.width - left - memoWidth)}px`;
-        memo.el.style.top = `${memo.placedTop}px`; canvas.append(memo.el);
-        const line = placedLines.get(memo.glyph.line);
-        const y = (memo.glyph.y + memo.glyph.height / 2 + line.placedTop - line.top) * scale;
-        svg('path', { d: `M${snapshot.width * scale + 2},${y} L${parseFloat(memo.el.style.left) - 3},${memo.placedTop + 7}`, class: 'manuscript-note-link' }, penLayer);
+        const line = placedLines.get(memo.glyph.line), font = parseFloat(snapshot.font.fontSize) * scale;
+        const gx = (memo.glyph.x + memo.glyph.width / 2) * scale;
+        const gy = (memo.glyph.y + memo.glyph.height / 2 + line.placedTop - line.top) * scale;
+        const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
+        // Notes never affect text width, scale or page breaks. Correct only paper overflow.
+        const x = clamp(gx + memo.item.dx * font, -left + 2, bounds.width - left - 182);
+        const y = clamp(gy + memo.item.dy * font, 2, bounds.height - memo.height - 2);
+        const tx = clamp(gx + memo.item.tx * font, -left + 6, bounds.width - left - 6);
+        const ty = clamp(gy + memo.item.ty * font, 6, bounds.height - 6);
+        window.ManuscriptWriting.bubble(memo.item, memoSettings, x, y, tx, ty, canvas);
       }
       sheet.append(canvas); root.append(sheet);
     }
