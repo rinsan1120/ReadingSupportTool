@@ -58,7 +58,12 @@ const server = http.createServer((req, res) => {
       }, data);
       assert.ok(validations.legacy.every(Boolean)); assert.ok(validations.invalid.every(Boolean));
       await page.locator('#writing-mode').click(); await page.locator('#confirm-ok').click();
-      assert.deepEqual(await page.locator('.writing-tools > button > span').allTextContents(), ['ペン', 'マーカー', 'メモ', 'ルビ', '消去', '戻す', '書込OFF']);
+      assert.deepEqual(await page.locator('.writing-tools > button > span').allTextContents(), ['ペン', 'マーカー', 'メモ', 'ルビ', '消去', '戻す']);
+      assert.ok(await page.locator('#writing-mode').isVisible());
+      assert.equal(await page.locator('#writing-mode').getAttribute('aria-expanded'), 'true');
+      assert.equal(await page.locator('#writing-mode .button-state').count(), 0);
+      assert.equal(await page.locator('#writing-off').getAttribute('aria-label'), '書込メニューを閉じる');
+      assert.ok(await page.locator('#export-pdf').isHidden()); assert.ok(await page.locator('#measure-current').isHidden());
       assert.ok(await page.locator('#pen-options').isVisible());
       assert.equal(await page.locator('[data-pen-color=red]').getAttribute('aria-pressed'), 'true');
       assert.ok(await page.evaluate(() => [...document.querySelectorAll('.writing-tools button, #pen-options button')]
@@ -121,7 +126,23 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('[data-pen-color=blue]').getAttribute('aria-pressed'), 'true');
       await page.locator('[data-writing-tool=marker]').click(); await page.locator('[data-writing-tool=pen]').click();
       assert.equal(await page.locator('[data-pen-color=blue]').getAttribute('aria-pressed'), 'true');
+      const beforeClose = await state(), undoDisabled = await page.locator('#writing-undo').isDisabled();
+      await page.locator('#writing-mode').click();
+      assert.equal(await page.locator('#writing-mode').getAttribute('aria-expanded'), 'false');
+      assert.ok(await page.locator('#writing-toolbar').isHidden());
+      assert.ok(await page.locator('#reader-actions button:not([hidden])').evaluateAll(buttons => buttons.every(b =>
+        b.getBoundingClientRect().right <= innerWidth && b.scrollWidth <= b.clientWidth + 1)), 'long menu label fits narrow toolbars');
+      assert.ok(await page.locator('#export-pdf').isVisible()); assert.ok(await page.locator('#measure-current').isVisible());
+      assert.equal(await page.locator('#reader-stage.writing-active').count(), 0);
+      assert.deepEqual(await state(), beforeClose, 'closing the menu preserves all writing');
+      assert.equal(await page.locator('#writing-pen path[data-mark-id]').count(), beforeClose.items.length);
+      await page.locator('#writing-mode').click();
+      assert.ok(await page.locator('#writing-toolbar').isVisible());
+      assert.equal(await page.locator('#writing-undo').isDisabled(), undoDisabled, 'history survives reopening');
       await page.locator('#writing-off').click();
+      assert.equal(await page.locator('#writing-mode').getAttribute('aria-expanded'), 'false');
+      assert.deepEqual(await state(), beforeClose, 'X uses the same closing behavior');
+      assert.equal(await page.evaluate(() => document.activeElement.id), 'writing-mode');
       const colors = async () => page.locator('#writing-pen path[data-mark-id]').evaluateAll(paths => paths.map(p => getComputedStyle(p).stroke));
       assert.deepEqual((await colors()).slice(0, 3), ['rgb(255, 107, 107)', 'rgb(96, 165, 250)', 'rgb(74, 222, 128)']);
       await page.locator('#paper-mode').click();

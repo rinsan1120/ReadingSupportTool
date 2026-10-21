@@ -139,9 +139,9 @@
   let selectedMemo = null, selectedPen = null, penColor = 'red';
   let paintedPens = [], paintedMarkers = [];
   const help = {
-    pen: '色を選び、本文付近をドラッグして線を描画。スクロールは「書き込みOFF」で。',
+    pen: '色を選び、本文付近をドラッグして線を描画。スクロールするときは書込メニューを閉じてください。',
     move: 'ペンの線をタップして選択し、ドラッグして一筆全体を移動。線以外の場所ではスクロールできます。',
-    marker: '最初の文字から最後の文字へなぞって強調。スクロールは「書き込みOFF」で。',
+    marker: '最初の文字から最後の文字へなぞって強調。スクロールするときは書込メニューを閉じてください。',
     memo: '本文をタップして作成。本体・丸い足先をドラッグ。選択後にもう一度タップして編集。',
     ruby: '文字の前後をタップして読み仮名を追加。読み仮名を選ぶと編集できます。',
     eraser: '線・マーカーをタップして削除。メモはメモツールで選択して×から削除。'
@@ -192,13 +192,12 @@
   }
   function controls() {
     toolbar.hidden = !enabled;
-    $('writing-mode').setAttribute('aria-pressed', String(enabled));
-    $('writing-mode').querySelector('.button-state').textContent = enabled ? 'ON' : 'OFF';
-    $('writing-mode').setAttribute('aria-label', `書き込み：${enabled ? 'ON' : 'OFF'}`);
+    $('writing-mode').setAttribute('aria-expanded', String(enabled));
     const controls = document.querySelector('.reader-controls');
     const changed = controls.classList.contains('is-writing') !== enabled;
     controls.classList.toggle('is-writing', enabled);
-    ['export-pdf', 'measure-current', 'writing-mode'].forEach(id => { $(id).hidden = enabled || !editable; });
+    ['export-pdf', 'measure-current'].forEach(id => { $(id).hidden = enabled || !editable; });
+    $('writing-mode').hidden = !editable;
     if (changed) stage.dispatchEvent(new CustomEvent('reader-writing-mode', { bubbles: true }));
     stage.classList.toggle('writing-active', enabled);
     stage.classList.toggle('writing-drag', enabled && !['memo', 'ruby', 'move'].includes(tool));
@@ -516,7 +515,6 @@
   document.addEventListener('pointerdown', e => {
     if (selectedMemo && !e.target.closest('.writing-memo, #marker-colors, #memo-settings-open, #memo-settings-dialog, #writing-memo-dialog')) { selectedMemo = null; render(); }
   });
-  $('writing-off').onclick = () => setMode(false);
   $('writing-undo').onclick = () => { if (!editable || !enabled) return; cancelPending(); model?.undo(); render(); };
   input.addEventListener('input', () => { $('writing-memo-save').disabled = !input.value.trim(); });
   input.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.isComposing || e.keyCode === 229)) e.preventDefault(); });

@@ -543,10 +543,17 @@
   }
   $('reader-back').onclick = () => requestNavigation(mode === 'time' ? 'time-input' : 'read-input');
   $('toolbar-settings').onclick = () => { if (!readyForDirectAction()) return; openSettings(); };
-  $('writing-mode').onclick = async () => {
-    if (!await approveEditing(window.ManuscriptWriting.enabled)) return;
+  function closeWritingMenu() {
     closeSettings();
-    window.ManuscriptWriting.setMode(!window.ManuscriptWriting.enabled);
+    window.ManuscriptWriting.setMode(false);
+    $('writing-mode').focus({ preventScroll: true });
+  }
+  $('writing-off').onclick = closeWritingMenu;
+  $('writing-mode').onclick = async () => {
+    if (window.ManuscriptWriting.enabled) { closeWritingMenu(); return; }
+    if (!await approveEditing(false)) return;
+    closeSettings();
+    window.ManuscriptWriting.setMode(true);
   };
   window.Reader.setEditModeGuard(approveEditing);
   document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.dataset.close === 'settings-dialog' ? closeSettings() : $(b.dataset.close).close());
