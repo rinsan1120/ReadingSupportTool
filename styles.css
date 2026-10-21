@@ -348,8 +348,6 @@ footer {
 #reader-stage.paper-mode #writing-markers rect { fill:#ffe588; }
 #reader-stage.paper-mode #writing-markers rect[data-color=lightblue] { fill:#bde9fa; }
 #reader-stage.paper-mode #writing-markers rect[data-color=pink] { fill:#ffd0df; }
-#paper-mode { margin-top:8px; min-height:36px; padding:7px 12px; font-size:14px; }
-#paper-mode[aria-pressed=true] { background:var(--blue); color:var(--bg); border-color:var(--blue); }
 #writing-memo-dialog { position:fixed; inset:auto 0; top:var(--editor-center,50dvh); transform:translateY(-50%); margin:0 auto; max-height:var(--editor-height,calc(100dvh - 24px)); }
 #writing-memo-dialog h2 { margin:0 0 8px; }
 #writing-memo-input { width:100%; min-height:46px; padding:10px; border:1px solid #7897c157; border-radius:8px; background:#080f1e; color:var(--text); font-size:16px; }
@@ -666,10 +664,10 @@ html { scrollbar-gutter: stable; }
 }
 
 /* The sticky control footprint stays in flow when its surface slides away. */
-.reader-toolbar { display:grid; grid-template-columns:auto minmax(80px,1fr) repeat(5,auto); grid-template-areas:"back title save pdf writing measure menu"; gap:8px; padding:10px 16px; }
-#normal-tools { display:contents; }
+.reader-toolbar { display:grid; grid-template-columns:auto minmax(80px,1fr) repeat(6,auto); grid-template-areas:"back title save pdf paper writing measure menu"; gap:8px; padding:10px 16px; }
+#reader-actions, #normal-tools { display:contents; }
 #reader-back { grid-area:back; } #reading-title { grid-area:title; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-#export-manuscript { grid-area:save; } #export-pdf { grid-area:pdf; } #writing-mode { grid-area:writing; } #measure-current { grid-area:measure; } #operations { grid-area:menu; }
+#export-manuscript { grid-area:save; } #export-pdf { grid-area:pdf; } #paper-mode { grid-area:paper; } #writing-mode { grid-area:writing; } #measure-current { grid-area:measure; } #operations { grid-area:menu; }
 .reader-toolbar button,.writing-tools button { display:flex; justify-content:center; align-items:center; gap:5px; min-height:44px; padding:8px; white-space:nowrap; }
 .tool-icon { width:21px; height:24px; flex:none; }
 .button-state { font-size:10px; border:1px solid currentColor; border-radius:3px; padding:1px 2px; }
@@ -678,8 +676,7 @@ html { scrollbar-gutter: stable; }
 .reader-controls { transition:transform .18s ease; }
 @media(max-width:600px) {
   .reader-toolbar { grid-template-columns:48px minmax(0,1fr) 48px 48px; grid-template-areas:"back title save menu" "normal normal normal normal"; gap:0 4px; padding:6px 8px; }
-  #normal-tools { display:grid; grid-area:normal; grid-template-columns:repeat(4,minmax(0,1fr)); gap:4px; margin-top:6px; }
-  #normal-tools button { grid-area:auto; }
+  #reader-actions { display:grid; grid-area:normal; grid-template-columns:repeat(4,minmax(0,1fr)); grid-template-areas:"pdf paper writing measure"; gap:4px; margin-top:6px; }
   .reader-toolbar button { flex-direction:column; gap:0; padding:4px 2px; font-size:11px; }
   .reader-toolbar .button-state { position:absolute; margin-left:44px; margin-top:-20px; font-size:8px; padding:0 1px; }
   #writing-toolbar { padding:0 8px 6px; }

@@ -23,7 +23,8 @@
   function applyPaper(on) {
     $('reader-stage').classList.toggle('paper-mode', on);
     $('paper-mode').setAttribute('aria-pressed', String(on));
-    $('paper-mode').textContent = `原稿表示：${on ? 'ON' : 'OFF'}`;
+    $('paper-mode').querySelector('.button-state').textContent = on ? 'ON' : 'OFF';
+    $('paper-mode').setAttribute('aria-label', `白背景：${on ? 'ON' : 'OFF'}`);
   }
   let openingReader = false;
   const hasReadings = model => !!(model && (model.entries.length || model.sourceRubies.length));
@@ -543,7 +544,7 @@
       ['reader-width', 'columns'].forEach(id => settingsBaseline.set(id, { value: $(id).value, label: $(sliderOutput[id]).textContent }));
     } else rememberSettings();
   });
-  const settingNames = [...layoutSettings, 'paper'];
+  const settingNames = layoutSettings;
   let activeSetting = 'columns';
   function reserveSettingsSpace() {
     const panel = $('settings-dialog');
@@ -672,7 +673,7 @@
   document.addEventListener('pointercancel', () => { if (pendingSetting) discardSetting(); pointerAdjusting = false; });
   function cancelMeasurement() {
     clearTimeout(countdownTimer); clearInterval(elapsedTimer);
-    phase = 'idle'; $('countdown').hidden = true; $('measurement-bar').hidden = true;
+    phase = 'idle'; $('paper-mode').disabled = false; $('countdown').hidden = true; $('measurement-bar').hidden = true;
     $('start').disabled = false;
     ['preparation-partial-enabled', 'preparation-partial-limit'].forEach(id => $(id).disabled = false);
   }
@@ -682,7 +683,7 @@
     if (measuredPartial && (!validPartialLimit() || !measuredCount)) { notify('読む文字数の目安は正の整数で入力してください。'); return; }
     if (target !== '' && !validTarget(target)) { notify('作品全体の文字数を1〜1,000,000,000の整数で入力してください。'); $('preparation-target').focus(); return; }
     $('operation-dialog').close(); $('settings-dialog').close();
-    phase = 'countdown'; $('start').disabled = true; $('open-settings').disabled = true;
+    phase = 'countdown'; $('paper-mode').disabled = true; $('start').disabled = true; $('open-settings').disabled = true;
     ['preparation-partial-enabled', 'preparation-partial-limit'].forEach(id => $(id).disabled = true);
     // Remove preparation controls and scroll to the beginning BEFORE counting.
     $('preparation').hidden = true; $('measurement-bar').hidden = false; $('finish').disabled = true;
