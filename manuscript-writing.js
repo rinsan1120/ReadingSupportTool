@@ -8,6 +8,7 @@
     static MAX_TOTAL_POINTS = 100000;
     static MAX_COORDINATE = 1000;
     static MARKER_COLORS = ['yellow', 'lightblue', 'pink'];
+    static PEN_COLORS = ['red', 'blue', 'green'];
     constructor(source = '') { this.source = source; this.items = []; this.history = []; this.nextId = 1; this.memoSettings = { fontSize: 16, opacity: .9 }; }
     get hasMarks() { return this.items.length > 0; }
     remember() { this.history.push(copy(this.items)); if (this.history.length > 40) this.history.shift(); }
@@ -61,7 +62,7 @@
       for (const [index, item] of items.entries()) {
         const label = `書き込み${index + 1}件目：`;
         const fields = {
-          pen: ['id', 'type', 'offset', 'layoutKey', 'points', 'witnesses', 'fontSize'],
+          pen: ['id', 'type', 'offset', 'layoutKey', 'points', 'witnesses', 'fontSize', 'color'],
           marker: ['id', 'type', 'start', 'end', 'color'], memo: ['id', 'type', 'offset', 'dx', 'dy', 'tx', 'ty', 'color', 'text']
         };
         if (!item || typeof item !== 'object' || Array.isArray(item) || typeof item.type !== 'string' || !Object.hasOwn(fields, item.type)) throw new Error(`${label}書き込み種類が不正です。`);
@@ -83,6 +84,7 @@
             if (typeof item.text !== 'string' || !item.text.trim() || item.text.length > 200) throw new Error(`${label}メモは空白だけでない200文字以内の文字列にしてください。`);
             restored.items.push({ ...base, offset: item.offset, dx: item.dx, dy: item.dy, tx: item.tx, ty: item.ty, color: item.color, text: item.text });
           } else {
+            if (Object.hasOwn(item, 'color') && !this.PEN_COLORS.includes(item.color)) throw new Error(`${label}ペンの色はred・blue・greenのいずれかにしてください。`);
             if (typeof item.layoutKey !== 'string' || item.layoutKey.length > 100 || !/^\d+(?:\.\d+)?:\d+(?:\.\d+)?:\d+:\d+$/.test(item.layoutKey)) throw new Error(`${label}赤ペンのlayoutKeyが不正です。`);
             const [columns, height, breaks, hash] = item.layoutKey.split(':').map(Number);
             if (!(columns > 0 && columns <= 10000 && height > 0 && height <= 10 && Number.isSafeInteger(breaks) && breaks <= 100 && Number.isSafeInteger(hash) && hash <= 0xffffffff)) throw new Error(`${label}赤ペンのlayoutKeyが範囲外です。`);
@@ -103,7 +105,7 @@
             // reader default so later font changes cannot resize those strokes.
             const fontSize = Object.hasOwn(item, 'fontSize') ? item.fontSize : 22;
             if (!Number.isFinite(fontSize) || fontSize < 1 || fontSize > 1000) throw new Error(`${label}赤ペンのfontSizeが不正です。`);
-            restored.items.push({ ...base, offset: item.offset, layoutKey: item.layoutKey, fontSize, points, witnesses });
+            restored.items.push({ ...base, offset: item.offset, layoutKey: item.layoutKey, fontSize, points, witnesses, color: item.color ?? 'red' });
           }
         }
       }
@@ -134,11 +136,11 @@
   const markers = $('writing-markers'), pens = $('writing-pen'), memos = $('writing-memos');
   const editor = $('writing-memo-dialog'), input = $('writing-memo-input');
   let model = null, editable = true, enabled = false, tool = 'pen', markerColor = 'yellow', gesture = null, draftMemo = null, rendering = false;
-  let selectedMemo = null, selectedPen = null;
+  let selectedMemo = null, selectedPen = null, penColor = 'red';
   let paintedPens = [], paintedMarkers = [];
   const help = {
-    pen: '本文付近をドラッグして赤い線。スクロールは「書き込みOFF」で。',
-    move: '赤ペンをタップして選択し、ドラッグして一筆全体を移動。線以外の場所ではスクロールできます。',
+    pen: '色を選び、本文付近をドラッグして線を描画。スクロールは「書き込みOFF」で。',
+    move: 'ペンの線をタップして選択し、ドラッグして一筆全体を移動。線以外の場所ではスクロールできます。',
     marker: '最初の文字から最後の文字へなぞって強調。スクロールは「書き込みOFF」で。',
     memo: '本文をタップして作成。本体・丸い足先をドラッグ。選択後にもう一度タップして編集。',
     ruby: '文字の前後をタップして読み仮名を追加。読み仮名を選ぶと編集できます。',
@@ -200,7 +202,11 @@
     if (changed) stage.dispatchEvent(new CustomEvent('reader-writing-mode', { bubbles: true }));
     stage.classList.toggle('writing-active', enabled);
     stage.classList.toggle('writing-drag', enabled && !['memo', 'ruby', 'move'].includes(tool));
-    document.querySelectorAll('[data-writing-tool]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.writingTool === tool)));
+    document.querySelectorAll('[data-writing-tool]').forEach(button => button.setAttribute('aria-pressed',
+      String(button.dataset.writingTool === tool || button.dataset.writingTool === 'pen' && tool === 'move')));
+    $('pen-options').hidden = !enabled || !['pen', 'move'].includes(tool);
+    document.querySelectorAll('[data-pen-color]').forEach(button =>
+      button.setAttribute('aria-pressed', String(tool === 'pen' && button.dataset.penColor === penColor)));
     const selected = model?.items.find(item => item.id === selectedMemo);
     $('marker-colors').hidden = !enabled || !['marker', 'memo'].includes(tool);
     // Keep the toolbar's height stable when selecting a note during a drag.
@@ -270,8 +276,8 @@
             if (gesture?.pen && gesture.pen.id === item.id) points = gesture.points.map(p => ({ x: p.x + gesture.dx, y: p.y + gesture.dy }));
             const d = points.map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' ');
             const active = editable && enabled && tool === 'move';
-            if (active && selectedPen === item.id) svg('path', { d, class: 'pen-selection' }, penGroup);
-            svg('path', { d, 'data-mark-id': item.id ?? 'draft', 'data-offset': item.offset }, penGroup);
+            if (active && selectedPen === item.id) svg('path', { d, class: 'pen-selection', 'data-color': item.color ?? 'red' }, penGroup);
+            svg('path', { d, 'data-mark-id': item.id ?? 'draft', 'data-offset': item.offset, 'data-color': item.color ?? 'red' }, penGroup);
             if (active) svg('path', { d, class: 'pen-hit', 'data-pen-id': item.id }, penGroup);
             paintedPens.push({ id: item.id, points });
             bottom = Math.max(bottom, oy + Math.max(...points.map(p => p.y)) + 12);
@@ -416,7 +422,7 @@
     stage.setPointerCapture(e.pointerId);
     if (tool === 'pen') {
       gesture.origin = center(glyph);
-      gesture.preview = { type: 'pen', offset: glyph.start, layoutKey: geometry.layoutKey, fontSize: geometry.fontSize, points: [{ x: (point.x - gesture.origin.x) / geometry.fontSize, y: (point.y - gesture.origin.y) / geometry.fontSize }], witnesses: [{ offset: glyph.start, x: 0, y: 0 }] };
+      gesture.preview = { type: 'pen', offset: glyph.start, layoutKey: geometry.layoutKey, fontSize: geometry.fontSize, color: penColor, points: [{ x: (point.x - gesture.origin.x) / geometry.fontSize, y: (point.y - gesture.origin.y) / geometry.fontSize }], witnesses: [{ offset: glyph.start, x: 0, y: 0 }] };
     }
     if (tool === 'marker') gesture.preview = { type: 'marker', start: glyph.start, end: glyph.end, color: markerColor };
     render();
@@ -491,6 +497,10 @@
     else if (tool === 'marker') markerColor = button.dataset.markerColor;
     render();
   });
+  document.querySelectorAll('[data-pen-color]').forEach(button => button.onclick = () => {
+    if (!editable || !enabled || !['pen', 'move'].includes(tool)) return;
+    cancelPending(); penColor = button.dataset.penColor; tool = 'pen'; controls(); render();
+  });
   const settingsDialog = $('memo-settings-dialog');
   $('memo-settings-open').onclick = () => {
     if (!editable || !enabled || tool !== 'memo') return;
@@ -542,7 +552,7 @@
       for (const item of model.items) if (item.type === 'pen') {
         const points = strokePoints(item, geometry);
         if (!points) throw new Error('赤ペンの基準文字を確認できません。本文全体の朗読画面を開き直してから出力してください。');
-        pens.push({ id: item.id, points });
+        pens.push({ id: item.id, points, color: item.color ?? 'red' });
       }
       return { source: model.source, items: copy(model.items), memoSettings: copy(model.memoSettings), pens };
     },

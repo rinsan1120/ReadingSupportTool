@@ -72,7 +72,7 @@
     for (const pen of writing.pens) {
       if (pen.points.length < 2 || pen.points.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) throw new Error('赤ペンの描画座標を確認できないためPDFを準備できません。');
       for (const point of pen.points) { minX = Math.min(minX, point.x - 1.4); maxX = Math.max(maxX, point.x + 1.4); }
-      for (const [row, paths] of splitStroke(pen.points, lines)) lines[row].strokes.push({ id: pen.id, paths });
+      for (const [row, paths] of splitStroke(pen.points, lines)) lines[row].strokes.push({ id: pen.id, paths, color: pen.color ?? 'red' });
     }
     // Connected lines containing the same annotation stay on the same page.
     const last = new Map();
@@ -188,7 +188,7 @@
           }
         }
         const d = stroke.paths.map(points => points.map((point, i) => `${i ? 'L' : 'M'}${point.x * scale},${(point.y + line.placedTop - line.top) * scale}`).join(' ')).join(' ');
-        svg('path', { d, 'stroke-width': 2.8 * scale, 'data-mark-id': stroke.id, 'data-source-line': line.index }, penLayer);
+        svg('path', { d, 'stroke-width': 2.8 * scale, 'data-mark-id': stroke.id, 'data-source-line': line.index, 'data-color': stroke.color }, penLayer);
       }
       for (const memo of memos) {
         const line = placedLines.get(memo.glyph.line), font = parseFloat(snapshot.font.fontSize) * scale;

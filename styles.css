@@ -217,6 +217,8 @@ input[type=number] {
 .manuscript-line { position:relative; z-index:1; }
 .manuscript-pens { z-index:2; }
 .manuscript-pens path { fill:none; stroke:#c52228; stroke-linecap:round; stroke-linejoin:round; }
+.manuscript-pens path[data-color=blue] { stroke:#2563eb; }
+.manuscript-pens path[data-color=green] { stroke:#15803d; }
 #pdf-dialog h2 { margin-top:0; }
 #pdf-dialog p { line-height:1.8; }
 #pdf-small-warning { color:#fcd58a; }
@@ -316,12 +318,16 @@ footer {
 .writing-options { display:flex; align-items:center; justify-content:center; gap:8px; margin-top:6px; }
 .writing-options span { color:var(--muted); font-size:11px; }
 .writing-options button { font-size:12px; padding:7px; min-height:34px; }
-#marker-colors { display:flex; justify-content:center; gap:6px; margin-top:6px; }
-#marker-colors button { display:flex; align-items:center; gap:5px; min-height:34px; padding:6px 10px; font-size:12px; }
+#marker-colors, #pen-options { display:flex; justify-content:center; gap:6px; margin-top:6px; }
+#marker-colors button, #pen-options button { display:flex; align-items:center; gap:5px; min-height:34px; padding:6px 10px; font-size:12px; }
 #marker-colors button::before { content:""; width:12px; height:12px; border-radius:50%; background:#ffd148; }
 #marker-colors [data-marker-color=lightblue]::before { background:#60c6ff; }
 #marker-colors [data-marker-color=pink]::before { background:#ff89b9; }
-#marker-colors [aria-pressed=true] { border-color:var(--blue); outline:1px solid var(--blue); background:#23364f; }
+#marker-colors [aria-pressed=true], #pen-options [aria-pressed=true] { border-color:var(--blue); outline:1px solid var(--blue); background:#23364f; }
+#pen-options [data-pen-color]::before { content:""; width:12px; height:12px; border-radius:50%; background:#ff6b6b; }
+#pen-options [data-pen-color=blue]::before { background:#60a5fa; }
+#pen-options [data-pen-color=green]::before { background:#4ade80; }
+#pen-options .tool-icon { width:16px; height:18px; }
 #writing-tool-help { margin:6px 0 0; font-size:12px; text-align:center; color:var(--muted); line-height:1.5; }
 #reader-stage { display:grid; grid-template-columns:minmax(0,1fr); position:relative; isolation:isolate; }
 .reader-text-area { display:flow-root; min-width:0; }
@@ -333,6 +339,8 @@ footer {
 #writing-markers rect[data-color=pink] { fill:rgba(255,137,185,.38); }
 #writing-pen { z-index:2; overflow:visible; touch-action:none; }
 #writing-pen path { fill:none; stroke:#ff6b6b; stroke-width:2.8; stroke-linecap:round; stroke-linejoin:round; }
+#writing-pen path[data-color=blue] { stroke:#60a5fa; }
+#writing-pen path[data-color=green] { stroke:#4ade80; }
 #writing-memos { z-index:3; }
 .writing-active { user-select:none; -webkit-user-select:none; touch-action:pan-y; }
 .writing-drag { touch-action:none; cursor:crosshair; }
@@ -340,6 +348,8 @@ footer {
 #reader-stage.paper-mode { background:#fff; color:#17191d; }
 #reader-stage.paper-mode .reading-annotation { color:#2563EB; }
 #reader-stage.paper-mode #writing-pen path { stroke:#c52228; }
+#reader-stage.paper-mode #writing-pen path[data-color=blue] { stroke:#2563eb; }
+#reader-stage.paper-mode #writing-pen path[data-color=green] { stroke:#15803d; }
 #writing-pen path.pen-selection { stroke-width:8; opacity:.22; }
 #reader-stage #writing-pen path.pen-hit { stroke:transparent; stroke-width:20; pointer-events:stroke; touch-action:none; cursor:move; }
 #reader-stage.paper-mode #writing-markers rect { fill:#ffe588; }
@@ -672,7 +682,7 @@ html { scrollbar-gutter: stable; }
   #reader-actions .button-state { position:static; margin:0; font-size:8px; padding:0 2px; }
   #reader-actions { min-width:0; }
   #writing-toolbar { padding:0 8px 6px; }
-  .writing-tools { grid-template-columns:repeat(4,minmax(0,1fr)); gap:3px; }
+  .writing-tools { grid-template-columns:repeat(7,minmax(0,1fr)); gap:3px; }
   .writing-tools button { flex-direction:column; padding:4px 0; gap:0; font-size:10px; min-width:0; }
   .writing-tools .tool-icon { width:18px; height:22px; }
   .writing-options,#writing-tool-help { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); margin:0; }
