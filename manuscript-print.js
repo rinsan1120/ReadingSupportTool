@@ -42,7 +42,7 @@
     }
     return fragments;
   }
-  function prepare(snapshot, writing = { items: [], pens: [], hiddenPens: 0 }) {
+  function prepare(snapshot, writing = { items: [], pens: [] }) {
     clear();
     let pendingAuto = 0;
     const lines = snapshot.lines.flatMap((line, index) => {
@@ -61,12 +61,16 @@
       glyphsByLine.get(glyph.line).push(glyph);
     }
     let minX = 0, maxX = snapshot.width;
+    if (writing.items.some(item => item.type === 'pen' && !writing.pens.some(pen => pen.id === item.id))) {
+      throw new Error('赤ペンの描画位置を確認できないためPDFを準備できません。朗読画面を開き直してから出力してください。');
+    }
     for (const line of lines) for (const piece of line.pieces) if (piece.sourceRuby) {
       for (const box of [piece.sourceRuby.bounds, piece.sourceRuby.readingBounds]) {
         minX = Math.min(minX, box.left); maxX = Math.max(maxX, box.left + box.width);
       }
     }
     for (const pen of writing.pens) {
+      if (pen.points.length < 2 || pen.points.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) throw new Error('赤ペンの描画座標を確認できないためPDFを準備できません。');
       for (const point of pen.points) { minX = Math.min(minX, point.x - 1.4); maxX = Math.max(maxX, point.x + 1.4); }
       for (const [row, paths] of splitStroke(pen.points, lines)) lines[row].strokes.push({ id: pen.id, paths });
     }
@@ -173,6 +177,12 @@
       }
       const penLayer = svg('svg', { class: 'manuscript-pens', width: snapshot.width * scale, height: bounds.height }, canvas);
       for (const line of pageLines) for (const stroke of line.strokes) {
+        for (const path of stroke.paths) for (const point of path) {
+          const x = left + point.x * scale, y = (point.y + line.placedTop - line.top) * scale, radius = 1.4 * scale;
+          if (x - radius < -.01 || x + radius > bounds.width + .01 || y - radius < -.01 || y + radius > bounds.height + .01) {
+            throw new Error('赤ペンが印刷領域を超えるためPDFを準備できません。赤ペンを移動してから出力してください。');
+          }
+        }
         const d = stroke.paths.map(points => points.map((point, i) => `${i ? 'L' : 'M'}${point.x * scale},${(point.y + line.placedTop - line.top) * scale}`).join(' ')).join(' ');
         svg('path', { d, 'stroke-width': 2.8 * scale, 'data-mark-id': stroke.id, 'data-source-line': line.index }, penLayer);
       }
@@ -208,7 +218,7 @@
     readingPositions.forEach(({ reading, left, top }) => { reading.style.left = `${left}px`; reading.style.top = `${top}px`; });
     root.classList.remove('print-measuring'); ready = true;
     return { pages: pages.length, scale, points: parseFloat(snapshot.font.fontSize) * scale * .75,
-      marks: writing.items.length - writing.hiddenPens, hiddenPens: writing.hiddenPens };
+      marks: writing.items.length };
   }
   window.ManuscriptPrint = {
     prepare, clear,

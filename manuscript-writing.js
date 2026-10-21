@@ -31,6 +31,11 @@
       return { fontSize: value.fontSize, opacity: value.opacity };
     }
     undo() { if (this.history.length) this.items = this.history.pop(); }
+    movePen(id, changes) {
+      const index = this.items.findIndex(item => item.id === id && item.type === 'pen');
+      if (index < 0) return;
+      this.remember(); this.items[index] = copy(changes);
+    }
     static fromItems(items, manuscript, settings) {
       if (!Array.isArray(items)) throw new Error('marksは配列である必要があります。');
       if (items.length > this.MAX_MARKS) throw new Error('書き込みは1,000件までです。');
@@ -56,7 +61,7 @@
       for (const [index, item] of items.entries()) {
         const label = `書き込み${index + 1}件目：`;
         const fields = {
-          pen: ['id', 'type', 'offset', 'layoutKey', 'points', 'witnesses'],
+          pen: ['id', 'type', 'offset', 'layoutKey', 'points', 'witnesses', 'fontSize'],
           marker: ['id', 'type', 'start', 'end', 'color'], memo: ['id', 'type', 'offset', 'dx', 'dy', 'tx', 'ty', 'color', 'text']
         };
         if (!item || typeof item !== 'object' || Array.isArray(item) || typeof item.type !== 'string' || !Object.hasOwn(fields, item.type)) throw new Error(`${label}書き込み種類が不正です。`);
@@ -94,7 +99,11 @@
               seen.add(w.offset); return { offset: w.offset, ...point };
             });
             if (!witnesses.some(w => w.offset === item.offset && w.x === 0 && w.y === 0)) throw new Error(`${label}赤ペンの基準位置に対応する補助情報がありません。`);
-            restored.items.push({ ...base, offset: item.offset, layoutKey: item.layoutKey, points, witnesses });
+            // Older v3/v4 files did not record the drawing unit. Use the original
+            // reader default so later font changes cannot resize those strokes.
+            const fontSize = Object.hasOwn(item, 'fontSize') ? item.fontSize : 22;
+            if (!Number.isFinite(fontSize) || fontSize < 1 || fontSize > 1000) throw new Error(`${label}赤ペンのfontSizeが不正です。`);
+            restored.items.push({ ...base, offset: item.offset, layoutKey: item.layoutKey, fontSize, points, witnesses });
           }
         }
       }
@@ -125,10 +134,11 @@
   const markers = $('writing-markers'), pens = $('writing-pen'), memos = $('writing-memos');
   const editor = $('writing-memo-dialog'), input = $('writing-memo-input');
   let model = null, editable = true, enabled = false, tool = 'pen', markerColor = 'yellow', gesture = null, draftMemo = null, rendering = false;
-  let selectedMemo = null;
+  let selectedMemo = null, selectedPen = null;
   let paintedPens = [], paintedMarkers = [];
   const help = {
     pen: '本文付近をドラッグして赤い線。スクロールは「書き込みOFF」で。',
+    move: '赤ペンをタップして選択し、ドラッグして一筆全体を移動。線以外の場所ではスクロールできます。',
     marker: '最初の文字から最後の文字へなぞって強調。スクロールは「書き込みOFF」で。',
     memo: '本文をタップして作成。本体・丸い足先をドラッグ。選択後にもう一度タップして編集。',
     ruby: '文字の前後をタップして読み仮名を追加。読み仮名を選ぶと編集できます。',
@@ -168,7 +178,7 @@
     if (previous && stage.hasPointerCapture(previous.id)) stage.releasePointerCapture(previous.id);
   }
   function cancelPending() {
-    releaseGesture(); draftMemo = null; selectedMemo = null;
+    releaseGesture(); draftMemo = null; selectedMemo = null; selectedPen = null;
     if (editor.open) editor.close();
     if ($('memo-settings-dialog').open) $('memo-settings-dialog').close();
     render();
@@ -184,7 +194,7 @@
     $('normal-tools').hidden = enabled || !editable;
     if (changed) stage.dispatchEvent(new CustomEvent('reader-writing-mode', { bubbles: true }));
     stage.classList.toggle('writing-active', enabled);
-    stage.classList.toggle('writing-drag', enabled && !['memo', 'ruby'].includes(tool));
+    stage.classList.toggle('writing-drag', enabled && !['memo', 'ruby', 'move'].includes(tool));
     document.querySelectorAll('[data-writing-tool]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.writingTool === tool)));
     const selected = model?.items.find(item => item.id === selectedMemo);
     $('marker-colors').hidden = !enabled || !['marker', 'memo'].includes(tool);
@@ -206,19 +216,9 @@
   function strokePoints(item, geometry) {
     const glyph = geometry.byOffset.get(item.offset);
     if (!glyph) return null;
-    const origin = center(glyph), font = geometry.fontSize;
-    const xs = item.points.map(p => p.x), ys = item.points.map(p => p.y);
-    const complex = Math.max(...xs) - Math.min(...xs) > 2.5 || Math.max(...ys) - Math.min(...ys) > .9;
-    if (complex && item.layoutKey !== geometry.layoutKey) return null;
-    // Witnesses are original characters near the line as it was drawn. If
-    // their relative positions change after rewrapping, keep the stroke data
-    // but hide it rather than point at unrelated words.
-    for (const witness of item.witnesses) {
-      const current = geometry.byOffset.get(witness.offset);
-      if (!current) return null;
-      const c = center(current);
-      if (Math.hypot((c.x - origin.x) / font - witness.x, (c.y - origin.y) / font - witness.y) > .7) return null;
-    }
+    const origin = center(glyph), font = item.fontSize ?? 22;
+    // One rigid translation follows the anchor. Rewrapping never reshapes or
+    // edits stored points, even for strokes spanning several lines.
     return item.points.map(p => ({ x: origin.x + p.x * font, y: origin.y + p.y * font }));
   }
   // Shared screen/PDF renderer: tail, background and ink share one opacity.
@@ -245,32 +245,36 @@
       markers.replaceChildren(); pens.replaceChildren(); memos.replaceChildren();
       paintedPens = []; paintedMarkers = [];
       controls();
-      if (!model || root.closest('[hidden]')) { stage.style.minHeight = ''; $('writing-status').hidden = true; return; }
-      let hidden = 0;
+      if (!model || root.closest('[hidden]')) { stage.style.minHeight = ''; return; }
       if (model.items.length || gesture) {
         const geometry = window.Reader.getWritingGeometry(), rect = root.getBoundingClientRect(), outer = stage.getBoundingClientRect();
         const ox = rect.left - outer.left, oy = rect.top - outer.top;
         const markerGroup = svg('g', { transform: `translate(${ox} ${oy})` }, markers);
         const penGroup = svg('g', { transform: `translate(${ox} ${oy})` }, pens);
         const items = model.items.map(item => gesture?.memo?.id === item.id ? gesture.preview : item);
-        if (gesture?.preview && !gesture.memo) items.push(gesture.preview);
-        const noteItems = [];
+        if (gesture?.preview && !gesture.memo && !gesture.pen) items.push(gesture.preview);
+        const noteItems = []; let bottom = 0;
         for (const item of items) {
           if (item.type === 'marker') {
             const boxes = rectangles(item.start, item.end, geometry);
             for (const box of boxes) svg('rect', { ...box, rx: 2, 'data-mark-id': item.id ?? 'draft', 'data-start': item.start, 'data-end': item.end, 'data-color': item.color ?? 'yellow' }, markerGroup);
             paintedMarkers.push({ id: item.id, boxes });
           } else if (item.type === 'pen') {
-            const points = strokePoints(item, geometry);
-            if (!points) { hidden++; continue; }
-            svg('path', { d: points.map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' '), 'data-mark-id': item.id ?? 'draft', 'data-offset': item.offset }, penGroup);
+            let points = strokePoints(item, geometry);
+            if (!points) continue; // An anchor beyond a timing excerpt is not displayed.
+            if (gesture?.pen && gesture.pen.id === item.id) points = gesture.points.map(p => ({ x: p.x + gesture.dx, y: p.y + gesture.dy }));
+            const d = points.map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' ');
+            const active = editable && enabled && tool === 'move';
+            if (active && selectedPen === item.id) svg('path', { d, class: 'pen-selection' }, penGroup);
+            svg('path', { d, 'data-mark-id': item.id ?? 'draft', 'data-offset': item.offset }, penGroup);
+            if (active) svg('path', { d, class: 'pen-hit', 'data-pen-id': item.id }, penGroup);
             paintedPens.push({ id: item.id, points });
+            bottom = Math.max(bottom, oy + Math.max(...points.map(p => p.y)) + 12);
           } else {
             const glyph = geometry.byOffset.get(item.offset);
             if (glyph) noteItems.push({ item, glyph });
           }
         }
-        let bottom = 0;
         for (const { item, glyph } of noteItems) {
           const origin = center(glyph), font = geometry.fontSize;
           const x = Math.max(0, Math.min(outer.width - 180, ox + origin.x + item.dx * font));
@@ -287,13 +291,6 @@
         }
         stage.style.minHeight = bottom ? `${Math.ceil(bottom + 16)}px` : '';
       } else stage.style.minHeight = '';
-      const message = hidden ? `折り返しの変化により赤ペン${hidden}件を一時非表示にしています。${editable ? 'これらはPDFに含まれません。' : ''}元の配置に戻すと再表示します。` : '';
-      const status = $('writing-status'), hide = !hidden;
-      if (status.hidden !== hide || status.textContent !== message) {
-        const anchor = window.Reader.capture(), height = status.getBoundingClientRect().height;
-        status.hidden = hide; status.textContent = message;
-        if (Math.abs(status.getBoundingClientRect().height - height) > .5) window.Reader.restore(anchor);
-      }
     } finally { rendering = false; }
   }
   function fitEditor() {
@@ -348,6 +345,33 @@
     }
     for (const key of ['dx', 'dy', 'tx', 'ty']) gesture.preview[key] = Math.max(-1000, Math.min(1000, gesture.preview[key]));
   }
+  function updatePenDrag(point) {
+    gesture.dx = point.x - gesture.first.x; gesture.dy = point.y - gesture.first.y;
+  }
+  function commitPenMove(completed) {
+    const g = window.Reader.getWritingGeometry();
+    const points = completed.points.map(p => ({ x: p.x + completed.dx, y: p.y + completed.dy }));
+    const glyph = nearest(points[0], g, Infinity);
+    if (!glyph) return;
+    const origin = center(glyph), font = g.fontSize;
+    const relative = p => ({ x: (p.x - origin.x) / font, y: (p.y - origin.y) / font });
+    const witnesses = new Map([[glyph.start, { offset: glyph.start, x: 0, y: 0 }]]);
+    // A bounded sample records nearby characters without scanning the entire
+    // manuscript once per input point on a long stroke.
+    const stride = Math.max(1, Math.ceil(points.length / 32));
+    for (const point of points.filter((_, i) => i % stride === 0 || i === points.length - 1)) {
+      const nearby = nearest(point, g, Infinity);
+      if (nearby && !witnesses.has(nearby.start)) witnesses.set(nearby.start, { offset: nearby.start, ...relative(center(nearby)) });
+    }
+    const changed = { ...completed.pen, offset: glyph.start, layoutKey: g.layoutKey, fontSize: font,
+      points: points.map(relative), witnesses: [...witnesses.values()] };
+    // Validate before replacing anything: failed moves leave data/history intact.
+    try {
+      const manuscript = new window.ReadingAnnotations(model.source);
+      window.ManuscriptMarks.fromItems(model.items.map(item => item.id === changed.id ? changed : item), manuscript, model.memoSettings);
+      model.movePen(changed.id, changed);
+    } catch (error) { alert(`赤ペンを移動できません。${error.message}`); }
+  }
   stage.addEventListener('pointerdown', e => {
     if (!enabled || !editable) return;
     if (tool === 'ruby') return;
@@ -370,6 +394,16 @@
       selectedMemo = item.id; stage.setPointerCapture(e.pointerId); render(); return;
     }
     selectedMemo = null; controls();
+    if (tool === 'move') {
+      const id = Number(e.target.closest('.pen-hit')?.dataset.penId);
+      const pen = model.items.find(item => item.type === 'pen' && item.id === id);
+      selectedPen = pen?.id ?? null;
+      if (!pen) { render(); return; }
+      e.preventDefault();
+      gesture = { id: e.pointerId, first: localPoint(e), scroll: scrollY, moved: false,
+        pen: copy(pen), points: strokePoints(pen, window.Reader.getWritingGeometry()), dx: 0, dy: 0 };
+      stage.setPointerCapture(e.pointerId); render(); return;
+    }
     const geometry = window.Reader.getWritingGeometry(), point = localPoint(e), glyph = nearest(point, geometry);
     if (!glyph && tool !== 'eraser') { render(); return; }
     if (tool !== 'memo') e.preventDefault();
@@ -377,7 +411,7 @@
     stage.setPointerCapture(e.pointerId);
     if (tool === 'pen') {
       gesture.origin = center(glyph);
-      gesture.preview = { type: 'pen', offset: glyph.start, layoutKey: geometry.layoutKey, points: [{ x: (point.x - gesture.origin.x) / geometry.fontSize, y: (point.y - gesture.origin.y) / geometry.fontSize }], witnesses: [{ offset: glyph.start, x: 0, y: 0 }] };
+      gesture.preview = { type: 'pen', offset: glyph.start, layoutKey: geometry.layoutKey, fontSize: geometry.fontSize, points: [{ x: (point.x - gesture.origin.x) / geometry.fontSize, y: (point.y - gesture.origin.y) / geometry.fontSize }], witnesses: [{ offset: glyph.start, x: 0, y: 0 }] };
     }
     if (tool === 'marker') gesture.preview = { type: 'marker', start: glyph.start, end: glyph.end, color: markerColor };
     render();
@@ -386,6 +420,10 @@
     if (!editable || !gesture || gesture.id !== e.pointerId) return;
     const point = localPoint(e);
     if (Math.hypot(point.x - gesture.first.x, point.y - gesture.first.y) > 8) gesture.moved = true;
+    if (gesture.pen) {
+      if (gesture.moved) updatePenDrag(point);
+      render(); return;
+    }
     if (gesture.memo) {
       if (gesture.moved) updateMemoDrag(point);
       render(); return;
@@ -401,6 +439,12 @@
     if (!editable || !gesture || gesture.id !== e.pointerId) return;
     const point = localPoint(e);
     if (Math.hypot(point.x - gesture.first.x, point.y - gesture.first.y) > 8) gesture.moved = true;
+    if (gesture.pen) {
+      if (gesture.moved) updatePenDrag(point);
+      const completed = gesture; releaseGesture();
+      if (completed.moved && Math.hypot(completed.dx, completed.dy) > .01) commitPenMove(completed);
+      render(); return;
+    }
     if (gesture.memo) {
       if (gesture.moved) updateMemoDrag(point);
       const completed = gesture; releaseGesture();
@@ -423,6 +467,9 @@
     render();
   });
   stage.addEventListener('pointercancel', () => { releaseGesture(); render(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && gesture?.pen) { e.preventDefault(); releaseGesture(); render(); }
+  });
   stage.addEventListener('lostpointercapture', () => { if (gesture) { gesture = null; render(); } });
   document.querySelectorAll('[data-writing-tool]').forEach(button => button.onclick = async () => {
     if (!editable) return;
@@ -483,16 +530,16 @@
   window.ManuscriptWriting = {
     bubble,
     printSnapshot() {
-      if (!model) return { source: '', items: [], pens: [], hiddenPens: 0 };
+      if (!model) return { source: '', items: [], pens: [] };
       const geometry = window.Reader.getWritingGeometry(), pens = [];
-      let hiddenPens = 0;
-      // Reuse exactly the live stroke visibility/anchor rules; pending gestures
+      // Reuse exactly the live stroke anchor rules; pending gestures
       // and memo edits live outside items and are deliberately not exported.
       for (const item of model.items) if (item.type === 'pen') {
         const points = strokePoints(item, geometry);
-        if (points) pens.push({ id: item.id, points }); else hiddenPens++;
+        if (!points) throw new Error('赤ペンの基準文字を確認できません。本文全体の朗読画面を開き直してから出力してください。');
+        pens.push({ id: item.id, points });
       }
-      return { source: model.source, items: copy(model.items), memoSettings: copy(model.memoSettings), pens, hiddenPens };
+      return { source: model.source, items: copy(model.items), memoSettings: copy(model.memoSettings), pens };
     },
     show(next, options = {}) { cancelPending(); model = next; editable = options.editable !== false; enabled = false; controls(); render(); },
     leave() { cancelPending(); enabled = false; model = null; controls(); render(); },

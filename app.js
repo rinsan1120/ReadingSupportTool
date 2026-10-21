@@ -43,9 +43,9 @@
   function confirmMarkedChange(subject) {
     if (!window.ManuscriptWriting.hasMarks) return Promise.resolve(true);
     const impact = window.ManuscriptWriting.hasPens
-      ? '一部の赤ペンが表示されなくなる場合があります。'
+      ? '赤ペンの位置がずれる場合があります。変更後は移動して調整できます。'
       : '書き込みの表示位置が変わる場合があります。';
-    return ask(`原稿に書き込みがあります。\n\n${subject}を変更すると、${impact}`, '変更する', `${subject}を変更しますか？`);
+    return ask(window.ManuscriptWriting.hasPens ? impact : `原稿に書き込みがあります。\n\n${subject}を変更すると、${impact}`, '変更する', `${subject}を変更しますか？`);
   }
   window.Reader.setReadingChangeGuard(() => confirmMarkedChange('読み仮名'));
   function countText(text) {
@@ -347,8 +347,6 @@
       pdfAnchor = window.Reader.capture();
       const writing = window.ManuscriptWriting.printSnapshot();
       const result = window.ManuscriptPrint.prepare(snapshot, writing);
-      $('pdf-layout-info').hidden = !result.hiddenPens;
-      $('pdf-layout-info').textContent = result.hiddenPens ? `赤ペン${result.hiddenPens}件は、現在の表示位置を再現できないためPDFに反映されません。` : '';
       $('pdf-small-warning').hidden = result.points >= 9;
       $('pdf-small-warning').textContent = '文字が小さくなるため、キャンセルして本文幅を狭くするか文字サイズを大きくしてから出力することをおすすめします。長い読み仮名がある場合は、内容の短縮もご検討ください。';
       $('operation-dialog').close(); $('pdf-dialog').showModal();
