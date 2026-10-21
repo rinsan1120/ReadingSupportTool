@@ -261,14 +261,17 @@ legend {
 .choice {
   padding:12px 0;
   cursor:pointer;
-  display:flex;
+  display:inline-flex;
   gap:12px;
-  align-items:center
+  align-items:center;
+  max-width:100%;
+  box-sizing:border-box
 }
 .choice input {
   accent-color:var(--accent);
   width:20px;
-  height:20px
+  height:20px;
+  flex:0 0 20px
 }
 .inset {
   margin-left:32px
