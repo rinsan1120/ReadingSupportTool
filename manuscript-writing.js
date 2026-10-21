@@ -222,14 +222,16 @@
     return item.points.map(p => ({ x: origin.x + p.x * font, y: origin.y + p.y * font }));
   }
   // Shared screen/PDF renderer: tail, background and ink share one opacity.
-  function bubble(item, settings, x, y, tx, ty, parent) {
+  function bubble(item, settings, x, y, tx, ty, parent, scale = 1) {
     const note = document.createElement('div'); note.className = 'writing-memo'; note.dataset.markId = item.id;
     Object.assign(note.style, { left: `${x}px`, top: `${y}px`, fontSize: `${settings.fontSize}px`, opacity: settings.opacity });
+    if (scale !== 1) Object.assign(note.style, { transform: `scale(${scale})`, transformOrigin: '0 0' });
     note.dataset.color = item.color;
     const tail = svg('svg', { class: 'memo-tail', width: 1, height: 1, 'aria-hidden': 'true' }, note);
     const text = document.createElement('div'); text.className = 'memo-body'; text.textContent = item.text; note.append(text); parent.append(note);
     const width = note.offsetWidth, height = note.offsetHeight;
-    const ex = tx - x, ey = ty - y;
+    // Placement uses output pixels; the tail is drawn inside the scaled body.
+    const ex = (tx - x) / scale, ey = (ty - y) / scale;
     const sx = Math.max(0, Math.min(width, ex)), sy = Math.max(0, Math.min(height, ey));
     svg('path', { d: `M${sx},${sy} L${ex},${ey}` }, tail);
     const handle = svg('svg', { class: 'memo-tip-layer', width: 1, height: 1, 'aria-hidden': 'true' }, note);

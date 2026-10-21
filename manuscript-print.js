@@ -90,17 +90,19 @@
     root.classList.add('print-measuring');
     const measurePage = document.createElement('section'); measurePage.className = 'manuscript-page'; root.append(measurePage);
     const bounds = measurePage.getBoundingClientRect();
+    const maxGroupHeight = groups.reduce((height, g) => Math.max(height, g.extentBottom - g.extentTop), 0);
+    const scale = Math.min(1, bounds.width / (maxX - minX), (bounds.height - 1) / maxGroupHeight);
+    const memoInset = 2 * scale, tipInset = 6 * scale;
     const memoItems = writing.items.filter(item => item.type === 'memo');
     const memoSettings = window.ManuscriptMarks.settings(writing.memoSettings);
     for (const item of memoItems) {
       const glyph = glyphs.get(item.offset), line = glyph && byLine.get(glyph.line);
       if (!line) throw new Error('文字メモの本文位置を確認できません。朗読画面を開き直してから出力してください。');
-      const el = window.ManuscriptWriting.bubble(item, memoSettings, 0, 0, 0, 0, measurePage);
-      if (el.offsetHeight > bounds.height - 4) throw new Error('メモが印刷領域の高さを超えています。メモの文字サイズまたは改行を減らして出力してください。');
-      groupByLine.get(line.index).memos.push({ item, glyph, height: el.offsetHeight });
+      const el = window.ManuscriptWriting.bubble(item, memoSettings, 0, 0, 0, 0, measurePage, scale);
+      const size = el.getBoundingClientRect();
+      if (size.height > bounds.height - 2 * memoInset) throw new Error('メモが印刷領域の高さを超えています。メモの文字サイズまたは改行を減らして出力してください。');
+      groupByLine.get(line.index).memos.push({ item, glyph, width: size.width, height: size.height });
     }
-    const maxGroupHeight = groups.reduce((height, g) => Math.max(height, g.extentBottom - g.extentTop), 0);
-    const scale = Math.min(1, bounds.width / (maxX - minX), (bounds.height - 1) / maxGroupHeight);
     const pages = []; let page, cursor = 0, previous = null;
     for (const group of groups) {
       const first = group[0], height = (group.extentBottom - first.top) * scale;
@@ -126,6 +128,8 @@
     for (const { lines: pageLines, memos } of pages) {
       const sheet = document.createElement('section'); sheet.className = 'manuscript-page';
       const canvas = document.createElement('div'); canvas.className = 'manuscript-canvas';
+      // Bubble tails measure their own unscaled body before applying print scale.
+      sheet.append(canvas); root.append(sheet);
       // Scale type and coordinates together rather than a CSS transform: print
       // engines may fragment/clip the unscaled overflow of a transformed canvas.
       canvas.dataset.scale = scale;
@@ -178,13 +182,12 @@
         const gy = (memo.glyph.y + memo.glyph.height / 2 + line.placedTop - line.top) * scale;
         const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
         // Notes never affect text width, scale or page breaks. Correct only paper overflow.
-        const x = clamp(gx + memo.item.dx * font, -left + 2, bounds.width - left - 182);
-        const y = clamp(gy + memo.item.dy * font, 2, bounds.height - memo.height - 2);
-        const tx = clamp(gx + memo.item.tx * font, -left + 6, bounds.width - left - 6);
-        const ty = clamp(gy + memo.item.ty * font, 6, bounds.height - 6);
-        window.ManuscriptWriting.bubble(memo.item, memoSettings, x, y, tx, ty, canvas);
+        const x = clamp(gx + memo.item.dx * font, -left + memoInset, bounds.width - left - memo.width - memoInset);
+        const y = clamp(gy + memo.item.dy * font, memoInset, bounds.height - memo.height - memoInset);
+        const tx = clamp(gx + memo.item.tx * font, -left + tipInset, bounds.width - left - tipInset);
+        const ty = clamp(gy + memo.item.ty * font, tipInset, bounds.height - tipInset);
+        window.ManuscriptWriting.bubble(memo.item, memoSettings, x, y, tx, ty, canvas, scale);
       }
-      sheet.append(canvas); root.append(sheet);
     }
     // Match glyph boxes (including font fallback/emoji) rather than assuming a
     // font's ascent. Read in one batch before writing final frozen coordinates.
