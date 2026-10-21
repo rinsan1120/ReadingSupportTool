@@ -126,6 +126,39 @@
   function validTarget(value) { const n = Number(value); return Number.isSafeInteger(n) && n > 0 && n <= 1e9; }
   function validMinutes(value) { const n = Number(value); return value !== '' && Number.isFinite(n) && n > 0; }
   function notify(message) { $('notice').textContent = message; $('notice').hidden = false; clearTimeout(noticeTimer); noticeTimer = setTimeout(() => $('notice').hidden = true, 6500); }
+  function currentScreenId() {
+    if (view === 'home') return 'SCR-HOME';
+    if (view === 'read-input') return 'SCR-READ-INPUT';
+    if (view === 'time-input') return 'SCR-TIME-INPUT';
+    if (view === 'reading') {
+      if (mode === 'read') return 'SCR-READ-VIEW';
+      if (phase === 'countdown') return 'SCR-TIME-COUNTDOWN';
+      if (phase === 'running') return 'SCR-TIME-RUN';
+      return 'SCR-TIME-PREP';
+    }
+    if (view === 'results') return $('result-speed-tab').getAttribute('aria-selected') === 'true' ? 'SCR-RESULT-SPEED' : 'SCR-RESULT-TIME';
+    return 'SCR-HOME';
+  }
+  function syncScreenId() { document.querySelector('main').dataset.screenId = currentScreenId(); }
+  async function copyScreenId() {
+    const id = currentScreenId();
+    try {
+      if (typeof navigator.clipboard?.writeText === 'function') await navigator.clipboard.writeText(id);
+      else {
+        const field = document.createElement('textarea');
+        field.value = id; field.setAttribute('readonly', ''); field.style.position = 'fixed'; field.style.opacity = '0';
+        document.body.append(field); field.select();
+        let copied = false;
+        try { copied = document.execCommand('copy'); } finally { field.remove(); }
+        if (!copied) throw new Error('copy command failed');
+      }
+      notify(`画面IDをコピーしました：${id}`);
+    } catch { notify(`画面IDをコピーできませんでした：${id}`); }
+  }
+  $('screen-id-copy').addEventListener('click', copyScreenId);
+  $('screen-id-copy').addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); copyScreenId(); }
+  });
   function persist() {
     try { sessionStorage.setItem(STORAGE, JSON.stringify({ version: 1, history, target: validTarget(target) ? Number(target) : null, plannedMinutes: validMinutes(plannedMinutes) ? Number(plannedMinutes) : 20 })); }
     catch { notify('このブラウザでは結果を保存できません。この画面を開いている間は利用できます。'); }
@@ -164,6 +197,7 @@
     $('annotation-retention').hidden = !hasReadings(readAnnotations);
     $('time-annotation-retention').hidden = !hasReadings(timeAnnotations) && !timeMarks?.hasMarks;
     $('writing-retention').hidden = !readMarks.hasMarks;
+    syncScreenId();
     window.scrollTo(0, 0);
     $(next).querySelector('h1')?.focus({ preventScroll: true });
   }
@@ -269,6 +303,7 @@
     $('result-time-tab').setAttribute('aria-selected', String(time)); $('result-time-tab').tabIndex = time ? 0 : -1;
     $('result-speed-tab').setAttribute('aria-selected', String(!time)); $('result-speed-tab').tabIndex = time ? -1 : 0;
     $('result-time-panel').hidden = !time; $('result-speed-panel').hidden = time;
+    syncScreenId();
   }
   [['result-time-tab', 'time'], ['result-speed-tab', 'speed']].forEach(([id, tab]) => {
     $(id).addEventListener('click', () => selectResultTab(tab));
@@ -669,6 +704,7 @@
     phase = 'idle'; $('paper-mode').disabled = false; $('toolbar-settings').disabled = false; $('countdown').hidden = true; $('measurement-bar').hidden = true;
     $('start').disabled = false;
     ['preparation-partial-enabled', 'preparation-partial-limit'].forEach(id => $(id).disabled = false);
+    syncScreenId();
   }
   const clock = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
   $('start').onclick = () => {
@@ -676,7 +712,7 @@
     if (measuredPartial && (!validPartialLimit() || !measuredCount)) { notify('読む文字数の目安は正の整数で入力してください。'); return; }
     if (target !== '' && !validTarget(target)) { notify('作品全体の文字数を1〜1,000,000,000の整数で入力してください。'); $('preparation-target').focus(); return; }
     $('settings-dialog').close();
-    phase = 'countdown'; $('paper-mode').disabled = true; $('start').disabled = true; $('toolbar-settings').disabled = true;
+    phase = 'countdown'; syncScreenId(); $('paper-mode').disabled = true; $('start').disabled = true; $('toolbar-settings').disabled = true;
     ['preparation-partial-enabled', 'preparation-partial-limit'].forEach(id => $(id).disabled = true);
     // Remove preparation controls and scroll to the beginning BEFORE counting.
     $('preparation').hidden = true; $('measurement-bar').hidden = false; $('finish').disabled = true;
@@ -688,7 +724,7 @@
       value--;
       if (value > 0) { $('countdown').textContent = String(value); countdownTimer = setTimeout(tick, 1000); }
       else {
-        $('countdown').textContent = 'スタート'; phase = 'running'; began = performance.now();
+        $('countdown').textContent = 'スタート'; phase = 'running'; syncScreenId(); began = performance.now();
         $('finish').disabled = false; $('elapsed').textContent = '0:00';
         countdownTimer = setTimeout(() => $('countdown').hidden = true, 500);
         elapsedTimer = setInterval(() => $('elapsed').textContent = clock((performance.now() - began) / 1000), 250);

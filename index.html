@@ -7,18 +7,18 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="description" content="文章を読みやすく整え、自分の朗読速度から作品の朗読時間を調べるツール。">
   <title>よみじたく | 朗読支援サイト</title>
-  <link rel="stylesheet" href="styles.css?v=reader-toolbar">
+  <link rel="stylesheet" href="styles.css?v=screen-registry">
   <script src="samples.js" defer></script>
   <script src="reading-annotations.js?v=memo-bubbles" defer></script>
   <script src="html-ruby.js" defer></script>
   <script src="reader.js?v=save-confirmation" defer></script>
   <script src="manuscript-writing.js?v=reader-toolbar" defer></script>
   <script src="manuscript-print.js?v=pen-move" defer></script>
-  <script src="app.js?v=reader-toolbar" defer></script>
+  <script src="app.js?v=screen-registry" defer></script>
 </head>
 <body>
   <header class="site-header"><button class="brand" data-go="home"><span aria-hidden="true">☾</span> よみじたく <small>朗読支援サイト</small></button></header>
-  <main>
+  <main data-screen-id="SCR-HOME">
     <section id="home" class="view narrow" aria-labelledby="home-title">
       <p class="eyebrow">READING SUPPORT</p><h1 id="home-title" tabindex="-1">声にする前の、ひと支度。</h1>
       <p class="lead">読みやすいかたちで、あなたのペースで。<br>朗読のための、小さな道具です。</p>
@@ -29,23 +29,23 @@
     </section>
     <section id="read-input" class="view narrow" hidden aria-labelledby="read-title">
       <button class="back" data-go="home">← ホーム</button><p class="eyebrow">READ</p><h1 id="read-title" tabindex="-1">文章を読む</h1>
-      <label for="read-text">朗読する作品の本文</label><textarea id="read-text" rows="12" placeholder="全文でも、一部でも。ここに文章を貼り付けてください。" spellcheck="false" autocomplete="off"></textarea>
+      <label for="read-text">朗読する作品の本文</label><textarea id="read-text" data-field-id="FLD-READ-BODY" rows="12" placeholder="全文でも、一部でも。ここに文章を貼り付けてください。" spellcheck="false" autocomplete="off"></textarea>
       <div class="inline spread"><p id="read-count" class="muted">0文字</p><button id="clear-read" class="quiet">本文を削除</button></div>
       <p id="annotation-retention" class="muted" hidden>読み仮名・書き込みを保持しています。本文を変更して朗読画面を開く場合は、これらの削除を確認します。</p>
       <p id="writing-retention" class="muted" hidden>仮保存中の文章を表示しています。<br>画面を更新した場合は、この仮保存は消去されます。</p>
-      <div class="inline"><button id="import-manuscript">原稿ファイルを読み込む</button><input id="manuscript-file" type="file" accept=".json,application/json" hidden>
+      <div class="inline"><button id="import-manuscript">原稿ファイルを読み込む</button><input id="manuscript-file" data-field-id="FLD-READ-MANUSCRIPT-FILE" type="file" accept=".json,application/json" hidden>
       <button id="open-read" class="primary">表示を確認して読む →</button></div>
     </section>
     <section id="time-input" class="view narrow" hidden aria-labelledby="time-title">
       <button class="back" data-go="home">← ホーム</button><p class="eyebrow">MEASURE</p><h1 id="time-title" tabindex="-1">朗読時間を調べる</h1>
       <fieldset><legend>朗読速度の計測に使う文章</legend>
-        <label class="choice"><input type="radio" name="source" value="sample" checked> 用意された例文を読む</label>
-        <div id="sample-options" class="inset inline"><label>長さ<select id="sample-level"><option value="200">200字級</option><option value="400" selected>400字級</option><option value="600">600字級</option></select></label><label>雰囲気<select id="sample-mood"><option>おまかせ</option><option>ゆったり</option><option>ふつう</option><option>軽快</option><option>会話多め</option></select></label></div>
+        <label class="choice"><input type="radio" name="source" value="sample" data-field-id="FLD-TIME-SOURCE-SAMPLE" checked> 用意された例文を読む</label>
+        <div id="sample-options" class="inset inline"><label>長さ<select id="sample-level" data-field-id="FLD-TIME-SAMPLE-LENGTH"><option value="200">200字級</option><option value="400" selected>400字級</option><option value="600">600字級</option></select></label><label>雰囲気<select id="sample-mood" data-field-id="FLD-TIME-SAMPLE-MOOD"><option>おまかせ</option><option>ゆったり</option><option>ふつう</option><option>軽快</option><option>会話多め</option></select></label></div>
         <p id="sample-info" class="inset muted"></p>
-        <label class="choice"><input type="radio" name="source" value="custom"> 用意した文章を読む</label>
-        <div id="custom-input" hidden><label for="time-text">朗読する作品の本文</label><textarea id="time-text" rows="8" spellcheck="false" autocomplete="off"></textarea><div class="partial-measurement"><label class="choice"><input id="partial-enabled" type="checkbox"> 冒頭だけ読んで計測する</label><div id="partial-fields" hidden><label for="partial-limit">読む文字数の目安</label><input id="partial-limit" type="number" min="1" step="1" inputmode="numeric" value="200"><p class="muted">指定した文字数を超えた後、最初の「。」まで読みます。</p><p id="partial-count" class="muted" role="status">実際に読む文字数：0文字</p></div></div><p id="time-count" class="muted">計測する本文：0文字</p><p id="time-annotation-retention" class="muted" hidden>引き継いだ読み仮名・書き込みを保持しています。本文を変更して計測準備画面を開く場合は、これらの削除を確認します。</p><p class="privacy">本文は自動保存・外部送信しません。再読み込み・タブ終了で失われます。</p></div>
+        <label class="choice"><input type="radio" name="source" value="custom" data-field-id="FLD-TIME-SOURCE-CUSTOM"> 用意した文章を読む</label>
+        <div id="custom-input" hidden><label for="time-text">朗読する作品の本文</label><textarea id="time-text" data-field-id="FLD-TIME-BODY" rows="8" spellcheck="false" autocomplete="off"></textarea><div class="partial-measurement"><label class="choice"><input id="partial-enabled" data-field-id="FLD-TIME-PARTIAL-ENABLED" type="checkbox"> 冒頭だけ読んで計測する</label><div id="partial-fields" hidden><label for="partial-limit">読む文字数の目安</label><input id="partial-limit" data-field-id="FLD-TIME-PARTIAL-LIMIT" type="number" min="1" step="1" inputmode="numeric" value="200"><p class="muted">指定した文字数を超えた後、最初の「。」まで読みます。</p><p id="partial-count" class="muted" role="status">実際に読む文字数：0文字</p></div></div><p id="time-count" class="muted">計測する本文：0文字</p><p id="time-annotation-retention" class="muted" hidden>引き継いだ読み仮名・書き込みを保持しています。本文を変更して計測準備画面を開く場合は、これらの削除を確認します。</p><p class="privacy">本文は自動保存・外部送信しません。再読み込み・タブ終了で失われます。</p></div>
       </fieldset>
-      <div class="target-field"><label for="target-count">時間を知りたい作品全体の文字数（任意・後から入力可）</label><div class="inline"><input id="target-count" type="number" min="1" max="1000000000" step="1" inputmode="numeric" placeholder="例：6000"><span>文字</span></div><p class="muted">計測に使う文章とは別の、作品全体の文字数です。</p><button id="apply-count" class="quiet" hidden>貼り付けた文字数を反映</button></div>
+      <div class="target-field"><label for="target-count">時間を知りたい作品全体の文字数（任意・後から入力可）</label><div class="inline"><input id="target-count" data-field-id="FLD-TIME-TARGET" type="number" min="1" max="1000000000" step="1" inputmode="numeric" placeholder="例：6000"><span>文字</span></div><p class="muted">計測に使う文章とは別の、作品全体の文字数です。</p><button id="apply-count" class="quiet" hidden>貼り付けた文字数を反映</button></div>
       <div class="inline"><button id="prepare-time" class="primary">文章を確認して計測へ →</button><button id="existing-results" hidden>これまでの結果を見る</button></div>
     </section>
     <section id="reading" class="view reading-view" hidden aria-labelledby="reading-title">
@@ -72,7 +72,7 @@
           <p id="writing-tool-help"></p>
         </div>
       </div>
-      <div id="preparation" class="preparation"><p id="preparation-info"></p><div id="preparation-partial" class="partial-measurement" hidden><label class="choice"><input id="preparation-partial-enabled" type="checkbox"> 冒頭だけ読んで計測する</label><div id="preparation-partial-fields" hidden><label for="preparation-partial-limit">読む文字数の目安</label><input id="preparation-partial-limit" type="number" min="1" step="1" inputmode="numeric" value="200"><p class="muted">指定した文字数を超えた後、最初の「。」まで読みます。</p><p id="preparation-partial-count" class="muted" role="status">実際に読む文字数：0文字</p></div></div><div class="target-field"><label for="preparation-target">時間を知りたい作品全体の文字数（任意・後から入力可）</label><div class="inline"><input id="preparation-target" type="number" min="1" max="1000000000" step="1" inputmode="numeric"><span>文字</span></div></div><div class="inline"><button id="before-settings">表示設定</button><button id="start" class="primary">計測を始める</button></div><p id="preparation-guidance" class="muted">全文を読み終えたら「読了」を押してください。計測中に入力画面やホームへ戻る、または別のタブ・アプリへ移動すると、その回の計測結果は保存されません。</p></div>
+      <div id="preparation" class="preparation"><p id="preparation-info"></p><div id="preparation-partial" class="partial-measurement" hidden><label class="choice"><input id="preparation-partial-enabled" data-field-id="FLD-PREP-PARTIAL-ENABLED" type="checkbox"> 冒頭だけ読んで計測する</label><div id="preparation-partial-fields" hidden><label for="preparation-partial-limit">読む文字数の目安</label><input id="preparation-partial-limit" data-field-id="FLD-PREP-PARTIAL-LIMIT" type="number" min="1" step="1" inputmode="numeric" value="200"><p class="muted">指定した文字数を超えた後、最初の「。」まで読みます。</p><p id="preparation-partial-count" class="muted" role="status">実際に読む文字数：0文字</p></div></div><div class="target-field"><label for="preparation-target">時間を知りたい作品全体の文字数（任意・後から入力可）</label><div class="inline"><input id="preparation-target" data-field-id="FLD-PREP-TARGET" type="number" min="1" max="1000000000" step="1" inputmode="numeric"><span>文字</span></div></div><div class="inline"><button id="before-settings">表示設定</button><button id="start" class="primary">計測を始める</button></div><p id="preparation-guidance" class="muted">全文を読み終えたら「読了」を押してください。計測中に入力画面やホームへ戻る、または別のタブ・アプリへ移動すると、その回の計測結果は保存されません。</p></div>
       <p id="layout-status" class="layout-status" role="status"></p>
       <p id="ruby-help" class="ruby-help" role="status" hidden>文字の前後をタップして読み仮名を追加。読み仮名を選ぶと編集できます。</p>
       <div id="reader-stage"><div class="reader-text-area"><article id="reader" aria-label="朗読本文"></article></div><svg id="writing-markers" aria-hidden="true"></svg><svg id="writing-pen" aria-hidden="true"></svg><div id="writing-memos" aria-label="文字メモ"></div></div>
@@ -81,44 +81,44 @@
     </section>
     <section id="results" class="view narrow" hidden aria-labelledby="result-title"><button class="back" data-go="home">← ホーム</button><p class="eyebrow">YOUR READING PACE</p><h1 id="result-title" tabindex="-1">朗読速度・時間の目安</h1>
       <div class="result-tabs" role="tablist" aria-label="結果の表示"><button id="result-time-tab" class="result-tab" type="button" role="tab" aria-selected="true" aria-controls="result-time-panel" tabindex="0">朗読時間</button><button id="result-speed-tab" class="result-tab" type="button" role="tab" aria-selected="false" aria-controls="result-speed-panel" tabindex="-1">朗読速度</button></div>
-      <div id="result-time-panel" role="tabpanel" aria-labelledby="result-time-tab"><p class="result-description">あなたの朗読速度から想定されるこの作品の朗読時間</p><p id="time-estimate" class="estimate" aria-live="polite"></p><label for="result-target">時間を知りたい作品全体の文字数（任意・後から入力可）</label><div class="inline"><input id="result-target" type="number" min="1" max="1000000000" step="1" inputmode="numeric"><span>文字</span></div></div>
-      <div id="result-speed-panel" role="tabpanel" aria-labelledby="result-speed-tab" hidden><p class="result-description">あなたの朗読速度から想定される時間当たりの朗読文字数</p><p id="speed-estimate" class="estimate" aria-live="polite"></p><label for="planned-minutes">予定している朗読時間</label><div class="inline"><input id="planned-minutes" type="number" min="0.000001" step="any" inputmode="decimal" value="20"><span>分</span></div></div>
+      <div id="result-time-panel" role="tabpanel" aria-labelledby="result-time-tab"><p class="result-description">あなたの朗読速度から想定されるこの作品の朗読時間</p><p id="time-estimate" class="estimate" aria-live="polite"></p><label for="result-target">時間を知りたい作品全体の文字数（任意・後から入力可）</label><div class="inline"><input id="result-target" data-field-id="FLD-RESULT-TARGET" type="number" min="1" max="1000000000" step="1" inputmode="numeric"><span>文字</span></div></div>
+      <div id="result-speed-panel" role="tabpanel" aria-labelledby="result-speed-tab" hidden><p class="result-description">あなたの朗読速度から想定される時間当たりの朗読文字数</p><p id="speed-estimate" class="estimate" aria-live="polite"></p><label for="planned-minutes">予定している朗読時間</label><div class="inline"><input id="planned-minutes" data-field-id="FLD-RESULT-PLANNED-MINUTES" type="number" min="0.000001" step="any" inputmode="decimal" value="20"><span>分</span></div></div>
       <p id="result-summary" class="muted"></p><p class="muted">間の取り方や作品によって、実際の時間は変わります。</p><div class="inline"><button id="again" class="primary">計測設定に戻る</button><button id="reset-history" class="quiet">全履歴をリセット</button></div><p id="result-retention" class="muted result-retention" hidden>ホームへ戻っても文章は残ります。再読み込みやタブを閉じると失われます。</p><h2>計測履歴</h2><ul id="history" class="history"></ul><p class="privacy">確定した数値の結果だけを、このタブ内に保存します。本文は保存しません。</p></section>
   </main>
-  <footer id="footer"><span>よみじたく 〜 朗読支援サイト 〜</span></footer>
-  <dialog id="settings-dialog" aria-labelledby="settings-title">
+  <footer id="footer"><span><span id="screen-id-copy" role="button" tabindex="0" aria-label="現在の画面IDをコピー">よみじたく</span> 〜 朗読支援サイト 〜</span></footer>
+  <dialog id="settings-dialog" data-dialog-id="DLG-SETTINGS" aria-labelledby="settings-title">
     <div class="dialog-heading"><h2 id="settings-title">表示設定</h2><button data-close="settings-dialog">閉じる</button></div>
     <div id="settings-tabs" class="settings-tabs" role="tablist" aria-label="調整する項目" hidden>
       <button id="tab-columns" role="tab" aria-selected="true" aria-controls="setting-columns" data-setting="columns">文字数</button>
       <button id="tab-line-height" role="tab" aria-selected="false" aria-controls="setting-line-height" data-setting="line-height" tabindex="-1">行間</button>
       <button id="tab-break-lines" role="tab" aria-selected="false" aria-controls="setting-break-lines" data-setting="break-lines" tabindex="-1">区切り</button>
     </div>
-    <div id="setting-width"><label for="reader-width">本文の表示幅 <output id="reader-width-value">900px</output></label><input id="reader-width" type="range" min="480" max="1400" step="1" value="900"></div>
-    <div id="setting-columns"><label for="columns">1行の文字数目安 <output id="columns-value">約41文字</output></label><input id="columns" type="range" min="25" max="50" value="41"></div>
-    <div id="setting-line-height"><label for="line-height">行間 <output id="line-height-value">1.8</output></label><input id="line-height" type="range" min="1.2" max="2.6" step="0.1" value="1.8"></div>
-    <div id="setting-break-lines"><label for="break-lines">自動区切り <output id="break-lines-value">5表示行ごと</output></label><input id="break-lines" type="range" min="0" max="10" value="5"></div>
+    <div id="setting-width"><label for="reader-width">本文の表示幅 <output id="reader-width-value">900px</output></label><input id="reader-width" data-field-id="FLD-SETTINGS-READER-WIDTH" type="range" min="480" max="1400" step="1" value="900"></div>
+    <div id="setting-columns"><label for="columns">1行の文字数目安 <output id="columns-value">約41文字</output></label><input id="columns" data-field-id="FLD-SETTINGS-COLUMNS" type="range" min="25" max="50" value="41"></div>
+    <div id="setting-line-height"><label for="line-height">行間 <output id="line-height-value">1.8</output></label><input id="line-height" data-field-id="FLD-SETTINGS-LINE-HEIGHT" type="range" min="1.2" max="2.6" step="0.1" value="1.8"></div>
+    <div id="setting-break-lines"><label for="break-lines">自動区切り <output id="break-lines-value">5表示行ごと</output></label><input id="break-lines" data-field-id="FLD-SETTINGS-BREAK-LINES" type="range" min="0" max="10" value="5"></div>
     <p class="muted settings-help">表示幅は行の長さ、文字数は文字の大きさを調整します。</p>
   </dialog>
   <p id="notice" class="notice" role="status" hidden></p>
   <div id="manuscript-print"></div>
-  <dialog id="pdf-dialog" aria-labelledby="pdf-title">
+  <dialog id="pdf-dialog" data-dialog-id="DLG-PDF" aria-labelledby="pdf-title">
     <h2 id="pdf-title">PDF出力</h2>
     <p>次の印刷画面で「PDFとして保存」を選んでください。端末によっては共有・プリントからPDFを保存します。</p>
     <p class="muted">A4・縦向き・倍率100%を基本とし、ヘッダーとフッターはOFFにしてください。保存が完了したかは印刷画面でご確認ください。</p>
     <p id="pdf-small-warning" hidden></p>
     <div class="inline"><button id="pdf-cancel">キャンセル</button><button id="pdf-print" class="primary">印刷画面へ</button></div>
   </dialog>
-  <dialog id="ruby-dialog" aria-labelledby="ruby-title">
+  <dialog id="ruby-dialog" data-dialog-id="DLG-RUBY" aria-labelledby="ruby-title">
     <form id="ruby-form">
       <h2 id="ruby-title">読み仮名を追加</h2>
       <label for="ruby-input">括弧内の読み仮名</label>
-      <input id="ruby-input" type="text" required autocomplete="off" spellcheck="false" enterkeyhint="done">
+      <input id="ruby-input" data-field-id="FLD-RUBY-TEXT" type="text" required autocomplete="off" spellcheck="false" enterkeyhint="done">
       <div class="ruby-editor-actions"><button id="ruby-cancel" type="button">キャンセル</button><button id="ruby-delete" type="button" hidden>削除</button><button id="ruby-save" type="submit" class="primary" disabled>登録</button></div>
     </form>
   </dialog>
-  <dialog id="memo-settings-dialog" aria-labelledby="memo-settings-title"><form id="memo-settings-form"><h2 id="memo-settings-title">全メモ共通の設定</h2><label>文字サイズ <input id="memo-font-size" type="number" min="12" max="28" step="1" required> px</label><label>不透明度 <input id="memo-opacity" type="range" min="0.2" max="1" step="0.05"></label><div class="ruby-editor-actions"><button id="memo-settings-cancel" type="button">キャンセル</button><button type="submit" class="primary">適用</button></div></form></dialog>
-  <dialog id="writing-memo-dialog" aria-labelledby="writing-memo-title"><form id="writing-memo-form"><h2 id="writing-memo-title">文字メモ</h2><p class="muted">吹き出しと足先は、登録後にドラッグして移動できます。</p><label for="writing-memo-input">メモ（200文字以内・改行可）</label><textarea id="writing-memo-input" maxlength="200" rows="5" required></textarea><div class="ruby-editor-actions"><button id="writing-memo-cancel" type="button">キャンセル</button><button id="writing-memo-delete" type="button" hidden>削除</button><button id="writing-memo-save" type="submit" class="primary" disabled>登録</button></div></form></dialog>
-  <dialog id="save-navigation-dialog" aria-labelledby="save-navigation-title">
+  <dialog id="memo-settings-dialog" data-dialog-id="DLG-MEMO-SETTINGS" aria-labelledby="memo-settings-title"><form id="memo-settings-form"><h2 id="memo-settings-title">全メモ共通の設定</h2><label>文字サイズ <input id="memo-font-size" data-field-id="FLD-MEMO-FONT-SIZE" type="number" min="12" max="28" step="1" required> px</label><label>不透明度 <input id="memo-opacity" data-field-id="FLD-MEMO-OPACITY" type="range" min="0.2" max="1" step="0.05"></label><div class="ruby-editor-actions"><button id="memo-settings-cancel" type="button">キャンセル</button><button type="submit" class="primary">適用</button></div></form></dialog>
+  <dialog id="writing-memo-dialog" data-dialog-id="DLG-MEMO" aria-labelledby="writing-memo-title"><form id="writing-memo-form"><h2 id="writing-memo-title">文字メモ</h2><p class="muted">吹き出しと足先は、登録後にドラッグして移動できます。</p><label for="writing-memo-input">メモ（200文字以内・改行可）</label><textarea id="writing-memo-input" data-field-id="FLD-MEMO-TEXT" maxlength="200" rows="5" required></textarea><div class="ruby-editor-actions"><button id="writing-memo-cancel" type="button">キャンセル</button><button id="writing-memo-delete" type="button" hidden>削除</button><button id="writing-memo-save" type="submit" class="primary" disabled>登録</button></div></form></dialog>
+  <dialog id="save-navigation-dialog" data-dialog-id="DLG-SAVE-NAVIGATION" aria-labelledby="save-navigation-title">
     <h2 id="save-navigation-title">原稿を保存しますか？</h2>
     <div id="save-navigation-prompt">
       <p>文章は仮保存状態です。読み仮名・赤ペンなどの書き込み情報は、<br>文章を編集した場合削除されます。</p>
@@ -130,6 +130,6 @@
     </div>
     <p id="save-navigation-error" role="alert"></p>
   </dialog>
-  <dialog id="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title">操作の確認</h2><p id="confirm-message"></p><div class="inline"><button id="confirm-cancel">キャンセル</button><button id="confirm-ok" class="primary">削除する</button></div></dialog>
+  <dialog id="confirm-dialog" data-dialog-id="DLG-CONFIRM" aria-labelledby="confirm-title"><h2 id="confirm-title">操作の確認</h2><p id="confirm-message"></p><div class="inline"><button id="confirm-cancel">キャンセル</button><button id="confirm-ok" class="primary">削除する</button></div></dialog>
 </body>
 </html>

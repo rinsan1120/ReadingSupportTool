@@ -575,6 +575,8 @@ output {
 .entry strong {
   font-size:22px
 }
+#screen-id-copy { cursor:pointer; border-radius:2px; }
+#screen-id-copy:focus-visible { outline:3px solid var(--accent); outline-offset:4px; }
 h1 {
   font-size:28px
 }
