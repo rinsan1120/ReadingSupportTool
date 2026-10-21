@@ -171,6 +171,11 @@
         last.width = Math.max(last.width, glyph.x + glyph.width - last.x);
       } else result.push({ x: glyph.x, y: glyph.y, width: glyph.width, height: glyph.height });
     }
+    // A reading belongs to the source grapheme immediately BEFORE its offset.
+    // Add its full visual fragments without changing the saved source range.
+    for (const box of geometry.annotationRects) {
+      if (start < box.offset && box.offset <= end) result.push({ x: box.x, y: box.y, width: box.width, height: box.height });
+    }
     return result;
   }
   function releaseGesture() {

@@ -338,7 +338,7 @@ footer {
 .writing-drag { touch-action:none; cursor:crosshair; }
 /* Paint the entire writing stage without changing its box or glyph layout. */
 #reader-stage.paper-mode { background:#fff; color:#17191d; }
-#reader-stage.paper-mode .reading-annotation { color:#17365d; }
+#reader-stage.paper-mode .reading-annotation { color:#2563EB; }
 #reader-stage.paper-mode #writing-pen path { stroke:#c52228; }
 #writing-pen path.pen-selection { stroke-width:8; opacity:.22; }
 #reader-stage #writing-pen path.pen-hit { stroke:transparent; stroke-width:20; pointer-events:stroke; touch-action:none; cursor:move; }

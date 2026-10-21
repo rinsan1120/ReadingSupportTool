@@ -55,10 +55,10 @@
     if (!lines.length) throw new Error('出力する本文または登録済みの読み仮名がありません。');
     const byLine = new Map(lines.map(line => [line.index, line]));
     const glyphs = new Map((snapshot.glyphs || []).map(g => [g.start, g]));
-    const glyphsByLine = new Map();
-    for (const glyph of snapshot.glyphs || []) {
-      if (!glyphsByLine.has(glyph.line)) glyphsByLine.set(glyph.line, []);
-      glyphsByLine.get(glyph.line).push(glyph);
+    const markerBoxesByLine = new Map();
+    for (const box of [...(snapshot.glyphs || []), ...(snapshot.annotationRects || [])]) {
+      if (!markerBoxesByLine.has(box.line)) markerBoxesByLine.set(box.line, []);
+      markerBoxesByLine.get(box.line).push(box);
     }
     let minX = 0, maxX = snapshot.width;
     if (writing.items.some(item => item.type === 'pen' && !writing.pens.some(pen => pen.id === item.id))) {
@@ -164,15 +164,19 @@
         }
         canvas.append(row);
       }
-      // Reconstruct marker boxes from frozen ORIGINAL glyphs, not screen SVGs.
+      // Original glyphs and eligible manual readings share the frozen line map.
       const placedLines = new Map(pageLines.map(line => [line.index, line]));
-      const pageGlyphs = pageLines.flatMap(line => glyphsByLine.get(line.index) || []);
+      const pageBoxes = pageLines.flatMap(line => markerBoxesByLine.get(line.index) || []);
       for (const item of writing.items) if (item.type === 'marker') {
-        for (const glyph of pageGlyphs) {
-          const line = placedLines.get(glyph.line);
-          if (!line || glyph.end <= item.start || glyph.start >= item.end) continue;
-          svg('rect', { x: glyph.x * scale, y: (glyph.y + line.placedTop - line.top) * scale,
-            width: glyph.width * scale, height: glyph.height * scale, 'data-mark-id': item.id, 'data-offset': glyph.start, 'data-color': item.color ?? 'yellow' }, markerLayer);
+        for (const box of pageBoxes) {
+          const line = placedLines.get(box.line);
+          const included = box.offset !== undefined ? item.start < box.offset && box.offset <= item.end
+            : box.end > item.start && box.start < item.end;
+          if (!line || !included) continue;
+          svg('rect', { x: box.x * scale, y: (box.y + line.placedTop - line.top) * scale,
+            width: box.width * scale, height: box.height * scale, 'data-mark-id': item.id,
+            ...(box.offset !== undefined ? { 'data-annotation': box.offset } : { 'data-offset': box.start }),
+            'data-color': item.color ?? 'yellow' }, markerLayer);
         }
       }
       const penLayer = svg('svg', { class: 'manuscript-pens', width: snapshot.width * scale, height: bounds.height }, canvas);

@@ -278,14 +278,23 @@
     restore(anchor);
     root.dispatchEvent(new Event('reader-layout'));
   }
-  // Optional writing layer: original grapheme boxes only, independent of rt and
-  // manual readings. Cache lazily per layout; coordinates stay relative to the
+  // Keep original graphemes separate from manual reading boxes so pen anchors
+  // and source hit testing stay unchanged. Coordinates stay relative to the
   // reader so scrolling never invalidates them or changes annotation offsets.
   function getWritingGeometry() {
     if (writingGeometry) return writingGeometry;
-    const origin = root.getBoundingClientRect(), glyphs = [];
+    const origin = root.getBoundingClientRect(), glyphs = [], annotationRects = [];
     for (const block of blocks) for (const part of block.parts) {
-      if (part.run.annotation) continue;
+      if (part.run.annotation) {
+        if (!part.run.pending) {
+          range.selectNodeContents(part.node);
+          for (const rect of range.getClientRects()) if (rect.width && rect.height) {
+            annotationRects.push({ offset: part.run.sourceStart,
+              x: rect.left - origin.left, y: rect.top - origin.top, width: rect.width, height: rect.height });
+          }
+        }
+        continue;
+      }
       for (const s of segmenter.segment(part.node.data)) {
         range.setStart(part.node, s.index); range.setEnd(part.node, s.index + s.segment.length);
         const rect = range.getBoundingClientRect();
@@ -298,7 +307,7 @@
     const fontSize = parseFloat(getComputedStyle(root).fontSize);
     let flowHash = 2166136261;
     for (const char of JSON.stringify([annotations?.entries, annotations?.sourceRubies, draft])) flowHash = Math.imul(flowHash ^ char.charCodeAt(0), 16777619);
-    writingGeometry = { glyphs, byOffset: new Map(glyphs.map(g => [g.start, g])), fontSize, width: origin.width,
+    writingGeometry = { glyphs, annotationRects, byOffset: new Map(glyphs.map(g => [g.start, g])), fontSize, width: origin.width,
       layoutKey: `${(origin.width / fontSize).toFixed(2)}:${settings.height}:${settings.breaks}:${flowHash >>> 0}` };
     return writingGeometry;
   }
@@ -353,15 +362,16 @@
     const geometry = getWritingGeometry();
     // Both print text and writing use the same frozen line table. Associate
     // original graphemes by baseline, never by an overlay's DOM coordinates.
-    const glyphs = geometry.glyphs.map(glyph => {
+    const withLine = glyph => {
       const y = glyph.y + glyph.height / 2;
       let lo = 0, hi = lines.length;
       while (lo < hi) { const mid = (lo + hi) >>> 1; if (lines[mid].center < y) lo = mid + 1; else hi = mid; }
       const next = Math.min(lo, lines.length - 1), previous = Math.max(0, next - 1);
       const line = Math.abs(lines[previous].center - y) < Math.abs(lines[next].center - y) ? previous : next;
       return { ...glyph, line };
-    });
-    return { width: origin.width, font, lines, glyphs };
+    };
+    return { width: origin.width, font, lines, glyphs: geometry.glyphs.map(withLine),
+      annotationRects: geometry.annotationRects.map(withLine) };
   }
   function updateMode(on) {
     rubyMode = Boolean(annotations && annotationsEditable && on);
