@@ -15,13 +15,35 @@ const server = http.createServer((req, res) => {
 const storageKey = 'reading-support-results-v1';
 const stored = page => page.evaluate(key => JSON.parse(sessionStorage.getItem(key)), storageKey);
 const textOf = (page, id) => page.locator('#' + id).textContent();
+const steps = async (page, id, count, current) => {
+  const list = page.locator('#' + id);
+  assert.equal(await list.locator('li').count(), count);
+  assert.equal(await list.locator('[aria-current=step]').count(), 1);
+  assert.match(await list.locator('[aria-current=step]').textContent(), new RegExp(`${current}/${count}.*現在`));
+  assert.equal(await list.locator('.is-complete').count(), current - 1);
+  assert.equal(await list.locator('.is-pending').count(), count - current);
+  assert.equal(await list.locator('button,a,[tabindex]').count(), 0, 'progress is not navigation');
+};
+const readerState = async (page, state, back, count, current) => {
+  assert.equal(await textOf(page, 'reader-state'), state);
+  assert.equal(await page.locator('#reader-back').getAttribute('aria-label'), back);
+  assert.equal(await page.locator('#reader-back span').textContent(), back);
+  await steps(page, 'reader-steps', count, current);
+  const compact = page.viewportSize().width <= 600 || current === 3;
+  assert.equal(await page.locator('#reader-steps li:visible').count(), compact ? 1 : count);
+  assert.ok(await page.locator('#reader-progress').evaluate(el => el.getBoundingClientRect().height <= 40), 'progress stays small above the manuscript');
+  await fits(page);
+};
 const completeMeasurement = async page => {
   await page.locator('#start').click();
   assert.equal(await textOf(page, 'countdown'), '3');
+  await readerState(page, '計測開始前', '計測設定に戻る', 4, 3);
   await page.waitForFunction(() => !document.getElementById('finish').disabled);
+  await readerState(page, '計測中', '計測設定に戻る', 4, 3);
   await page.waitForTimeout(120);
   await page.locator('#finish').click();
   assert.equal(await page.locator('#results').isVisible(), true);
+  await steps(page, 'result-steps', 4, 4);
 };
 const fits = async page => assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal overflow');
 const shot = async (page, name) => {
@@ -44,6 +66,7 @@ const shot = async (page, name) => {
       const url = `http://127.0.0.1:${server.address().port}/`;
       await page.goto(url);
       assert.equal(await page.locator('#home .entry').count(), 3);
+      assert.equal(await page.locator('#home-results').isVisible(), false);
       await fits(page); await shot(page, `home-${width}`);
 
       // First visit: no invented speed; an estimate draft survives measuring custom text.
@@ -53,12 +76,15 @@ const shot = async (page, name) => {
       await page.locator('#estimate-target').fill('4500');
       await fits(page); await shot(page, `estimate-empty-${width}`);
       await page.locator('#estimate-empty [data-go=time-input]').click();
+      await steps(page, 'time-input-steps', 4, 1);
       await page.locator('[name=source][value=custom]').check();
       const customText = 'あいうえお。かきくけこ。さしすせそ。';
       await page.locator('#time-text').fill(customText);
       assert.equal(await page.locator('#sample-options').isVisible(), false);
       assert.equal(await page.locator('#target-count').count(), 0);
       await page.locator('#prepare-time').click();
+      await readerState(page, '計測準備', '計測設定に戻る', 4, 2);
+      await shot(page, `preparation-${width}`);
       await page.locator('#preparation-partial-enabled').check();
       await page.locator('#preparation-partial-limit').fill('5');
       assert.match(await textOf(page, 'preparation-info'), /実際に読む文字数：6文字/);
@@ -70,16 +96,25 @@ const shot = async (page, name) => {
       assert.equal(await page.locator('#result-target').inputValue(), '4500');
       for (const id of ['average-speed', 'speed-estimate', 'time-estimate']) assert.equal(await page.locator('#' + id).isVisible(), true);
       assert.equal(await page.locator('#results [role=tab]').count(), 0);
+      assert.equal(await textOf(page, 'again'), '入力した文章に戻る');
       await page.locator('#again').click();
+      await steps(page, 'time-input-steps', 4, 1);
       assert.equal(await page.locator('#time-text').inputValue(), customText);
       // Retry uses the retained manuscript, and cancellation saves no record.
       await page.locator('#existing-results').click();
       await page.locator('#retry-measurement').click();
+      await readerState(page, '計測準備', '計測設定に戻る', 4, 2);
+      await page.locator('#start').click();
+      await page.evaluate(() => dispatchEvent(new Event('pagehide')));
+      await readerState(page, '計測準備', '計測設定に戻る', 4, 2);
+      assert.equal((await stored(page)).history.length, 1, 'interruption saves no measurement');
       await page.locator('#start').click();
       await page.locator('#reader-back').click();
       assert.equal((await stored(page)).history.length, 1);
       assert.equal(await page.locator('#time-text').inputValue(), customText);
       await page.locator('#time-input [data-go=home]').click();
+      assert.equal(await page.locator('#home-results').isVisible(), true);
+      assert.equal(await textOf(page, 'home-average-speed'), await textOf(page, 'average-speed'));
       // Fresh sample path, with no work-count input, reaches results directly.
       await page.locator('#home [data-go=time-input]').click();
       await page.locator('[name=source][value=sample]').check();
@@ -89,13 +124,25 @@ const shot = async (page, name) => {
       await page.locator('#prepare-time').click();
       await completeMeasurement(page);
       assert.equal((await stored(page)).history.at(-1).type, 'sample');
+      assert.equal(await textOf(page, 'again'), '計測設定に戻る');
+      await page.locator('#again').click();
+      await steps(page, 'time-input-steps', 4, 1);
+      assert.equal(await page.locator('#sample-level').inputValue(), '200');
+      assert.equal(await page.locator('#sample-mood').inputValue(), 'ゆったり');
 
       // Known unequal-duration records prove weighted averaging and shared calculations.
       await page.evaluate(({ key, value }) => sessionStorage.setItem(key, JSON.stringify(value)), {
         key: storageKey, value: { version: 1, history: [{ characters: 200, seconds: 30, type: 'sample' }, { characters: 400, seconds: 90, type: 'custom' }], target: null, plannedMinutes: 20 }
       });
       await page.reload();
-      await page.locator('#home [data-go=estimate]').click();
+      assert.equal(await page.locator('#home-results').isVisible(), true);
+      assert.equal(await textOf(page, 'home-average-speed'), '約300文字 / 分');
+      await shot(page, `home-history-${width}`);
+      await page.locator('#home-results [data-go=results]').click();
+      await steps(page, 'result-steps', 4, 4);
+      assert.equal(await textOf(page, 'again'), '計測設定に戻る', 'home history never offers a nonexistent manuscript');
+      assert.equal(await textOf(page, 'average-speed'), '約300文字 / 分');
+      await page.locator('#results [data-go=estimate]').click();
       assert.equal(await textOf(page, 'estimate-average-speed'), '約300文字 / 分');
       assert.equal(await textOf(page, 'estimate-capacity'), '約6,000文字');
       assert.equal(await textOf(page, 'estimate-time'), '作品の文字数を入力してください');
@@ -119,6 +166,7 @@ const shot = async (page, name) => {
       await page.locator('.history-section summary').click();
       await page.locator('#history button').first().click();
       assert.equal(await textOf(page, 'average-speed'), '約267文字 / 分');
+      assert.equal(await textOf(page, 'home-average-speed'), '約267文字 / 分');
       assert.equal(await textOf(page, 'speed-estimate'), '約5,333文字');
       await page.locator('#reset-history').click(); await page.locator('#confirm-cancel').click();
       await page.waitForTimeout(100); // The native dialog close event resolves the confirmation asynchronously.
@@ -127,6 +175,8 @@ const shot = async (page, name) => {
       await page.waitForFunction(() => document.getElementById('average-speed').textContent === '未計測');
       assert.equal(await textOf(page, 'average-speed'), '未計測');
       assert.equal(await page.locator('#result-empty').isVisible(), true);
+      assert.equal(await page.locator('#result-steps').isVisible(), false);
+      assert.equal(await page.locator('#home-results').evaluate(el => el.hidden), true);
       await page.locator('#results [data-go=estimate]').click();
       assert.equal(await page.locator('#estimate-empty').isVisible(), true);
       assert.equal(await page.locator('#estimate-target').inputValue(), '4500');
@@ -136,6 +186,7 @@ const shot = async (page, name) => {
       // A marked manuscript returns intact through results, estimate, and deletion.
       await page.locator('#estimate [data-go=home]').click();
       await page.locator('#home [data-go=read-input]').click();
+      await steps(page, 'read-input-steps', 2, 1);
       const manuscript = { format: 'reading-support-manuscript', version: 3,
         text: '黄昏に狐が現れた。\r\n' + '静かな森で読む。'.repeat(150),
         annotations: [{ offset: 2, text: 'たそがれ' }], sourceRubies: [{ start: 3, end: 4, reading: 'きつね' }], marks: [
@@ -145,6 +196,8 @@ const shot = async (page, name) => {
         ] };
       await page.locator('#manuscript-file').setInputFiles({ name: 'draft.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(manuscript)) });
       await page.locator('#reading').waitFor({ state: 'visible' });
+      await readerState(page, '原稿編集中', '本文入力に戻る', 2, 2);
+      await shot(page, `manuscript-${width}`);
       await page.locator('#paper-mode').click();
       await page.locator('#toolbar-settings').click();
       await page.locator('#columns').evaluate(el => { el.value = Number(el.min) + 1; el.dispatchEvent(new Event('input')); el.dispatchEvent(new Event('change')); });
@@ -158,6 +211,7 @@ const shot = async (page, name) => {
       await page.evaluate(() => scrollTo(0, 600));
       const scrollBefore = await page.evaluate(() => scrollY);
       await page.locator('#measure-current').evaluate(el => el.click());
+      await readerState(page, '計測準備', '計測設定に戻る', 4, 2);
       assert.equal(await page.locator('#writing-mode').isVisible(), false);
       assert.equal(await page.locator('#export-pdf').isVisible(), false);
       assert.deepEqual(await page.evaluate(() => window.ManuscriptWriting.printSnapshot()), marksBefore);
@@ -166,6 +220,7 @@ const shot = async (page, name) => {
       assert.equal(await page.locator('#result-target').inputValue(), String(count));
       assert.equal(await textOf(page, 'again'), '原稿に戻る');
       await page.locator('#retry-measurement').click();
+      await readerState(page, '計測準備', '計測設定に戻る', 4, 2);
       await completeMeasurement(page);
       await page.locator('.history-section summary').click();
       await page.locator('#reset-history').click(); await page.locator('#confirm-ok').click();
@@ -174,6 +229,7 @@ const shot = async (page, name) => {
       await page.locator('#results [data-go=estimate]').click();
       await page.locator('#estimate-return').click();
       await page.waitForTimeout(150);
+      await readerState(page, '原稿編集中', '本文入力に戻る', 2, 2);
       assert.deepEqual(await page.evaluate(() => window.ManuscriptWriting.printSnapshot()), marksBefore);
       assert.equal(await page.locator('#columns').inputValue(), originalColumns);
       assert.equal(await page.locator('#paper-mode').getAttribute('aria-pressed'), 'true');

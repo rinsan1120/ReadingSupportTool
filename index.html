@@ -7,14 +7,14 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="description" content="文章を読みやすく整え、自分の朗読速度から作品の朗読時間を調べるツール。">
   <title>よみじたく | 朗読支援サイト</title>
-  <link rel="stylesheet" href="styles.css?v=purpose-flow">
+  <link rel="stylesheet" href="styles.css?v=workflow-guidance">
   <script src="samples.js" defer></script>
   <script src="reading-annotations.js?v=memo-bubbles" defer></script>
   <script src="html-ruby.js" defer></script>
   <script src="reader.js?v=ruby-markers" defer></script>
   <script src="manuscript-writing.js?v=writing-menu" defer></script>
   <script src="manuscript-print.js?v=pen-colors" defer></script>
-  <script src="app.js?v=purpose-flow" defer></script>
+  <script src="app.js?v=workflow-guidance" defer></script>
 </head>
 <body>
   <header class="site-header"><button class="brand" data-go="home"><span aria-hidden="true">☾</span> よみじたく <small>朗読支援サイト</small></button></header>
@@ -26,10 +26,16 @@
         <button class="entry" data-go="read-input"><span class="entry-number">01 / PREPARE</span><strong>原稿を準備する <span aria-hidden="true">↗</span></strong><span>読む・書き込む・PDFにする</span></button>
         <button class="entry" data-go="time-input"><span class="entry-number">02 / MEASURE</span><strong>朗読速度を測る <span aria-hidden="true">↗</span></strong><span>声に出して読んで、自分の速度を知る</span></button>
         <button class="entry" data-go="estimate"><span class="entry-number">03 / ESTIMATE</span><strong>朗読時間を見積もる <span aria-hidden="true">↗</span></strong><span>作品の文字数から所要時間を調べる</span></button>
-      </div><p class="privacy">本文は外部へ送信せず、自動保存もしません。<br>再読み込み・タブ終了で入力本文は失われます。</p>
+      </div>
+      <section id="home-results" class="home-results" hidden aria-labelledby="home-results-title">
+        <div><h2 id="home-results-title">これまでの計測結果</h2><p>平均朗読速度：<strong id="home-average-speed"></strong></p></div>
+        <button data-go="results">結果を見る →</button>
+      </section>
+      <p class="privacy">本文は外部へ送信せず、自動保存もしません。<br>再読み込み・タブ終了で入力本文は失われます。</p>
     </section>
     <section id="read-input" class="view narrow" hidden aria-labelledby="read-title">
       <button class="back" data-go="home">← ホーム</button><p class="eyebrow">READ</p><h1 id="read-title" tabindex="-1">文章を読む</h1>
+      <ol id="read-input-steps" class="flow-steps" aria-label="原稿準備の進行状況"></ol>
       <label for="read-text">朗読する作品の本文</label><textarea id="read-text" data-field-id="FLD-READ-BODY" rows="12" placeholder="全文でも、一部でも。ここに文章を貼り付けてください。" spellcheck="false" autocomplete="off"></textarea>
       <div class="inline spread"><p id="read-count" class="muted">0文字</p><button id="clear-read" class="quiet">本文を削除</button></div>
       <p id="annotation-retention" class="muted" hidden>読み仮名・書き込みを保持しています。本文を変更して原稿画面を開く場合は、これらの削除を確認します。</p>
@@ -39,7 +45,7 @@
     </section>
     <section id="time-input" class="view narrow" hidden aria-labelledby="time-title">
       <button class="back" data-go="home">← ホーム</button><p class="eyebrow">MEASURE</p><h1 id="time-title" tabindex="-1">朗読速度を測る</h1>
-      <p class="muted">文章選択 → 本文確認 → 計測 → 結果</p>
+      <ol id="time-input-steps" class="flow-steps" aria-label="朗読速度計測の進行状況"></ol>
       <fieldset><legend>朗読速度の計測に使う文章</legend>
         <label class="choice"><input type="radio" name="source" value="sample" data-field-id="FLD-TIME-SOURCE-SAMPLE" checked> 用意された例文を読む</label>
         <label class="choice"><input type="radio" name="source" value="custom" data-field-id="FLD-TIME-SOURCE-CUSTOM"> 自分の文章を読む</label>
@@ -52,9 +58,10 @@
     </section>
     <section id="reading" class="view reading-view" hidden aria-labelledby="reading-title">
       <div class="reader-controls">
+        <div id="reader-progress" class="reader-progress"><span id="reader-state" class="reader-state" role="status"></span><ol id="reader-steps" class="flow-steps" aria-label="作業の進行状況"></ol></div>
         <div class="reader-toolbar">
           <div id="reader-topline">
-            <button id="reader-back" class="quiet" aria-label="入力画面へ戻る"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m14 5-7 7 7 7M7 12h14"/></svg><span>戻る</span></button>
+            <button id="reader-back" class="quiet" aria-label="本文入力に戻る"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m14 5-7 7 7 7M7 12h14"/></svg><span>本文入力に戻る</span></button>
             <h1 id="reading-title" class="visually-hidden" tabindex="-1">原稿画面</h1>
             <button id="wake" type="button" aria-label="画面点灯維持：OFF" hidden><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10M6 5a9 9 0 1 0 12 0"/></svg><span>点灯維持</span><span class="button-state">OFF</span></button>
           </div>
@@ -85,6 +92,7 @@
     </section>
     <section id="results" class="view narrow" hidden aria-labelledby="result-title">
       <button class="back" data-go="home">← ホーム</button><p class="eyebrow">YOUR READING PACE</p><h1 id="result-title" tabindex="-1">計測結果</h1>
+      <ol id="result-steps" class="flow-steps" aria-label="朗読速度計測の進行状況"></ol>
       <div class="pace-card"><h2>平均朗読速度</h2><p id="average-speed" class="estimate" aria-live="polite"></p><p id="result-summary" class="muted"></p></div>
       <div id="result-empty" class="empty-state" hidden><p>計測結果がありません。はじめに自分の朗読速度を測ってみましょう。</p><button data-go="time-input" class="primary">朗読速度を測る</button></div>
       <div class="calculation-grid">

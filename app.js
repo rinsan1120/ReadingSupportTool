@@ -141,7 +141,43 @@
     if (view === 'estimate') return 'SCR-ESTIMATE';
     return 'SCR-HOME';
   }
-  function syncScreenId() { document.querySelector('main').dataset.screenId = currentScreenId(); }
+  function syncScreenId() {
+    document.querySelector('main').dataset.screenId = currentScreenId();
+    syncWorkflow();
+  }
+  function renderSteps(id, measuring, current) {
+    const list = $(id), labels = measuring ? ['本文を用意', '原稿を整える', '測る', '結果'] : ['本文を用意', '原稿を整える'];
+    const key = `${measuring}:${current}`;
+    if (list.dataset.progress === key) return;
+    list.dataset.progress = key;
+    list.replaceChildren(...labels.map((label, index) => {
+      const item = document.createElement('li'), marker = document.createElement('span'), name = document.createElement('span'), status = document.createElement('small');
+      const completed = index < current, active = index === current;
+      item.className = completed ? 'is-complete' : active ? 'is-current' : 'is-pending';
+      if (active) item.setAttribute('aria-current', 'step');
+      marker.className = 'step-marker'; marker.setAttribute('aria-hidden', String(!active));
+      marker.textContent = completed ? '✓' : active ? `${index + 1}/${labels.length}` : String(index + 1);
+      name.textContent = label; status.textContent = completed ? '完了' : active ? '現在' : 'これから';
+      item.append(marker, name, status);
+      return item;
+    }));
+  }
+  function syncWorkflow() {
+    if (view === 'read-input') renderSteps('read-input-steps', false, 0);
+    if (view === 'time-input') renderSteps('time-input-steps', true, 0);
+    if (view === 'results') {
+      $('result-steps').hidden = !history.length;
+      if (history.length) renderSteps('result-steps', true, 3);
+    }
+    if (view !== 'reading') return;
+    const measuring = mode === 'time', active = measuring && phase !== 'idle';
+    $('reader-state').textContent = !measuring ? '原稿編集中' : phase === 'running' ? '計測中' : phase === 'countdown' ? '計測開始前' : '計測準備';
+    $('reader-progress').classList.toggle('is-measuring', active);
+    renderSteps('reader-steps', measuring, active ? 2 : 1);
+    const backLabel = measuring ? '計測設定に戻る' : '本文入力に戻る';
+    $('reader-back').querySelector('span').textContent = backLabel;
+    $('reader-back').setAttribute('aria-label', backLabel);
+  }
   async function copyScreenId() {
     const id = currentScreenId();
     try {
@@ -194,6 +230,7 @@
     document.querySelectorAll('.view').forEach(el => el.hidden = el.id !== next);
     view = next; $('footer').hidden = next === 'reading';
     if (next === 'results' || next === 'estimate') renderResults();
+    if (next === 'home') renderHomeResults();
     $('existing-results').hidden = !history.length;
     $('annotation-retention').hidden = !hasReadings(readAnnotations);
     $('time-annotation-retention').hidden = !hasReadings(timeAnnotations) && !timeMarks?.hasMarks;
@@ -739,10 +776,19 @@
     }
     show('results');
   };
-  function renderResults() {
+  function readingStatistics() {
     const characters = history.reduce((sum, r) => sum + r.characters, 0);
     const seconds = history.reduce((sum, r) => sum + r.seconds, 0);
     const speed = seconds > 0 ? characters / seconds * 60 : 0;
+    return { characters, seconds, speed };
+  }
+  function paceText(speed) { return history.length ? `約${Math.round(speed).toLocaleString()}文字 / 分` : '未計測'; }
+  function renderHomeResults() {
+    $('home-results').hidden = !history.length;
+    $('home-average-speed').textContent = history.length ? paceText(readingStatistics().speed) : '';
+  }
+  function renderResults() {
+    const { characters, seconds, speed } = readingStatistics();
     const minutes = Number(target) / speed;
     $('time-estimate').textContent = !history.length ? '計測結果がありません'
       : target === '' ? '作品の文字数を入力してください'
@@ -751,7 +797,7 @@
     $('speed-estimate').textContent = !history.length ? '計測結果がありません'
       : !validMinutes(plannedMinutes) ? '予定時間を正しく入力してください'
         : `約${Math.round(Number(plannedMinutes) * speed).toLocaleString()}文字`;
-    const pace = history.length ? `約${Math.round(speed).toLocaleString()}文字 / 分` : '未計測';
+    const pace = paceText(speed);
     $('average-speed').textContent = pace; $('estimate-average-speed').textContent = pace;
     $('estimate-target').value = target; $('result-target').value = target;
     $('planned-minutes').value = plannedMinutes; $('estimate-minutes').value = plannedMinutes;
@@ -778,6 +824,8 @@
       li.append(detail, remove); $('history').append(li);
     });
     $('reset-history').disabled = !history.length;
+    renderHomeResults();
+    syncWorkflow();
   }
   $('existing-results').onclick = () => show('results');
   function returnToSource() {
@@ -843,6 +891,7 @@
   document.addEventListener('visibilitychange', () => { if (document.hidden) interrupt(); });
   addEventListener('pagehide', interrupt);
   $('existing-results').hidden = !history.length;
+  renderHomeResults();
   // Only transform the controls: do not change the text or annotation layout.
   const toolbarSurface = document.querySelector('.reader-controls');
   const toolbarMobile = matchMedia('(max-width: 600px)');
