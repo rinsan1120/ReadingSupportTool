@@ -108,7 +108,7 @@
     const valid = validPartialLimit();
     const text = view === 'reading' && mode === 'time' && sourceType === 'custom' ? displayedText : customTimingText();
     const range = partialOn && valid ? partialReadingRange(text, Number(partialLimit)) : null;
-    ['partial', 'preparation-partial'].forEach(prefix => {
+    ['preparation-partial'].forEach(prefix => {
       $(`${prefix}-enabled`).checked = partialOn;
       $(`${prefix}-limit`).value = partialLimit;
       $(`${prefix}-fields`).hidden = !partialOn;
@@ -137,7 +137,8 @@
       if (phase === 'running') return 'SCR-TIME-RUN';
       return 'SCR-TIME-PREP';
     }
-    if (view === 'results') return $('result-speed-tab').getAttribute('aria-selected') === 'true' ? 'SCR-RESULT-SPEED' : 'SCR-RESULT-TIME';
+    if (view === 'results') return 'SCR-RESULT-TIME';
+    if (view === 'estimate') return 'SCR-ESTIMATE';
     return 'SCR-HOME';
   }
   function syncScreenId() { document.querySelector('main').dataset.screenId = currentScreenId(); }
@@ -175,14 +176,13 @@
   } catch { /* Storage is optional; text is never stored. */ }
   function setTarget(value, manual = false) {
     target = value; if (manual) targetManual = true;
-    $('target-count').value = value; $('result-target').value = value; $('preparation-target').value = value;
+    $('result-target').value = value; $('estimate-target').value = value;
     updatePreparationInfo();
   }
   function updatePreparationInfo() {
-    const total = validTarget(target) ? `${Number(target).toLocaleString()}文字` : '未設定';
     $('preparation-info').textContent = measuredPartial
-      ? `読む文字数の目安：${validPartialLimit() ? Number(partialLimit) : '未設定'}文字\n実際に読む文字数：${measuredCount}文字${timingRange?.full ? '（全文が対象です。）' : ''}\n作品全体の文字数：${total}`
-      : `計測する本文：${measuredCount}文字 ／ 作品全体：${total}`;
+      ? `読む文字数の目安：${validPartialLimit() ? Number(partialLimit) : '未設定'}文字\n実際に読む文字数：${measuredCount}文字${timingRange?.full ? '（全文が対象です。）' : ''}`
+      : `計測する本文：${measuredCount}文字`;
     $('finish').textContent = measuredPartial ? '計測終了' : '読了';
     $('preparation-guidance').textContent = (measuredPartial ? '表示された文章を読み終えたら「計測終了」を押してください。' : '全文を読み終えたら「読了」を押してください。') + '計測中に入力画面やホームへ戻る、または別のタブ・アプリへ移動すると、その回の計測結果は保存されません。';
   }
@@ -193,7 +193,7 @@
     document.querySelectorAll('dialog[open]').forEach(d => d.close());
     document.querySelectorAll('.view').forEach(el => el.hidden = el.id !== next);
     view = next; $('footer').hidden = next === 'reading';
-    if (next === 'results') { selectResultTab('time'); renderResults(); }
+    if (next === 'results' || next === 'estimate') renderResults();
     $('existing-results').hidden = !history.length;
     $('annotation-retention').hidden = !hasReadings(readAnnotations);
     $('time-annotation-retention').hidden = !hasReadings(timeAnnotations) && !timeMarks?.hasMarks;
@@ -213,7 +213,7 @@
   ['sample-level', 'sample-mood'].forEach(id => $(id).addEventListener('change', selectSample));
   document.querySelectorAll('[name=source]').forEach(r => r.addEventListener('change', () => {
     sourceType = r.value;
-    $('custom-input').hidden = sourceType !== 'custom'; $('apply-count').hidden = sourceType !== 'custom';
+    $('custom-input').hidden = sourceType !== 'custom';
     $('sample-options').hidden = sourceType !== 'sample'; $('sample-info').hidden = sourceType !== 'sample';
     if (sourceType === 'custom' && !targetManual) setTarget(countText($('time-text').value) || '');
     syncPartialInputs();
@@ -225,7 +225,7 @@
     if (!targetManual) setTarget(count || '');
     syncPartialInputs();
   });
-  ['partial', 'preparation-partial'].forEach(prefix => {
+  ['preparation-partial'].forEach(prefix => {
     $(`${prefix}-enabled`).addEventListener('change', () => {
       if (phase !== 'idle') return;
       partialOn = $(`${prefix}-enabled`).checked; syncPartialInputs();
@@ -294,39 +294,19 @@
     }
   }));
   $('clear-read').onclick = async () => { if ($('read-text').value && await ask('入力した本文を削除しますか？' + replacementLoss())) { $('read-text').value = ''; $('read-text').dispatchEvent(new Event('input')); } };
-  $('apply-count').onclick = () => { setTarget(countText($('time-text').value) || '', true); persist(); };
-  $('target-count').addEventListener('input', () => { setTarget($('target-count').value, true); persist(); });
-  $('preparation-target').addEventListener('input', () => { setTarget($('preparation-target').value, true); persist(); });
-  $('result-target').addEventListener('input', () => { setTarget($('result-target').value, true); persist(); renderResults(); });
-  $('planned-minutes').addEventListener('input', () => { plannedMinutes = $('planned-minutes').value; persist(); renderResults(); });
-  function selectResultTab(tab) {
-    const time = tab === 'time';
-    $('result-time-tab').setAttribute('aria-selected', String(time)); $('result-time-tab').tabIndex = time ? 0 : -1;
-    $('result-speed-tab').setAttribute('aria-selected', String(!time)); $('result-speed-tab').tabIndex = time ? -1 : 0;
-    $('result-time-panel').hidden = !time; $('result-speed-panel').hidden = time;
-    syncScreenId();
-  }
-  [['result-time-tab', 'time'], ['result-speed-tab', 'speed']].forEach(([id, tab]) => {
-    $(id).addEventListener('click', () => selectResultTab(tab));
-    $(id).addEventListener('keydown', event => {
-      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.key === 'Home' || event.key === 'End') {
-        event.preventDefault(); const next = event.key === 'Home' ? 'time' : event.key === 'End' ? 'speed' : tab === 'time' ? 'speed' : 'time';
-        selectResultTab(next); $(`result-${next}-tab`).focus();
-      }
-    });
-  });
+  ['result-target', 'estimate-target'].forEach(id => $(id).addEventListener('input', () => {
+    setTarget($(id).value, true); persist(); renderResults();
+  }));
+  ['planned-minutes', 'estimate-minutes'].forEach(id => $(id).addEventListener('input', () => {
+    plannedMinutes = $(id).value; persist(); renderResults();
+  }));
   async function openReader(nextMode) {
     if (openingReader) return;
-    if (nextMode === 'time') readMeasurementReturn = null;
     const pasted = nextMode === 'read' && pendingReadPaste?.input === $('read-text').value ? pendingReadPaste.model : null;
     const text = nextMode === 'read' ? (pasted ? pasted.source : $('read-text').value === readInputSnapshot ? readAnnotations.source : $('read-text').value) : sourceType === 'sample' ? sample.text :
       timeAnnotations && $('time-text').value === timeInputSnapshot ? timeAnnotations.source : $('time-text').value;
     const retainedRead = nextMode === 'read' && $('read-text').value === readInputSnapshot;
     if (!countText(text) && !retainedRead) { notify('朗読する文章を入力してください。'); return; }
-    if (nextMode === 'time' && target !== '' && !validTarget(target)) { notify('作品全体の文字数を1〜1,000,000,000の整数で入力してください。'); $('target-count').focus(); return; }
-    if (nextMode === 'time' && sourceType === 'custom' && partialOn && !validPartialLimit()) {
-      notify('読む文字数の目安は正の整数で入力してください。'); $('partial-limit').focus(); return;
-    }
     openingReader = true;
     try {
       if (nextMode === 'read' && (text !== readAnnotations.source || pasted)) {
@@ -508,7 +488,7 @@
   let navigationTarget = null;
   function requestNavigation(next) {
     if (navigationTarget !== null || editWarningPending) return;
-    if ((view === 'results' || (view === 'reading' && mode === 'time')) && next !== 'reading') readMeasurementReturn = null;
+    if (next === 'home' || next === 'read-input') readMeasurementReturn = null;
     if (view !== 'reading' || mode !== 'read') { show(next); return; }
     if (!readyForDirectAction()) return;
     if (!hasReadings(readAnnotations) && !readMarks.hasMarks) { show(next); return; }
@@ -727,7 +707,6 @@
   $('start').onclick = () => {
     if (phase !== 'idle' || document.hidden) return;
     if (measuredPartial && (!validPartialLimit() || !measuredCount)) { notify('読む文字数の目安は正の整数で入力してください。'); return; }
-    if (target !== '' && !validTarget(target)) { notify('作品全体の文字数を1〜1,000,000,000の整数で入力してください。'); $('preparation-target').focus(); return; }
     $('settings-dialog').close();
     phase = 'countdown'; syncScreenId(); $('paper-mode').disabled = true; $('start').disabled = true; $('toolbar-settings').disabled = true;
     ['preparation-partial-enabled', 'preparation-partial-limit'].forEach(id => $(id).disabled = true);
@@ -772,11 +751,22 @@
     $('speed-estimate').textContent = !history.length ? '計測結果がありません'
       : !validMinutes(plannedMinutes) ? '予定時間を正しく入力してください'
         : `約${Math.round(Number(plannedMinutes) * speed).toLocaleString()}文字`;
+    const pace = history.length ? `約${Math.round(speed).toLocaleString()}文字 / 分` : '未計測';
+    $('average-speed').textContent = pace; $('estimate-average-speed').textContent = pace;
+    $('estimate-target').value = target; $('result-target').value = target;
+    $('planned-minutes').value = plannedMinutes; $('estimate-minutes').value = plannedMinutes;
+    $('estimate-time').textContent = $('time-estimate').textContent;
+    $('estimate-capacity').textContent = $('speed-estimate').textContent;
+    $('result-empty').hidden = !!history.length; $('estimate-empty').hidden = !!history.length;
+    $('estimate-results').hidden = !history.length;
+    $('estimate-return').hidden = !readMeasurementReturn;
+    $('retry-measurement').hidden = !history.length;
+    $('history-count').textContent = `（${history.length}回）`;
     $('result-summary').textContent = history.length ? `合計${characters.toLocaleString()}文字・実測${seconds.toFixed(1)}秒 ／ 平均${Math.round(speed).toLocaleString()}文字/分` : '';
     const lastMeasurement = history.at(-1);
     const currentText = $('time-text').value.replace(/\r\n?/g, '\n');
     const retainedCustomText = lastMeasurement?.type === 'custom' && currentText && currentText === lastMeasuredCustomText?.replace(/\r\n?/g, '\n');
-    $('again').textContent = readMeasurementReturn ? '原稿に戻る' : lastMeasurement?.type === 'custom' ? '入力した文章に戻る' : '計測設定に戻る';
+    $('again').textContent = readMeasurementReturn ? '原稿に戻る' : sourceType === 'custom' ? '入力した文章に戻る' : '計測設定に戻る';
     $('result-retention').hidden = !retainedCustomText;
     $('history').replaceChildren();
     history.forEach((record, i) => {
@@ -784,14 +774,14 @@
       detail.textContent = `${i + 1}回目 · ${record.characters.toLocaleString()}文字 / ${record.seconds.toFixed(1)}秒`;
       small.textContent = `${record.type === 'sample' ? '例文' : '用意した文章'}・${Math.round(record.characters / record.seconds * 60).toLocaleString()}文字/分`;
       detail.append(small); remove.textContent = '削除'; remove.setAttribute('aria-label', `${i + 1}回目の計測結果を削除`);
-      remove.onclick = () => { readMeasurementReturn = null; history.splice(i, 1); persist(); renderResults(); };
+      remove.onclick = () => { history.splice(i, 1); persist(); renderResults(); };
       li.append(detail, remove); $('history').append(li);
     });
     $('reset-history').disabled = !history.length;
   }
-  $('existing-results').onclick = () => { readMeasurementReturn = null; show('results'); };
-  $('again').onclick = () => {
-    if (view === 'results' && readMeasurementReturn) {
+  $('existing-results').onclick = () => show('results');
+  function returnToSource() {
+    if (readMeasurementReturn) {
       const returnState = readMeasurementReturn;
       readMeasurementReturn = null;
       show('reading');
@@ -799,8 +789,11 @@
       return;
     }
     show('time-input');
-  };
-  $('reset-history').onclick = async () => { if (await ask('すべての計測履歴を削除しますか？')) { readMeasurementReturn = null; history = []; persist(); renderResults(); } };
+  }
+  $('again').onclick = returnToSource;
+  $('estimate-return').onclick = returnToSource;
+  $('retry-measurement').onclick = () => openReader('time');
+  $('reset-history').onclick = async () => { if (await ask('すべての計測履歴を削除しますか？')) { history = []; persist(); renderResults(); } };
   function readyForDirectAction() {
     if (window.Reader.hasPending) {
       window.Reader.focusPending();
