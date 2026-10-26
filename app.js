@@ -2,7 +2,7 @@
   'use strict';
   const $ = id => document.getElementById(id);
   let library = null, changeTimer = 0, libraryReady = false;
-  let savedUserSnapshot = null, captureFailed = false, userDirty = false, savingUser = false, userFilename = '';
+  let savedUserSnapshot = null, captureFailed = false, userDirty = false, savingUser = false, userFilename = '', hasUserFile = false;
   let hasLegacyUserData = false, pendingDownloadSnapshot = null;
   let view = 'home', mode = 'read', sourceType = 'sample', sample = null;
   let history = [], target = '', targetManual = false, plannedMinutes = '20';
@@ -178,7 +178,7 @@
     $('reader-state').textContent = !measuring ? '原稿編集中' : phase === 'running' ? '計測中' : phase === 'paused' ? '一時停止中' : phase === 'resuming' ? '再開準備中' : phase === 'countdown' ? '計測開始前' : '計測準備';
     $('reader-progress').classList.toggle('is-measuring', active);
     renderSteps('reader-steps', measuring, active ? 2 : 1);
-    const backLabel = measuring ? '計測設定に戻る' : '本文入力に戻る';
+    const backLabel = measuring ? '計測設定に戻る' : '本文を編集';
     $('reader-back').querySelector('span').textContent = backLabel;
     $('reader-back').setAttribute('aria-label', backLabel);
   }
@@ -295,8 +295,11 @@
           sourceRubies: imported.sourceRubies.map(r => ({ ...r, start: r.start + begin, end: r.end + begin })) }));
       }
       const replacingReadings = ruby && whole && (hasReadings(retained) || retainedMarks?.hasMarks);
-      if (((el.value && end > begin) || replacingReadings) && !await ask(replacingReadings ?
-        '入力欄の本文と読み仮名を、貼り付けた文章と元の読み仮名で置き換えますか？' + (id === 'read-text' ? replacementLoss() : timeMarks?.hasMarks ? ' 計測用の書き込みも削除されます。「文章を読む」の原稿は保持します。' : '') : '選択中の本文を貼り付けた文章で置き換えますか？', '置き換える')) return;
+      // Partial-selection pastes lose nothing beyond the selected text, which
+      // native undo restores, so they no longer ask. Whole-text replacement
+      // and ruby imports that would discard readings/marks still confirm.
+      if ((replacingReadings || (whole && el.value)) && !await ask(replacingReadings ?
+        '入力欄の本文と読み仮名を、貼り付けた文章と元の読み仮名で置き換えますか？' + (id === 'read-text' ? replacementLoss() : timeMarks?.hasMarks ? ' 計測用の書き込みも削除されます。「文章を読む」の原稿は保持します。' : '') : '入力済みの本文全体を、貼り付けた文章で置き換えますか？', '置き換える')) return;
       if (view !== previousView || el.value !== previous) return;
       el.setRangeText(plain, begin, end, 'end');
       if (imported) {
@@ -900,7 +903,12 @@
       ? Object.fromEntries(Object.keys(value).sort().map(name => [name, value[name]])) : value);
   }
   function renderSaveState(message = '') {
-    saveStatus(message || (userDirty ? '未保存の変更があります。JSONファイルに保存してください。' : `変更なし · ${userFilename || '読み込んだユーザーデータ'}`), captureFailed);
+    // Distinguish "no file yet" from "unsaved changes": only real edits warn.
+    const fallback = userDirty ? '未保存の変更があります。「保存」でファイルに保存してください。'
+      : hasUserFile ? `保存済み · ${userFilename}` : '保存先ファイルはまだありません。「保存」でファイルを作ってください。';
+    saveStatus(message || fallback, captureFailed);
+    const readerState = $('reader-save-state');
+    if (readerState) readerState.hidden = !userDirty;
   }
   function createBook() {
     if (library.manuscripts.length >= 500) throw new Error('原稿は500件までです。バックアップして整理してください。');
@@ -933,7 +941,7 @@
     clearTimeout(changeTimer);
     try {
       captureLibrary(); captureFailed = false;
-      userDirty = savedUserSnapshot === null || snapshotKey(library) !== savedUserSnapshot;
+      userDirty = snapshotKey(library) !== savedUserSnapshot;
       renderSaveState(); renderLibrary(); return true;
     } catch (error) {
       captureFailed = true; userDirty = true;
@@ -958,22 +966,73 @@
     readPaper = false; readMeasurementReturn = null;
     renderIdentity();
   }
-  let libraryRenderKey = '';
+  let libraryRenderKey = '', renamingId = null;
   function renderLibrary() {
-    const key = JSON.stringify(library.manuscripts.map(b => [b.id, b.title, b.updatedAt, b.draft.length]));
+    $('library-load').hidden = !!library.manuscripts.length;
+    const totalSeconds = library.history.reduce((sum, r) => sum + r.seconds, 0);
+    const totalChars = library.history.reduce((sum, r) => sum + r.characters, 0);
+    const charsPerMinute = totalSeconds > 0 ? totalChars / totalSeconds * 60 : 0;
+    const key = JSON.stringify([renamingId, library.activeId, charsPerMinute,
+      library.manuscripts.map(b => [b.id, b.title, b.updatedAt, b.draft.length, b.draft.slice(0, 50)])]);
     if (key === libraryRenderKey) return;
     libraryRenderKey = key;
     $('library-empty').hidden = !!library.manuscripts.length;
-    $('library-list').replaceChildren(...[...library.manuscripts].reverse().map(book => {
-      const li = document.createElement('li'), open = document.createElement('button'), detail = document.createElement('small'), remove = document.createElement('button');
-      open.className = 'book-open'; open.textContent = book.title;
-      detail.textContent = `${countText(book.draft).toLocaleString()}文字 · ${new Date(book.updatedAt).toLocaleDateString('ja-JP')}`;
+    const sorted = [...library.manuscripts].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    $('library-list').replaceChildren(...sorted.map(book => {
+      const li = document.createElement('li');
+      if (renamingId === book.id) {
+        const input = document.createElement('input');
+        input.className = 'library-rename-input'; input.value = book.title; input.maxLength = 120;
+        input.setAttribute('aria-label', '新しいタイトル');
+        const save = document.createElement('button'); save.textContent = '保存';
+        const cancel = document.createElement('button'); cancel.textContent = 'やめる';
+        const finish = commit => {
+          if (commit) {
+            if (!syncLibrary()) return;
+            const target = library.manuscripts.find(b => b.id === book.id);
+            const title = input.value.trim() || '無題の原稿';
+            if (target && target.title !== title) {
+              target.title = title; target.updatedAt = new Date().toISOString();
+              if (target.id === library.activeId) $('manuscript-title').value = title;
+            }
+          }
+          renamingId = null; syncLibrary();
+        };
+        save.onclick = () => finish(true);
+        cancel.onclick = () => finish(false);
+        input.addEventListener('keydown', event => {
+          if (event.key === 'Enter') { event.preventDefault(); finish(true); }
+          if (event.key === 'Escape') finish(false);
+        });
+        const editActions = document.createElement('div'); editActions.className = 'book-actions';
+        editActions.append(save, cancel);
+        li.append(input, editActions); return li;
+      }
+      const open = document.createElement('button'), detail = document.createElement('small'), rename = document.createElement('button'), remove = document.createElement('button');
+      open.className = 'book-open'; open.textContent = book.title; open.setAttribute('aria-label', `${book.title}を開く`);
+      const count = countText(book.draft);
+      const estimate = count && charsPerMinute ? ` · 朗読目安 約${count / charsPerMinute < 1 ? '1分未満' : `${Math.round(count / charsPerMinute)}分`}` : '';
+      detail.textContent = `${count.toLocaleString()}文字 · ${new Date(book.updatedAt).toLocaleDateString('ja-JP')}${estimate}`;
       open.append(detail);
+      const preview = book.draft.replace(/\s+/g, ' ').trim().slice(0, 50);
+      if (preview) { const p = document.createElement('small'); p.className = 'book-preview'; p.textContent = preview; open.append(p); }
+      if (book.id === library.activeId) {
+        const active = document.createElement('small'); active.className = 'book-active-label'; active.textContent = '開いている原稿';
+        open.append(active); open.setAttribute('aria-current', 'true');
+      }
+      const openLabel = document.createElement('small'); openLabel.className = 'book-open-label'; openLabel.textContent = 'この原稿を開く';
+      open.append(openLabel);
       open.onclick = () => {
         if (!syncLibrary()) { notify('入力内容を確認してから原稿を切り替えてください。'); return; }
         library.activeId = book.id; restoreBook(book); syncLibrary();
         if (book.draft === readInputSnapshot && countText(book.draft)) displayReader('read', readAnnotations.source);
         else show('read-input');
+      };
+      rename.textContent = '名前を変更'; rename.setAttribute('aria-label', `${book.title}の名前を変更`);
+      rename.onclick = () => {
+        renamingId = book.id; libraryRenderKey = ''; renderLibrary();
+        const input = document.querySelector('.library-rename-input');
+        if (input) { input.focus(); input.select(); }
       };
       remove.textContent = '削除'; remove.setAttribute('aria-label', `${book.title}を削除`);
       remove.onclick = async () => {
@@ -986,9 +1045,12 @@
           library = candidate;
           if (!library.activeId) restoreBook(null);
           syncLibrary();
+          notify(hasUserFile ? '原稿を削除しました。ファイルに反映するには「保存」を押してください。' : '原稿を削除しました。');
         } catch (error) { saveStatus(`削除できません：${error.message}`, true); }
       };
-      li.append(open, remove); return li;
+      const actions = document.createElement('div'); actions.className = 'book-actions';
+      actions.append(rename, remove);
+      li.append(open, actions); return li;
     }));
   }
   $('new-manuscript').onclick = () => {
@@ -1018,7 +1080,7 @@
     finally { a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); }
   }
   function markFileSaved(key, filename) {
-    savedUserSnapshot = key; userFilename = filename;
+    savedUserSnapshot = key; userFilename = filename; hasUserFile = true;
     syncLibrary();
   }
   async function saveUserData() {
@@ -1041,8 +1103,9 @@
         downloadJSON(json, filename);
         // A download click does not prove that the browser actually saved a file.
         pendingDownloadSnapshot = { key, filename };
+        $('download-filename').textContent = filename;
         $('download-confirm-dialog').showModal(); $('download-not-saved').focus();
-        renderSaveState('ダウンロードを開始しました。端末への保存が未確認です。');
+        renderSaveState(`「${filename}」のダウンロードを開始しました。端末への保存が未確認です。`);
       }
     } catch (error) {
       if (writable) { try { await writable.abort(); } catch { /* Keep the original failure. */ } }
@@ -1070,13 +1133,14 @@
     $('time-count').textContent = '計測する本文：0文字';
     setTarget(target); targetManual = !!target;
     $('planned-minutes').value = plannedMinutes; $('estimate-minutes').value = plannedMinutes;
-    userFilename = filename; savedUserSnapshot = saved ? snapshotKey(library) : null;
+    userFilename = filename; hasUserFile = saved; savedUserSnapshot = snapshotKey(library);
     libraryReady = true; document.querySelector('main').inert = false;
     syncLibrary(); renderResults(); show('home');
   }
   let restoringUser = false;
   const chooseUserFile = () => { if (!savingUser && !restoringUser) $('user-file').click(); };
   $('import-user').onclick = chooseUserFile;
+  $('library-load').onclick = chooseUserFile;
   $('start-load').onclick = chooseUserFile;
   $('user-file').onchange = async () => {
     const file = $('user-file').files[0]; $('user-file').value = '';
@@ -1104,7 +1168,7 @@
       const raw = localStorage.getItem(window.UserLibrary.KEY);
       if (raw === null) throw new Error('ブラウザ保存データが見つかりません。');
       useUserData(window.UserLibrary.parse(raw));
-      notify('ブラウザ保存データを引き継ぎました。「ユーザーデータを保存」でJSONに保存してください。');
+      notify('ブラウザ保存データを引き継ぎました。「保存」でJSONファイルに保存してください。');
     } catch (error) { $('startup-error').textContent = `引き継げません。元データは保持しています。${error.message}`; }
   };
   $('export-legacy').onclick = () => {

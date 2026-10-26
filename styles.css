@@ -21,9 +21,14 @@ main[data-screen-id="SCR-READ-VIEW"] #save-user-status { display:none; }
 .library-status .save-failed { color:#fca5a5; font-weight:700; }
 .bookshelf,.user-settings { margin-top:28px; padding:20px; border:1px solid var(--border); border-radius:14px; background:var(--panel); }
 .library-list { list-style:none; padding:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:12px; }
-.library-list li { display:flex; align-items:center; gap:6px; min-width:0; }
+.library-list li { display:flex; flex-direction:column; align-items:stretch; gap:6px; min-width:0; }
+.book-actions { display:flex; gap:6px; }
+.book-actions button { flex:1; padding:8px; min-height:40px; }
 .book-open { flex:1; min-width:0; text-align:left; overflow-wrap:anywhere; border-left:4px solid var(--accent); }
 .book-open small { display:block; color:var(--muted); margin-top:8px; font-weight:400; }
+.book-open .book-open-label { color:var(--accent); font-weight:700; }
+.book-open .book-active-label { color:#fbbf24; font-weight:700; }
+.library-rename-input { flex:1; min-width:0; padding:12px; color:var(--text); background:var(--bg); border:1px solid #7897c159; border-radius:8px; }
 .user-settings summary { cursor:pointer; padding:4px 0; }
 .user-settings input,#manuscript-title { width:100%; margin:8px 0; padding:12px; color:var(--text); background:var(--bg); border:1px solid #7897c159; border-radius:8px; }
 .bookshelf + .entry-grid { margin-top:24px; }
@@ -700,7 +705,7 @@ html { scrollbar-gutter: stable; }
 #wake { grid-area:wake; }
 #reader-actions { grid-area:actions; display:flex; align-items:center; justify-content:center; gap:6px; width:min(100%,840px); justify-self:center; }
 #reader-actions button { min-width:0; }
-#export-manuscript span { white-space:normal; overflow-wrap:anywhere; }
+#reader-save-state { color:#fbbf24; }
 .reader-toolbar button,.writing-tools button { display:flex; justify-content:center; align-items:center; gap:5px; min-height:44px; padding:8px; white-space:nowrap; }
 .tool-icon { width:21px; height:24px; flex:none; }
 .button-state { font-size:10px; border:1px solid currentColor; border-radius:3px; padding:1px 2px; }

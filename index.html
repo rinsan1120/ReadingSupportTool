@@ -25,8 +25,9 @@
       <p class="eyebrow">READING SUPPORT</p><h1 id="home-title" tabindex="-1">声にする前の、<wbr><span class="home-tagline">ひと支度。</span></h1>
       <p class="lead">読みやすいかたちで、あなたのペースで。<br>朗読のための、小さな道具です。</p>
       <section class="bookshelf" aria-labelledby="library-title">
-        <div class="inline spread"><h2 id="library-title">原稿ライブラリ</h2><button id="new-manuscript" class="primary">＋ 原稿を追加</button></div>
+        <div class="inline spread"><h2 id="library-title">原稿ライブラリ</h2><button id="new-manuscript" class="primary">＋ 新しい原稿を作る</button></div>
         <p id="library-empty" class="muted">読む文章を追加して、あなただけの本棚に。</p>
+        <button id="library-load" class="quiet" hidden>保存したデータから続きを始める（ファイルを開く）</button>
         <ul id="library-list" class="library-list"></ul>
       </section>
       <div class="entry-grid">
@@ -36,8 +37,8 @@
       </div>
       <details class="user-settings"><summary>プロフィール・ユーザーデータ</summary>
         <label for="profile-name">表示名</label><input id="profile-name" maxlength="80" autocomplete="nickname" placeholder="お名前（任意）">
-        <p class="muted">ユーザーデータはJSONファイルで管理します。編集後は「ユーザーデータを保存」を押してください。ブラウザへの自動保存・端末間の自動同期は行いません。</p>
-        <div class="inline"><button id="export-user">ユーザーデータを保存</button><button id="import-user">ユーザーデータを読み込む</button></div>
+        <p class="muted">ユーザーデータ（全原稿・計測履歴）はJSONファイルで管理します。編集後は「保存」を押してください。ブラウザへの自動保存・端末間の自動同期は行いません。</p>
+        <div class="inline"><button id="export-user">保存</button><button id="import-user">ユーザーデータを読み込む</button></div>
         <p class="muted">ユーザー全体のJSONです。原稿1件のJSONは本文入力の「原稿ファイルを読み込む」から利用できます。</p>
       </details>
       <section id="home-results" class="home-results" hidden aria-labelledby="home-results-title">
@@ -47,10 +48,10 @@
       <p class="privacy">データはこの画面内で編集し、JSONファイルに保存します。外部へ送信しません。</p>
     </section>
     <section id="read-input" class="view narrow" hidden aria-labelledby="read-title">
-      <button class="back" data-go="home">← ホーム</button><p class="eyebrow">READ</p><h1 id="read-title" tabindex="-1">文章を読む</h1>
+      <button class="back" data-go="home">← ホーム</button><p class="eyebrow">READ</p><h1 id="read-title" tabindex="-1">原稿を準備する</h1>
       <ol id="read-input-steps" class="flow-steps" aria-label="原稿準備の進行状況"></ol>
       <label for="manuscript-title">原稿のタイトル</label><input id="manuscript-title" maxlength="120" placeholder="無題の原稿">
-      <p class="muted">別の原稿はホームのライブラリから選べます。</p>
+      <p class="muted">別の原稿を開くときは、ホームの本棚から選べます。</p>
       <label for="read-text">朗読する作品の本文</label><textarea id="read-text" data-field-id="FLD-READ-BODY" rows="12" placeholder="全文でも、一部でも。ここに文章を貼り付けてください。" spellcheck="false" autocomplete="off"></textarea>
       <div class="inline spread"><p id="read-count" class="muted">0文字</p><button id="clear-read" class="quiet">本文を削除</button></div>
       <p id="annotation-retention" class="muted" hidden>読み仮名・書き込みを保持しています。本文を変更して原稿画面を開く場合は、これらの削除を確認します。</p>
@@ -76,7 +77,7 @@
         <div id="reader-progress" class="reader-progress"><span id="reader-state" class="reader-state" role="status"></span><ol id="reader-steps" class="flow-steps" aria-label="作業の進行状況"></ol></div>
         <div class="reader-toolbar">
           <div id="reader-topline">
-            <button id="reader-back" class="quiet" aria-label="本文入力に戻る"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m14 5-7 7 7 7M7 12h14"/></svg><span>本文入力に戻る</span></button>
+            <button id="reader-back" class="quiet" aria-label="本文を編集する"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m14 5-7 7 7 7M7 12h14"/></svg><span>本文を編集</span></button>
             <h1 id="reading-title" class="visually-hidden" tabindex="-1">原稿画面</h1>
             <button id="wake" type="button" aria-label="画面点灯維持：OFF" hidden><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10M6 5a9 9 0 1 0 12 0"/></svg><span>点灯維持</span><span class="button-state">OFF</span></button>
           </div>
@@ -85,7 +86,7 @@
             <button id="toolbar-settings" type="button" aria-label="表示設定"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="12" r="2" fill="currentColor"/><circle cx="8" cy="18" r="2" fill="currentColor"/></svg><span>表示設定</span></button>
             <button id="writing-mode" aria-expanded="false" aria-controls="writing-toolbar" aria-label="書込メニュー" hidden><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m4 16-1 5 5-1L21 7l-5-5ZM13 5l5 5"/></svg><span>書込<wbr>メニュー</span></button>
             <button id="measure-current" aria-label="この文章で時間を計測" hidden><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="14" r="8"/><path d="M9 2h6m-3 0v4m0 3v5l3 2"/></svg><span>計測</span></button>
-            <button id="export-manuscript" aria-label="ユーザーデータを保存" hidden><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h13l4 4v14H3V3h1Zm3 0v7h10V3M7 21v-8h10v8"/></svg><span>ユーザーデータを保存</span></button>
+            <button id="export-manuscript" aria-label="保存" hidden><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h13l4 4v14H3V3h1Zm3 0v7h10V3M7 21v-8h10v8"/></svg><span>保存</span><span class="button-state" id="reader-save-state" hidden>未保存</span></button>
             <button id="export-pdf" aria-label="PDF出力" hidden><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2h10l5 5v15H5ZM15 2v6h5"/><text x="6" y="17" font-size="7" fill="currentColor" stroke="none">PDF</text></svg><span>PDF</span></button>
           </div>
         </div>
@@ -118,7 +119,7 @@
       <div class="inline"><button id="again" class="primary">計測設定に戻る</button><button id="retry-measurement">もう一度測る</button><button data-go="estimate">朗読時間を見積もる →</button></div>
       <p id="result-retention" class="muted result-retention" hidden>ホームへ戻っても文章は残ります。再読み込みやタブを閉じると失われます。</p>
       <details class="history-section"><summary>計測履歴 <span id="history-count"></span></summary><ul id="history" class="history"></ul><button id="reset-history" class="quiet">全履歴を削除</button></details>
-      <p class="privacy">計測履歴は直近100件を保持します。ページを閉じる前に「ユーザーデータを保存」を押してください。</p>
+      <p class="privacy">計測履歴は直近100件を保持します。ページを閉じる前に「保存」を押してください。</p>
     </section>
     <section id="estimate" class="view narrow" hidden aria-labelledby="estimate-title">
       <button class="back" data-go="home">← ホーム</button><p class="eyebrow">PLAN YOUR READING</p><h1 id="estimate-title" tabindex="-1">朗読時間を見積もる</h1>
@@ -130,7 +131,7 @@
       </div>
       <p class="muted">間の取り方や作品によって、実際の時間は変わります。</p>
       <div class="inline"><button id="estimate-results" data-go="results">計測結果・履歴を見る</button><button id="estimate-return" hidden>原稿に戻る</button><button data-go="time-input">朗読速度を測る</button></div>
-      <p class="privacy">計測履歴は直近100件を保持します。ページを閉じる前に「ユーザーデータを保存」を押してください。</p>
+      <p class="privacy">計測履歴は直近100件を保持します。ページを閉じる前に「保存」を押してください。</p>
     </section>
   </main>
   <footer id="footer"><span><span id="screen-id-copy" role="button" tabindex="0" aria-label="現在の画面IDをコピー">よみじたく</span> 〜 朗読支援サイト 〜</span></footer>
@@ -168,10 +169,10 @@
   <dialog id="writing-memo-dialog" data-dialog-id="DLG-MEMO" aria-labelledby="writing-memo-title"><form id="writing-memo-form"><h2 id="writing-memo-title">文字メモ</h2><p class="muted">吹き出しと足先は、登録後にドラッグして移動できます。</p><label for="writing-memo-input">メモ（200文字以内・改行可）</label><textarea id="writing-memo-input" data-field-id="FLD-MEMO-TEXT" maxlength="200" rows="5" required></textarea><div class="ruby-editor-actions"><button id="writing-memo-cancel" type="button">キャンセル</button><button id="writing-memo-delete" type="button" hidden>削除</button><button id="writing-memo-save" type="submit" class="primary" disabled>登録</button></div></form></dialog>
   <input id="user-file" type="file" accept=".json,application/json" hidden>
   <dialog id="startup-dialog" aria-labelledby="startup-title">
-    <p class="eyebrow">よみじたく</p><h2 id="startup-title">ユーザーデータを開く</h2>
-    <p>前回保存したJSONファイルを読み込むか、新しく始めてください。</p>
-    <div class="inline"><button id="start-load" class="primary">ユーザーデータJSONを読み込む</button><button id="start-new">新規作成</button></div>
-    <p class="muted">編集した内容は、この画面を閉じると失われます。使い終わる前に「ユーザーデータを保存」を押してください。</p>
+    <p class="eyebrow">よみじたく</p><h2 id="startup-title">よみじたくを始める</h2>
+    <p>原稿と計測履歴は、1つのファイル（ユーザーデータJSON）にまとめて保存されています。前回保存したファイルがあれば、読み込むと続きから始められます。ファイルがない場合は、新しく始めてください。</p>
+    <div class="inline"><button id="start-load" class="primary">保存したデータから続きを始める</button><button id="start-new">初めて使う・新しく始める</button></div>
+    <p class="muted">編集した内容は自動では保存されません。使い終わる前に「保存」を押してファイルに保存してください。</p>
     <section id="legacy-user-data" hidden><h3>以前のブラウザ保存データがあります</h3>
       <p>引き継いでからJSONファイルに保存できます。元のブラウザ保存データは削除・上書きしません。以後の変更はJSONに保存し、次回からそのファイルを読み込んでください。</p>
       <div class="inline"><button id="start-legacy">ブラウザ保存データを引き継ぐ</button><button id="export-legacy">旧データをそのまま取り出す</button></div>
@@ -181,7 +182,8 @@
   <dialog id="download-confirm-dialog" aria-labelledby="download-confirm-title">
     <h2 id="download-confirm-title">端末への保存をご確認ください</h2>
     <p>ユーザーデータJSONのダウンロードを開始しました。保存先や同名ファイルの扱いはブラウザの設定によって異なります。</p>
-    <p>サイトから完了・キャンセルを確認できないため、ファイルが端末に保存されたことを確認してから「保存を確認した」を押してください。</p>
+    <p>ファイル名：<strong id="download-filename"></strong></p>
+    <p>サイトから完了・キャンセルを確認できないため、ダウンロードフォルダーなどにこの名前のファイルが保存されたことを確認してから「保存を確認した」を押してください。</p>
     <div class="inline"><button id="download-not-saved">未確認のまま戻る</button><button id="download-saved" class="primary">保存を確認した</button></div>
   </dialog>
   <dialog id="confirm-dialog" data-dialog-id="DLG-CONFIRM" aria-labelledby="confirm-title"><h2 id="confirm-title">操作の確認</h2><p id="confirm-message"></p><div class="inline"><button id="confirm-cancel">キャンセル</button><button id="confirm-ok" class="primary">削除する</button></div></dialog>
