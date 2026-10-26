@@ -39,7 +39,7 @@
         <label for="profile-name">表示名</label><input id="profile-name" maxlength="80" autocomplete="nickname" placeholder="お名前（任意）">
         <p class="muted">ユーザーデータ（全原稿・計測履歴）はJSONファイルで管理します。編集後は「保存」を押してください。ブラウザへの自動保存・端末間の自動同期は行いません。</p>
         <div class="inline"><button id="export-user">保存</button><button id="import-user">保存したファイルを開く</button></div>
-        <p class="muted">ユーザー全体のJSONです。原稿1件のJSONは本文入力の「原稿ファイルを読み込む」から利用できます。</p>
+        <p class="muted">ここで開くのはユーザーデータ全体のJSONです。旧形式の原稿1件のJSONは、本文入力の「旧形式の原稿ファイルを取り込む」から移行用として取り込めます。</p>
       </details>
       <section id="home-results" class="home-results" hidden aria-labelledby="home-results-title">
         <div><h2 id="home-results-title">これまでの計測結果</h2><p>平均朗読速度：<strong id="home-average-speed"></strong></p></div>
@@ -56,8 +56,9 @@
       <div class="inline spread"><p id="read-count" class="muted">0文字</p><button id="clear-read" class="quiet">本文を削除</button></div>
       <p id="annotation-retention" class="muted" hidden>読み仮名・書き込みを保持しています。本文を変更して原稿画面を開く場合は、これらの削除を確認します。</p>
       <p id="writing-retention" class="muted" hidden>原稿の書き込みを保持しています。保存状況は画面上部に表示します。</p>
-      <div class="inline"><button id="import-manuscript">原稿ファイルを読み込む</button><input id="manuscript-file" data-field-id="FLD-READ-MANUSCRIPT-FILE" type="file" accept=".json,application/json" hidden>
+      <div class="inline"><button id="import-manuscript">旧形式の原稿ファイルを取り込む</button><input id="manuscript-file" data-field-id="FLD-READ-MANUSCRIPT-FILE" type="file" accept=".json,application/json" hidden>
       <button id="open-read" class="primary">表示を確認して読む →</button></div>
+      <p class="muted">旧バージョンの「原稿を保存」で作った原稿JSONを取り込むためのものです（移行用）。保存した続きのデータは、ホームの「保存したファイルを開く」から読み込んでください。</p>
     </section>
     <section id="time-input" class="view narrow" hidden aria-labelledby="time-title">
       <button class="back" data-go="home">← ホーム</button><p class="eyebrow">MEASURE</p><h1 id="time-title" tabindex="-1">朗読速度を測る</h1>

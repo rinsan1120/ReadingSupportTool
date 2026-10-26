@@ -110,6 +110,9 @@ const installPicker = async page => page.evaluate(() => {
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'home fits');
       await page.locator('#library-list .book-open').click();
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && [...document.querySelectorAll('#reader-actions button')].filter(e => !e.hidden).every(e => e.getBoundingClientRect().right <= innerWidth)), 'save button fits on mobile');
+      await page.locator('#reader-back').click();
+      await page.locator('#manuscript-file').setInputFiles({ name: 'user.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(portable)) });
+      await page.waitForFunction(() => document.getElementById('notice').textContent.includes('保存したファイルを開く'), null, { timeout: 3000 });
       if (process.env.READER_TEST_ARTIFACTS) { fs.mkdirSync(process.env.READER_TEST_ARTIFACTS, { recursive: true }); await page.screenshot({ path: path.join(process.env.READER_TEST_ARTIFACTS, `file-reader-${width}.png`) }); }
       assert.deepEqual(errors, []); await context.close(); console.log(`file sessions ${width}: PASS`);
     }

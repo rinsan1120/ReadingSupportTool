@@ -470,14 +470,20 @@
     if (!file || importing || view !== 'read-input') return;
     importing = true; $('import-manuscript').disabled = true;
     try {
-      if (file.size > window.ReadingAnnotations.MAX_FILE_BYTES) throw new Error('原稿ファイルは10MiBまでです。');
+      if (file.size > window.ReadingAnnotations.MAX_FILE_BYTES) throw new Error('原稿ファイルが大きすぎます（上限は約10MBです）。');
       let json;
       try { json = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()); }
       catch { throw new Error('UTF-8のJSONファイルを読み取れませんでした。'); }
+      let chosenFormat = null;
+      try { chosenFormat = JSON.parse(json)?.format; } catch { /* The restore step below reports invalid files. */ }
+      if (chosenFormat === 'yomijitaku-user') {
+        notify('これはユーザーデータ全体のファイルです。移行用の取り込みではありません。ホームの「保存したファイルを開く」から読み込んでください。');
+        return;
+      }
       const { manuscript: restored, markings } = window.ManuscriptMarks.restoreManuscript(json);
       if (view !== 'read-input') return;
       if (($('read-text').value || readAnnotations.source || hasReadings(readAnnotations) || readMarks.hasMarks) &&
-        !await ask('現在の本文・読み仮名・赤ペン・マーカー・文字メモを、選択した原稿ファイルの内容で置き換えますか？この原稿の内容は置き換わります。', '置き換える')) return;
+        !await ask('現在の本文・読み仮名・赤ペン・マーカー・文字メモを、選択した旧形式ファイルの内容で置き換えますか？この原稿の内容は置き換わります。', '置き換える')) return;
       // All validation and confirmation have succeeded. Commit together, using
       // the same model and rendering path as manually entered manuscripts.
       readAnnotations = restored;
@@ -487,7 +493,7 @@
       readInputSnapshot = $('read-text').value;
       $('read-text').dispatchEvent(new Event('input'));
       displayReader('read', restored.source);
-      notify('原稿ファイルを読み込みました。');
+      notify('旧形式の原稿ファイルを取り込みました。');
     } catch (error) { notify(`原稿を読み込めません。${error.message}`); }
     finally { importing = false; $('import-manuscript').disabled = false; }
   });
@@ -1161,9 +1167,11 @@
     const file = $('user-file').files[0]; $('user-file').value = '';
     if (!file || restoringUser || savingUser) return;
     restoringUser = true; setFileControlsBusy(true); $('startup-error').textContent = '';
+    let chosenText = '';
     try {
       if (file.size > window.UserLibrary.MAX_BYTES) throw new Error('ファイルが大きすぎます（上限は約30MBです）。');
-      const candidate = window.UserLibrary.parse(new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()));
+      chosenText = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
+      const candidate = window.UserLibrary.parse(chosenText);
       if (libraryReady) {
         if (!readyForDirectAction()) return;
         syncLibrary();
@@ -1172,7 +1180,11 @@
       useUserData(candidate, file.name, true);
       notify('ユーザーデータJSONを読み込みました。');
     } catch (error) {
-      const message = `読み込めません。現在のデータは変更していません。${error.message}`;
+      let chosenFormat = null;
+      try { chosenFormat = JSON.parse(chosenText)?.format; } catch { /* Keep the original error. */ }
+      const message = chosenFormat === 'reading-support-manuscript'
+        ? 'これは旧形式の原稿ファイルのようです。ユーザーデータ全体ではありません。本文入力の「旧形式の原稿ファイルを取り込む」から取り込んでください。現在のデータは変更していません。'
+        : `読み込めません。現在のデータは変更していません。${error.message}`;
       if (!libraryReady) $('startup-error').textContent = message; else notify(message);
     } finally { restoringUser = false; setFileControlsBusy(false); }
   };
