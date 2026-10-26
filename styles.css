@@ -323,6 +323,16 @@ footer {
   font-size:11px;
   letter-spacing:.08em
 }
+.x-profile-link {
+  color:inherit;
+  margin-left:6px
+}
+.x-profile-link svg {
+  width:11px;
+  height:11px;
+  fill:currentColor;
+  vertical-align:-1px
+}
 .reader-toolbar {
   position:sticky;
   top:0;
