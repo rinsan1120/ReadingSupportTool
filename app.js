@@ -5,7 +5,7 @@
   let view = 'home', mode = 'read', sourceType = 'sample', sample = null;
   let history = [], target = '', targetManual = false, plannedMinutes = '20';
   let readMeasurementReturn = null;
-  let phase = 'idle', began = 0, countdownTimer = 0, elapsedTimer = 0, noticeTimer = 0;
+  let phase = 'idle', began = 0, accumulatedMilliseconds = 0, countdownTimer = 0, elapsedTimer = 0, noticeTimer = 0;
   let measuredCount = 0, measuredType = 'sample', lastMeasuredCustomText = null, wakeLock = null, wakePending = false, wakeGeneration = 0;
   let partialOn = false, partialLimit = '200', measuredPartial = false, timingRange = null;
   let readAnnotations = new window.ReadingAnnotations();
@@ -134,6 +134,8 @@
     if (view === 'reading') {
       if (mode === 'read') return 'SCR-READ-VIEW';
       if (phase === 'countdown') return 'SCR-TIME-COUNTDOWN';
+      if (phase === 'resuming') return 'SCR-TIME-RESUME-COUNTDOWN';
+      if (phase === 'paused') return 'SCR-TIME-PAUSED';
       if (phase === 'running') return 'SCR-TIME-RUN';
       return 'SCR-TIME-PREP';
     }
@@ -171,7 +173,7 @@
     }
     if (view !== 'reading') return;
     const measuring = mode === 'time', active = measuring && phase !== 'idle';
-    $('reader-state').textContent = !measuring ? '原稿編集中' : phase === 'running' ? '計測中' : phase === 'countdown' ? '計測開始前' : '計測準備';
+    $('reader-state').textContent = !measuring ? '原稿編集中' : phase === 'running' ? '計測中' : phase === 'paused' ? '一時停止中' : phase === 'resuming' ? '再開準備中' : phase === 'countdown' ? '計測開始前' : '計測準備';
     $('reader-progress').classList.toggle('is-measuring', active);
     renderSteps('reader-steps', measuring, active ? 2 : 1);
     const backLabel = measuring ? '計測設定に戻る' : '本文入力に戻る';
@@ -735,40 +737,68 @@
   document.addEventListener('pointercancel', () => { if (pendingSetting) discardSetting(); pointerAdjusting = false; });
   function cancelMeasurement() {
     clearTimeout(countdownTimer); clearInterval(elapsedTimer);
+    accumulatedMilliseconds = 0; began = 0;
     phase = 'idle'; $('paper-mode').disabled = false; $('toolbar-settings').disabled = false; $('countdown').hidden = true; $('measurement-bar').hidden = true;
     $('start').disabled = false;
+    updateMeasurementControls();
     ['preparation-partial-enabled', 'preparation-partial-limit'].forEach(id => $(id).disabled = false);
     syncScreenId();
   }
   const clock = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+  function measurementMilliseconds(now = performance.now()) {
+    return accumulatedMilliseconds + (phase === 'running' ? now - began : 0);
+  }
+  function updateMeasurementControls() {
+    $('pause-measurement').textContent = phase === 'paused' ? '再開' : phase === 'resuming' ? '再開準備中' : '一時停止';
+    $('pause-measurement').disabled = phase !== 'running' && phase !== 'paused';
+    $('finish').disabled = phase !== 'running';
+    $('measurement-status').textContent = phase === 'paused' ? '一時停止中' : phase === 'resuming' ? '再開準備中' : phase === 'countdown' ? '開始準備中' : phase === 'running' ? '計測中' : '';
+    $('elapsed').textContent = clock(measurementMilliseconds() / 1000);
+  }
+  function beginCountdown(resuming = false) {
+    clearTimeout(countdownTimer); clearInterval(elapsedTimer);
+    const countdownPhase = resuming ? 'resuming' : 'countdown';
+    phase = countdownPhase; updateMeasurementControls(); syncScreenId();
+    let value = 3; $('countdown').hidden = false; $('countdown').textContent = '3';
+    const tick = () => {
+      if (phase !== countdownPhase) return;
+      if (document.hidden) { interrupt(); return; }
+      value--;
+      if (value > 0) { $('countdown').textContent = String(value); countdownTimer = setTimeout(tick, 1000); }
+      else {
+        $('countdown').textContent = resuming ? '再開' : 'スタート';
+        began = performance.now(); phase = 'running'; updateMeasurementControls(); syncScreenId();
+        countdownTimer = setTimeout(() => $('countdown').hidden = true, 500);
+        elapsedTimer = setInterval(() => $('elapsed').textContent = clock(measurementMilliseconds() / 1000), 250);
+      }
+    };
+    countdownTimer = setTimeout(tick, 1000);
+  }
   $('start').onclick = () => {
     if (phase !== 'idle' || document.hidden) return;
     if (measuredPartial && (!validPartialLimit() || !measuredCount)) { notify('読む文字数の目安は正の整数で入力してください。'); return; }
     $('settings-dialog').close();
-    phase = 'countdown'; syncScreenId(); $('paper-mode').disabled = true; $('start').disabled = true; $('toolbar-settings').disabled = true;
+    accumulatedMilliseconds = 0;
+    $('paper-mode').disabled = true; $('start').disabled = true; $('toolbar-settings').disabled = true;
     ['preparation-partial-enabled', 'preparation-partial-limit'].forEach(id => $(id).disabled = true);
     // Remove preparation controls and scroll to the beginning BEFORE counting.
-    $('preparation').hidden = true; $('measurement-bar').hidden = false; $('finish').disabled = true;
-    $('elapsed').textContent = '準備中'; window.scrollTo(0, 0);
+    $('preparation').hidden = true; $('measurement-bar').hidden = false;
+    window.scrollTo(0, 0);
     window.Reader.refresh(null);
-    let value = 3; $('countdown').hidden = false; $('countdown').textContent = '3';
-    const tick = () => {
-      if (phase !== 'countdown') return;
-      value--;
-      if (value > 0) { $('countdown').textContent = String(value); countdownTimer = setTimeout(tick, 1000); }
-      else {
-        $('countdown').textContent = 'スタート'; phase = 'running'; syncScreenId(); began = performance.now();
-        $('finish').disabled = false; $('elapsed').textContent = '0:00';
-        countdownTimer = setTimeout(() => $('countdown').hidden = true, 500);
-        elapsedTimer = setInterval(() => $('elapsed').textContent = clock((performance.now() - began) / 1000), 250);
-      }
-    };
-    countdownTimer = setTimeout(tick, 1000);
+    beginCountdown();
+  };
+  $('pause-measurement').onclick = () => {
+    if (document.hidden) return;
+    if (phase === 'running') {
+      accumulatedMilliseconds = measurementMilliseconds();
+      clearInterval(elapsedTimer); clearTimeout(countdownTimer); $('countdown').hidden = true;
+      phase = 'paused'; updateMeasurementControls(); syncScreenId();
+    } else if (phase === 'paused') beginCountdown(true);
   };
   $('finish').onclick = () => {
     const stopped = performance.now();
     if (phase !== 'running') return;
-    const seconds = (stopped - began) / 1000;
+    const seconds = measurementMilliseconds(stopped) / 1000;
     cancelMeasurement();
     if (Number.isFinite(seconds) && seconds > 0) {
       lastMeasuredCustomText = measuredType === 'custom' ? displayedText : null;
@@ -901,7 +931,7 @@
     toolbarY = window.scrollY; toolbarTravel = 0; toolbarDirection = 0;
   }
   function toolbarLocked() {
-    return !toolbarMobile.matches || view !== 'reading' || phase === 'countdown'
+    return !toolbarMobile.matches || view !== 'reading' || phase === 'countdown' || phase === 'resuming'
       || window.ManuscriptWriting.enabled
       || Boolean(document.querySelector('dialog[open]'))
       || Boolean(document.activeElement?.matches('input,textarea,select'));

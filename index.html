@@ -7,14 +7,14 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="description" content="文章を読みやすく整え、自分の朗読速度から作品の朗読時間を調べるツール。">
   <title>よみじたく | 朗読支援サイト</title>
-  <link rel="stylesheet" href="styles.css?v=workflow-guidance">
+  <link rel="stylesheet" href="styles.css?v=pause-resume">
   <script src="samples.js" defer></script>
   <script src="reading-annotations.js?v=memo-bubbles" defer></script>
   <script src="html-ruby.js" defer></script>
   <script src="reader.js?v=ruby-markers" defer></script>
   <script src="manuscript-writing.js?v=writing-menu" defer></script>
   <script src="manuscript-print.js?v=pen-colors" defer></script>
-  <script src="app.js?v=workflow-guidance" defer></script>
+  <script src="app.js?v=pause-resume" defer></script>
 </head>
 <body>
   <header class="site-header"><button class="brand" data-go="home"><span aria-hidden="true">☾</span> よみじたく <small>朗読支援サイト</small></button></header>
@@ -87,7 +87,7 @@
       <p id="layout-status" class="layout-status" role="status"></p>
       <p id="ruby-help" class="ruby-help" role="status" hidden>文字の前後をタップして読み仮名を追加。読み仮名を選ぶと編集できます。</p>
       <div id="reader-stage"><div class="reader-text-area"><article id="reader" aria-label="原稿本文"></article></div><svg id="writing-markers" aria-hidden="true"></svg><svg id="writing-pen" aria-hidden="true"></svg><div id="writing-memos" aria-label="文字メモ"></div></div>
-      <div id="measurement-bar" class="measurement-bar" hidden><span id="elapsed" aria-live="off">0:00</span><button id="finish" class="primary">読了</button></div>
+      <div id="measurement-bar" class="measurement-bar" hidden><div class="measurement-time"><span id="elapsed" aria-live="off">0:00</span><small id="measurement-status" role="status"></small></div><button id="pause-measurement" disabled>一時停止</button><button id="finish" class="primary">読了</button></div>
       <div id="countdown" class="countdown" hidden role="status" aria-live="assertive"></div>
     </section>
     <section id="results" class="view narrow" hidden aria-labelledby="result-title">
