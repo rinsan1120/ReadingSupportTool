@@ -22,6 +22,7 @@ const downloadUser = async (page, button = 'export-user', confirmed = true) => {
   const pending = page.waitForEvent('download'); await page.locator('#' + button).click();
   const file = await pending, data = JSON.parse(fs.readFileSync(await file.path(), 'utf8'));
   assert.equal(await page.locator('#download-confirm-dialog').isVisible(), true);
+  assert.match(await page.locator('#download-filename').textContent(), /^yomijitaku-user-\d{4}-\d{2}-\d{2}\.json$/);
   await page.locator(confirmed ? '#download-saved' : '#download-not-saved').click();
   await page.waitForTimeout(50); return data;
 };
@@ -55,13 +56,17 @@ const installPicker = async page => page.evaluate(() => {
       await choose(page, '{broken'); await page.waitForFunction(() => document.getElementById('startup-error').textContent.includes('読み込めません'));
       assert.equal(await page.locator('#startup-dialog').isVisible(), true);
       await page.locator('#start-new').click(); await loaded(page);
-      assert.equal(await dirty(page), 'true'); assert.equal(await unloadBlocked(page), true);
+      assert.equal(await dirty(page), 'false', 'a fresh start has no unsaved changes yet');
+      assert.equal(await unloadBlocked(page), false);
+      assert.match(await page.locator('#user-save-status').textContent(), /保存先ファイルはまだありません/);
       await page.locator('.user-settings summary').click(); await page.locator('#profile-name').fill('朗読さん');
+      await page.waitForFunction(() => document.getElementById('user-save-status').dataset.unsaved === 'true', null, { timeout: 3000 });
       await page.locator('#new-manuscript').click(); await page.locator('#manuscript-title').fill('第一冊');
       await page.locator('#manuscript-file').setInputFiles({ name: 'old.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(bookJSON)) });
       await page.waitForFunction(() => !document.getElementById('reading').hidden && !document.getElementById('import-manuscript').disabled);
       assert.equal(await page.locator('.writing-memo').count(), 1);
-      assert.equal(await page.locator('#export-manuscript').getAttribute('aria-label'), 'ユーザーデータを保存');
+      assert.equal(await page.locator('#export-manuscript').getAttribute('aria-label'), '保存');
+      assert.equal(await page.locator('#reader-save-state').isHidden(), false, 'unsaved edits stay visible on the reader');
       const unconfirmed = await downloadUser(page, 'export-manuscript', false);
       assert.deepEqual(unconfirmed.manuscripts[0].manuscript, bookJSON); assert.equal(await dirty(page), 'true');
       await page.locator('.brand').click(); await page.locator('#new-manuscript').click();
@@ -145,7 +150,9 @@ const installPicker = async page => page.evaluate(() => {
         const d = p.waitForEvent('download'); await p.locator('#export-legacy').click(); assert.equal(fs.readFileSync(await (await d).path(), 'utf8'), raw);
         await p.locator('#start-new').click(); assert.equal(await p.locator('#library-list li').count(), 0);
       } else {
-        await loaded(p); assert.equal(await dirty(p), 'true'); await installPicker(p);
+        await loaded(p); assert.equal(await dirty(p), 'false', 'migrated data starts clean; it simply has no file yet');
+        assert.match(await p.locator('#user-save-status').textContent(), /保存先ファイルはまだありません/);
+        await installPicker(p);
         await p.locator('#save-user-status').click(); await p.waitForFunction(() => !document.getElementById('save-user-status').disabled);
         assert.equal(await dirty(p), 'false'); assert.deepEqual(JSON.parse(await p.evaluate(() => window.savedFileJSON)).manuscripts, portable.manuscripts);
       }
