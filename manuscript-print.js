@@ -14,6 +14,43 @@
     for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, value);
     parent.append(el); return el;
   };
+  const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
+  function printBubble(item, settings, x, y, tx, ty, parent, scale) {
+    // Native print dimensions avoid Chromium clipping the unscaled height of a
+    // transformed, tall bubble before shrinking it into its page.
+    parent.style.setProperty('--memo-print-scale', scale);
+    return window.ManuscriptWriting.bubble(item, { ...settings, fontSize: settings.fontSize * scale }, x, y, tx, ty, parent);
+  }
+  // Sweep the obstacle edges rather than a pixel grid. For each possible Y,
+  // merge forbidden X intervals and keep the nearest unobstructed rectangle.
+  function memoPosition(width, height, preferred, obstacles, paper, inset, gap) {
+    const right = paper.width - inset - width, bottom = paper.height - inset - height;
+    if (right < inset || bottom < inset) return null;
+    const ys = new Set([clamp(preferred.y, inset, bottom), inset, bottom]);
+    for (const box of obstacles) {
+      for (const y of [box.top - height - gap, box.bottom + gap]) if (y >= inset && y <= bottom) ys.add(y);
+    }
+    let best = null, distance = Infinity;
+    for (const y of [...ys].sort((a, b) => Math.abs(a - preferred.y) - Math.abs(b - preferred.y))) {
+      if ((y - preferred.y) ** 2 > distance) break;
+      const blocked = obstacles.filter(box => y + height + gap > box.top && y - gap < box.bottom)
+        .map(box => [box.left - width - gap, box.right + gap]).sort((a, b) => a[0] - b[0]);
+      const consider = (from, to) => {
+        if (to < from) return;
+        const x = clamp(preferred.x, from, to), d = (x - preferred.x) ** 2 + (y - preferred.y) ** 2;
+        if (d < distance) { best = { x, y }; distance = d; }
+      };
+      let from = inset;
+      for (const [start, end] of blocked) {
+        if (end < from) continue;
+        consider(from, Math.min(start, right));
+        from = Math.max(from, end);
+        if (from > right) break;
+      }
+      if (from <= right) consider(from, right);
+    }
+    return best;
+  }
   // Divide each vector segment at source-line bands BEFORE pagination. Each
   // fragment then follows its line's page/translation, including removed auto
   // gaps. A single global Y scale would put strokes on the wrong page.
@@ -99,13 +136,12 @@
     const memoInset = 2 * scale, tipInset = 6 * scale;
     const memoItems = writing.items.filter(item => item.type === 'memo');
     const memoSettings = window.ManuscriptMarks.settings(writing.memoSettings);
-    for (const item of memoItems) {
+    for (const [number, item] of memoItems.entries()) {
       const glyph = glyphs.get(item.offset), line = glyph && byLine.get(glyph.line);
       if (!line) throw new Error('文字メモの本文位置を確認できません。朗読画面を開き直してから出力してください。');
-      const el = window.ManuscriptWriting.bubble(item, memoSettings, 0, 0, 0, 0, measurePage, scale);
+      const el = printBubble(item, memoSettings, 0, 0, 0, 0, measurePage, scale);
       const size = el.getBoundingClientRect();
-      if (size.height > bounds.height - 2 * memoInset) throw new Error('メモが印刷領域の高さを超えています。メモの文字サイズまたは改行を減らして出力してください。');
-      groupByLine.get(line.index).memos.push({ item, glyph, width: size.width, height: size.height });
+      groupByLine.get(line.index).memos.push({ item, glyph, number: number + 1, width: size.width, height: size.height });
     }
     const pages = []; let page, cursor = 0, previous = null;
     for (const group of groups) {
@@ -124,7 +160,7 @@
       cursor += gap + (group.at(-1).bottom - first.top) * scale; previous = group.at(-1);
     }
     root.replaceChildren();
-    const probes = [], readingProbes = [];
+    const probes = [], readingProbes = [], memoPages = [];
     const scaledFont = { ...snapshot.font };
     for (const name of ['fontSize', 'lineHeight', 'letterSpacing', 'wordSpacing']) {
       if (scaledFont[name].endsWith('px')) scaledFont[name] = `${parseFloat(scaledFont[name]) * scale}px`;
@@ -132,7 +168,7 @@
     for (const { lines: pageLines, memos } of pages) {
       const sheet = document.createElement('section'); sheet.className = 'manuscript-page';
       const canvas = document.createElement('div'); canvas.className = 'manuscript-canvas';
-      // Bubble tails measure their own unscaled body before applying print scale.
+      // Attach the canvas before measuring its text and print-sized bubbles.
       sheet.append(canvas); root.append(sheet);
       // Scale type and coordinates together rather than a CSS transform: print
       // engines may fragment/clip the unscaled overflow of a transformed canvas.
@@ -190,18 +226,7 @@
         const d = stroke.paths.map(points => points.map((point, i) => `${i ? 'L' : 'M'}${point.x * scale},${(point.y + line.placedTop - line.top) * scale}`).join(' ')).join(' ');
         svg('path', { d, 'stroke-width': 2.8 * scale, 'data-mark-id': stroke.id, 'data-source-line': line.index, 'data-color': stroke.color }, penLayer);
       }
-      for (const memo of memos) {
-        const line = placedLines.get(memo.glyph.line), font = parseFloat(snapshot.font.fontSize) * scale;
-        const gx = (memo.glyph.x + memo.glyph.width / 2) * scale;
-        const gy = (memo.glyph.y + memo.glyph.height / 2 + line.placedTop - line.top) * scale;
-        const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
-        // Notes never affect text width, scale or page breaks. Correct only paper overflow.
-        const x = clamp(gx + memo.item.dx * font, -left + memoInset, bounds.width - left - memo.width - memoInset);
-        const y = clamp(gy + memo.item.dy * font, memoInset, bounds.height - memo.height - memoInset);
-        const tx = clamp(gx + memo.item.tx * font, -left + tipInset, bounds.width - left - tipInset);
-        const ty = clamp(gy + memo.item.ty * font, tipInset, bounds.height - tipInset);
-        window.ManuscriptWriting.bubble(memo.item, memoSettings, x, y, tx, ty, canvas, scale);
-      }
+      memoPages.push({ sheet, canvas, pageLines, placedLines, memos, left });
     }
     // Match glyph boxes (including font fallback/emoji) rather than assuming a
     // font's ascent. Read in one batch before writing final frozen coordinates.
@@ -220,8 +245,82 @@
       return { reading, left: left - (ink.left - box.left), top: top - (ink.top - box.top) };
     });
     readingPositions.forEach(({ reading, left, top }) => { reading.style.left = `${left}px`; reading.style.top = `${top}px`; });
+    // Only now are the final base/ruby ink boxes known. Keep bubble bodies clear
+    // of them, vector marks and already placed bubbles, without moving the text.
+    for (const { sheet, canvas, pageLines, placedLines, memos, left } of memoPages) {
+      if (!memos.length) continue;
+      const paper = sheet.getBoundingClientRect(), gap = Math.max(3, 4 * scale);
+      const obstacles = [...sheet.querySelectorAll('.manuscript-piece,.manuscript-ruby-reading,.manuscript-pens path,.manuscript-markers rect')].map(el => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left - paper.left, right: r.right - paper.left, top: r.top - paper.top, bottom: r.bottom - paper.top };
+      });
+      const overflow = [];
+      for (const memo of memos) {
+        const line = placedLines.get(memo.glyph.line), font = parseFloat(snapshot.font.fontSize) * scale;
+        const gx = (memo.glyph.x + memo.glyph.width / 2) * scale;
+        const gy = (memo.glyph.y + memo.glyph.height / 2 + line.placedTop - line.top) * scale;
+        const preferred = { x: left + gx + memo.item.dx * font, y: gy + memo.item.dy * font };
+        const position = memoPosition(memo.width, memo.height, preferred, obstacles, paper, memoInset, gap);
+        if (!position) { overflow.push({ ...memo, line }); continue; }
+        const tx = clamp(left + gx + memo.item.tx * font, tipInset, paper.width - tipInset) - left;
+        const ty = clamp(gy + memo.item.ty * font, tipInset, paper.height - tipInset);
+        printBubble(memo.item, memoSettings, position.x - left, position.y, tx, ty, canvas, scale);
+        obstacles.push({ left: position.x, right: position.x + memo.width, top: position.y, bottom: position.y + memo.height });
+      }
+      if (!overflow.length) continue;
+      // If this page has no free body-sized region, append referenced note pages
+      // immediately after it. Source-page/line/quotation retain the association;
+      // neither the frozen manuscript nor any saved coordinates are changed.
+      const sourcePage = [...root.children].indexOf(sheet) + 1;
+      let notePage = null, after = sheet, cursor = 0, pageStart = 0;
+      const inset = 12, bodyGap = 16 * scale + 4;
+      const newNotePage = () => {
+        notePage = document.createElement('section'); notePage.className = 'manuscript-page manuscript-memo-page';
+        const title = document.createElement('h2'); title.className = 'manuscript-notes-title';
+        title.textContent = `本文${sourcePage}ページのメモ`;
+        notePage.append(title); after.after(notePage); after = notePage;
+        cursor = title.offsetTop + title.offsetHeight + 18; pageStart = cursor;
+      };
+      const measure = (memo, text) => {
+        const probe = printBubble({ ...memo.item, text }, memoSettings, 0, 0, 0, 0, notePage, scale);
+        const height = probe.getBoundingClientRect().height; probe.remove(); return height;
+      };
+      for (const memo of overflow) {
+        const quoteUnits = Array.from(memo.line.pieces.filter(p => p.annotation === null).map(p => p.sourceRuby?.base ?? p.text).join('').trim());
+        const quote = quoteUnits.slice(0, 32).join('') + (quoteUnits.length > 32 ? '…' : '');
+        const lineNumber = pageLines.indexOf(memo.line) + 1;
+        let units = [...new Intl.Segmenter('ja', { granularity: 'grapheme' }).segment(memo.item.text)].map(s => s.segment), part = 0;
+        while (units.length) {
+          if (!notePage) newNotePage();
+          const reference = document.createElement('p'); reference.className = 'manuscript-note-reference';
+          reference.dataset.sourceLine = memo.line.index;
+          reference.textContent = `メモ${memo.number}${part ? '（続き）' : ''} · 本文${sourcePage}ページ ${lineNumber}行目「${quote}」`;
+          reference.style.top = `${cursor}px`; notePage.append(reference);
+          const y = cursor + reference.offsetHeight + bodyGap, available = paper.height - inset - y;
+          if (measure(memo, units[0]) > available) { reference.remove(); newNotePage(); continue; }
+          const fullHeight = measure(memo, units.join(''));
+          // Keep an ordinary note intact; split only when it exceeds a fresh page.
+          if (fullHeight > available && cursor > pageStart) { reference.remove(); newNotePage(); continue; }
+          let count = units.length;
+          if (fullHeight > available) {
+            let low = 1, high = units.length;
+            while (low < high) {
+              const mid = Math.ceil((low + high) / 2);
+              if (measure(memo, units.slice(0, mid).join('')) <= available) low = mid; else high = mid - 1;
+            }
+            count = low;
+          }
+          const text = units.slice(0, count).join(''), x = inset;
+          const note = printBubble({ ...memo.item, text }, memoSettings, x, y, inset + 5, y - bodyGap / 2, notePage, scale);
+          note.dataset.memoPart = ++part;
+          cursor = y + note.getBoundingClientRect().height + 18;
+          units = units.slice(count);
+          if (units.length) newNotePage();
+        }
+      }
+    }
     root.classList.remove('print-measuring'); ready = true;
-    return { pages: pages.length, scale, points: parseFloat(snapshot.font.fontSize) * scale * .75,
+    return { pages: root.querySelectorAll('.manuscript-page').length, scale, points: parseFloat(snapshot.font.fontSize) * scale * .75,
       marks: writing.items.length };
   }
   window.ManuscriptPrint = {

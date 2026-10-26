@@ -220,6 +220,12 @@ input[type=number] {
 .manuscript-pens path { fill:none; stroke:#c52228; stroke-linecap:round; stroke-linejoin:round; }
 .manuscript-pens path[data-color=blue] { stroke:#2563eb; }
 .manuscript-pens path[data-color=green] { stroke:#15803d; }
+.manuscript-notes-title { position:absolute; top:12px; left:12px; right:12px; margin:0; font:600 18px/1.5 system-ui,sans-serif; color:#17365d; }
+.manuscript-note-reference { position:absolute; left:12px; right:12px; margin:0; font:12px/1.6 system-ui,sans-serif; color:#17365d; overflow-wrap:anywhere; }
+.manuscript-page .writing-memo { width:calc(180px * var(--memo-print-scale)); }
+.manuscript-page .memo-body { border:0; padding:calc(11px * var(--memo-print-scale)); border-radius:calc(10px * var(--memo-print-scale)); box-shadow:inset 0 0 0 calc(2px * var(--memo-print-scale)) currentColor; }
+.manuscript-page .memo-tail path { stroke-width:calc(2px * var(--memo-print-scale)); }
+.manuscript-page .memo-tip { r:calc(5px * var(--memo-print-scale)); stroke-width:var(--memo-print-scale); }
 #pdf-dialog h2 { margin-top:0; }
 #pdf-dialog p { line-height:1.8; }
 #pdf-small-warning { color:#fcd58a; }

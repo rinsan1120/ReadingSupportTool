@@ -63,7 +63,7 @@ const close = (actual, expected, label) => assert.ok(Math.abs(actual - expected)
         printRoot.classList.add('print-measuring');
         const edgeNote = printRoot.querySelector('[data-mark-id="2"]'), sheet = edgeNote.closest('.manuscript-page');
         const paper = sheet.getBoundingClientRect();
-        if (!sheet.querySelector(`[data-source-line="${snapshot.glyphs.at(-1).line}"]`)) throw Error('anchor on different page');
+        if (!sheet.querySelector(`[data-source-line="${snapshot.glyphs.at(-1).line}"]`)) throw Error('source line or note-page reference missing');
         for (const el of [edgeNote, edgeNote.querySelector('.memo-tip')]) {
           const r = el.getBoundingClientRect();
           if (r.left < paper.left - .1 || r.right > paper.right + .1 || r.top < paper.top - .1 || r.bottom > paper.bottom + .1) throw Error('scaled bounds overflow');

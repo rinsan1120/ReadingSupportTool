@@ -4,6 +4,7 @@ const path = require('node:path');
 const http = require('node:http');
 const { chromium } = require('playwright');
 const directory = path.resolve(__dirname, '..');
+const output = process.env.READER_TEST_ARTIFACTS || path.join(directory, 'tmp');
 const files = new Set(['index.html','styles.css','samples.js','reading-annotations.js','html-ruby.js','reader.js','manuscript-writing.js','manuscript-print.js','app.js']);
 const server = http.createServer((req,res) => {
   const name = new URL(req.url,'http://localhost').pathname.slice(1) || 'index.html';
@@ -75,6 +76,7 @@ const server = http.createServer((req,res) => {
         const last=snapshot.glyphs.at(-1);
         const overflow={...w.items.find(i=>i.type==='memo'),id:999,offset:last.start,dx:999,dy:999,tx:999,ty:999};
         window.ManuscriptPrint.prepare(snapshot,{...w,items:[...w.items,overflow]});
+        document.getElementById('manuscript-print').classList.add('print-measuring');
         const extra=document.querySelector('#manuscript-print .writing-memo[data-mark-id="999"]');
         const target=extra.closest('.manuscript-page');
         if(!target.querySelector(`[data-source-line="${last.line}"]`))throw Error('memo and anchor on different pages');
@@ -83,15 +85,16 @@ const server = http.createServer((req,res) => {
           if(r.left<b.left-1||r.right>b.right+1||r.top<b.top-1||r.bottom>b.bottom+1)throw Error('overflow not corrected');
         }
         const withNotes=window.ManuscriptPrint.prepare(snapshot,w);
+        document.getElementById('manuscript-print').classList.add('print-measuring');
         const bounds=[...document.querySelectorAll('#manuscript-print .writing-memo')].map(note=>{const page=note.closest('.manuscript-page').getBoundingClientRect(),r=note.getBoundingClientRect();return {left:r.left-page.left,right:r.right-page.right,top:r.top-page.top,bottom:r.bottom-page.bottom,opacity:getComputedStyle(note).opacity,font:getComputedStyle(note).fontSize,tail:note.querySelectorAll('.memo-tip').length};});
         return {without,withNotes,bounds};
-      });assert.equal(print.without.scale,print.withNotes.scale);assert.equal(print.without.pages,print.withNotes.pages);assert.equal(print.bounds.length,1);for(const b of print.bounds){assert.ok(b.left>=-1&&b.right<=1&&b.top>=-1&&b.bottom<=1,JSON.stringify(b));assert.equal(b.opacity,'0.6');assert.equal(b.font,'22px');assert.equal(b.tail,1);}
-      fs.mkdirSync(path.join(directory,'tmp'),{recursive:true});await page.evaluate(()=>document.body.classList.add('manuscript-printing'));
+      });assert.equal(print.without.scale,print.withNotes.scale);assert.ok(print.withNotes.pages>=print.without.pages);assert.equal(print.bounds.length,1);for(const b of print.bounds){assert.ok(b.left>=-1&&b.right<=1&&b.top>=-1&&b.bottom<=1,JSON.stringify(b));assert.equal(b.opacity,'0.6');assert.ok(Math.abs(parseFloat(b.font)-22*print.withNotes.scale)<.01);assert.equal(b.tail,1);}
+      fs.mkdirSync(output,{recursive:true});await page.evaluate(()=>{document.getElementById('manuscript-print').classList.remove('print-measuring');document.body.classList.add('manuscript-printing');});
       await page.emulateMedia({media:'print'});
-      await page.locator('.manuscript-page').first().screenshot({path:path.join(directory,`tmp/bubble-print-${width}.png`)});
-      await page.pdf({path:path.join(directory,`tmp/bubble-${width}.pdf`),format:'A4',printBackground:true});
+      await page.locator('.manuscript-page').first().screenshot({path:path.join(output,`bubble-print-${width}.png`)});
+      await page.pdf({path:path.join(output,`bubble-${width}.pdf`),format:'A4',printBackground:true});
       await page.emulateMedia({media:'screen'});await page.evaluate(()=>document.body.classList.remove('manuscript-printing'));
-      await page.screenshot({path:path.join(directory,`tmp/bubble-${width}.png`),fullPage:false});
+      await page.screenshot({path:path.join(output,`bubble-${width}.png`),fullPage:false});
       // Validation and compatibility are atomic and preserve the other mark types.
       await page.evaluate(saved=>{
         for(const change of [{text:'a'.repeat(201)},{tx:Infinity},{color:'red'},{offset:999999}]){
