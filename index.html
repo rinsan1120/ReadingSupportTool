@@ -110,7 +110,7 @@
     <section id="results" class="view narrow" hidden aria-labelledby="result-title">
       <button class="back" data-go="home">← ホーム</button><p class="eyebrow">YOUR READING PACE</p><h1 id="result-title" tabindex="-1">計測結果</h1>
       <ol id="result-steps" class="flow-steps" aria-label="朗読速度計測の進行状況"></ol>
-      <div class="pace-card"><h2>平均朗読速度</h2><p id="average-speed" class="estimate" aria-live="polite"></p><p id="result-summary" class="muted"></p></div>
+      <div class="pace-card"><h2 id="average-speed-title">平均朗読速度</h2><p id="average-speed" class="estimate" aria-live="polite"></p><p id="result-summary" class="muted"></p></div>
       <div id="result-empty" class="empty-state" hidden><p>計測結果がありません。はじめに自分の朗読速度を測ってみましょう。</p><button data-go="time-input" class="primary">朗読速度を測る</button></div>
       <div class="calculation-grid">
         <section class="calculation-card" aria-labelledby="capacity-title"><h2 id="capacity-title">指定時間で読める文字数</h2><label for="planned-minutes">予定している朗読時間</label><div class="inline"><input id="planned-minutes" data-field-id="FLD-RESULT-PLANNED-MINUTES" type="number" min="0.000001" step="any" inputmode="decimal" value="20"><span>分</span></div><p id="speed-estimate" class="calculation-value" aria-live="polite"></p></section>
@@ -124,7 +124,7 @@
     </section>
     <section id="estimate" class="view narrow" hidden aria-labelledby="estimate-title">
       <button class="back" data-go="home">← ホーム</button><p class="eyebrow">PLAN YOUR READING</p><h1 id="estimate-title" tabindex="-1">朗読時間を見積もる</h1>
-      <div class="pace-card"><h2>平均朗読速度</h2><p id="estimate-average-speed" class="estimate" aria-live="polite"></p><p class="muted">これまでの計測履歴をもとに計算します。</p></div>
+      <div class="pace-card"><h2 id="estimate-average-speed-title">平均朗読速度</h2><p id="estimate-average-speed" class="estimate" aria-live="polite"></p><p class="muted">これまでの計測履歴をもとに計算します。</p></div>
       <div id="estimate-empty" class="empty-state" hidden><p>朗読速度の記録がありません。</p><p>はじめに自分の朗読速度を測ると、作品の所要時間を見積もれるようになります。</p><button data-go="time-input" class="primary">朗読速度を測る</button><p class="muted">入力した作品文字数は、計測後も引き継ぎます。</p></div>
       <div class="inset"><label for="estimate-book">本棚の原稿から選ぶ</label><select id="estimate-book"><option value="">原稿を選んでください</option></select><p id="estimate-book-info" class="muted">原稿を選ぶと、その文字数で推定時間を計算します。</p></div>
       <div class="calculation-grid">
