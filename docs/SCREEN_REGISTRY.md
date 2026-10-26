@@ -1,10 +1,10 @@
 # SCREEN_REGISTRY — 画面・入力項目・ダイアログ識別子台帳
 
 - 対象アプリ：よみじたく（ReadingSupportTool）
-- 版：1.2
-- 制定日：2026-10-21
-- 状態：識別子台帳・コード属性・フッターからのコピー機能を実装済み
-- 対応元：`main` の `index.html` および `app.js`（2026-10-21確認）
+- 版：1.3
+- 制定日：2026-10-21／最終更新：2026-10-26
+- 状態：識別子台帳。従来分の識別属性・画面IDコピーは実装済み。追加入力・ダイアログの識別属性は未付与
+- 対応元：`main` の `index.html` と `app.js`（2026-10-26・ユーザーライブラリ統合後を照合）
 
 ## 1. 目的と適用範囲
 
@@ -25,33 +25,37 @@
 
 ## 2. 画面識別子（SCR）
 
-同一のHTML `section` 内でも、利用者に見える状態・用途が異なるものは別画面として管理する。
+主要HTML領域は `home`、`read-input`、`time-input`、`reading`、`results`、`estimate` の6つ。計測状態の違いを区別した現行の画面IDは11件です。
 
 | 画面ID | 画面名 | 現行HTMLの領域 | 状態の判定 |
 | --- | --- | --- | --- |
-| `SCR-HOME` | ホーム | `#home` | `view === 'home'` |
-| `SCR-READ-INPUT` | 文章を読む：本文入力 | `#read-input` | `view === 'read-input'` |
-| `SCR-READ-VIEW` | 原稿画面 | `#reading` | `view === 'reading'` かつ `mode === 'read'` |
-| `SCR-TIME-INPUT` | 朗読時間を調べる：入力 | `#time-input` | `view === 'time-input'` |
-| `SCR-TIME-PREP` | 計測準備 | `#reading` | `view === 'reading'`、`mode === 'time'`、`phase === 'idle'` |
-| `SCR-TIME-COUNTDOWN` | カウントダウン | `#reading` | `view === 'reading'`、`mode === 'time'`、`phase === 'countdown'` |
-| `SCR-TIME-RUN` | 時間計測中 | `#reading` | `view === 'reading'`、`mode === 'time'`、`phase === 'running'` |
-| `SCR-RESULT-TIME` | 計測結果：朗読時間 | `#results` | `view === 'results'`、朗読時間タブ選択中 |
-| `SCR-RESULT-SPEED` | 計測結果：朗読速度 | `#results` | `view === 'results'`、朗読速度タブ選択中 |
+| `SCR-HOME` | ホーム・本棚 | `#home` | `view === 'home'` |
+| `SCR-READ-INPUT` | 原稿の本文入力 | `#read-input` | `view === 'read-input'` |
+| `SCR-READ-VIEW` | 原稿画面 | `#reading` | `view === 'reading'`、`mode === 'read'` |
+| `SCR-TIME-INPUT` | 朗読速度を測る：入力 | `#time-input` | `view === 'time-input'` |
+| `SCR-TIME-PREP` | 計測準備 | `#reading` | `mode === 'time'`、`phase === 'idle'` |
+| `SCR-TIME-COUNTDOWN` | 計測開始カウントダウン | `#reading` | `phase === 'countdown'` |
+| `SCR-TIME-RUN` | 計測中 | `#reading` | `phase === 'running'` |
+| `SCR-TIME-PAUSED` | 一時停止中 | `#reading` | `phase === 'paused'` |
+| `SCR-TIME-RESUME-COUNTDOWN` | 計測の再開準備 | `#reading` | `phase === 'resuming'` |
+| `SCR-RESULT-TIME` | 計測結果（速度・時間を同時表示） | `#results` | `view === 'results'` |
+| `SCR-ESTIMATE` | 朗読時間を見積もる | `#estimate` | `view === 'estimate'` |
 
-### 画面状態に関する補足
+### 画面状態と旧識別子
 
-- HTML上の主要画面領域は `home`、`read-input`、`time-input`、`reading`、`results` の5つ。画面IDは、利用者に見える状態を区別して9種類とする。
-- 計測準備・カウントダウン・計測中は独立したHTMLの `section` ではない。新しい `section` を作成する必要はない。
-- 結果画面は `#result-time-tab` と `#result-speed-tab` の選択状態で区別する。
-- 表示設定などのダイアログは画面IDとは別に管理する。ダイアログを開いても、その背後の画面IDは変えない。
-- `SCR-READ-VIEW` の「書込メニュー」の展開・閉鎖、ペン色・移動・マーカー・ルビのツール切り替えは同一画面内の操作状態であり、新しいSCR・DLG識別子を追加しない。メニューを閉じても確定済みの書き込みは表示されたままとなる。
+- 計測準備から再開準備までの行は、すべて `view === 'reading'`、`mode === 'time'` を前提とします。同じ `#reading` 領域を状態ごとに区別するもので、独立したHTMLの `section` ではありません。
+- **`SCR-RESULT-SPEED` は旧結果画面の速度タブ用の識別子で、現在のコードからは生成されません。**過去のIssue・報告との互換参照として保持し、再利用しません。現在は `SCR-RESULT-TIME` で両方の数値を含む共通結果画面を示します。
+- 起動時はホームを無効化した状態で `DLG-STARTUP` を開きます。書込メニューの開閉・ツール切替は `SCR-READ-VIEW` 内の操作状態であり、別画面とはしません。
+- 各結果の表示上の切替・計測状態の識別により、既存HTML IDやUI文言を変更する指示ではありません。
 
 ## 3. 入力項目識別子（FLD）
 
 | 項目ID | 入力項目・用途 | 現行HTML IDまたはセレクター |
 | --- | --- | --- |
 | `FLD-READ-BODY` | 文章閲覧用の本文 | `#read-text` |
+| `FLD-MANUSCRIPT-TITLE` | 原稿のタイトル | `#manuscript-title` |
+| `FLD-PROFILE-NAME` | ユーザーの表示名 | `#profile-name` |
+| `FLD-USER-FILE` | ユーザーデータJSONの選択 | `#user-file` |
 | `FLD-READ-MANUSCRIPT-FILE` | 原稿JSONファイルの選択 | `#manuscript-file` |
 | `FLD-TIME-SOURCE-SAMPLE` | 計測元に例文を選ぶ | `input[name="source"][value="sample"]` |
 | `FLD-TIME-SOURCE-CUSTOM` | 計測元に自分の文章を選ぶ | `input[name="source"][value="custom"]` |
@@ -65,6 +69,9 @@
 | `FLD-PREP-PARTIAL-LIMIT` | 計測準備時の文字数目安 | `#preparation-partial-limit` |
 | `FLD-PREP-TARGET` | 計測準備時の作品全体文字数 | `#preparation-target` |
 | `FLD-RESULT-TARGET` | 結果画面の作品全体文字数 | `#result-target` |
+| `FLD-ESTIMATE-BOOK` | 本棚から見積もり対象を選ぶ | `#estimate-book` |
+| `FLD-ESTIMATE-TARGET` | 見積もり対象の作品全体文字数 | `#estimate-target` |
+| `FLD-ESTIMATE-MINUTES` | 見積もり用の予定朗読時間 | `#estimate-minutes` |
 | `FLD-RESULT-PLANNED-MINUTES` | 結果画面の予定朗読時間 | `#planned-minutes` |
 | `FLD-SETTINGS-READER-WIDTH` | 本文の表示幅 | `#reader-width` |
 | `FLD-SETTINGS-COLUMNS` | 1行の文字数目安 | `#columns` |
@@ -78,8 +85,9 @@
 ### 入力項目に関する補足
 
 - `FLD-READ-BODY` と `FLD-TIME-BODY` は、画面上で似た名称でも用途が異なるため、別IDとする。
-- 作品全体文字数の入力欄は3か所ある。値が相互に同期されていても、操作対象の位置を区別するため `FLD-TIME-TARGET`、`FLD-PREP-TARGET`、`FLD-RESULT-TARGET` とする。
+- 作品全体文字数の入力欄は4か所ある。値が相互に同期されていても、操作対象の位置を区別するため `FLD-TIME-TARGET`、`FLD-PREP-TARGET`、`FLD-RESULT-TARGET`、`FLD-ESTIMATE-TARGET` とする。
 - 計測元のラジオボタン2つには現行のHTML `id` がないため、`name` と `value` によるセレクターで特定する。台帳作成だけのためにHTML `id` は追加しない。
+- 2026-10-26追加の6項目には現行HTMLの `data-field-id` 属性がない。台帳では既存のHTML `id` で対応付ける。属性の追加は文書更新の範囲外。
 - 対象は現行の固定入力要素（`input`、`textarea`、`select`）。朗読本文の描画領域、操作ボタン、動的に生成される個々のメモなどはこの表に含めない。
 
 ## 4. ダイアログ識別子（DLG）
@@ -93,6 +101,10 @@
 | `DLG-MEMO` | 文字メモの追加・編集 | `#writing-memo-dialog` |
 | `DLG-SAVE-NAVIGATION` | 原稿保存・画面移動の確認 | `#save-navigation-dialog` |
 | `DLG-CONFIRM` | 操作確認 | `#confirm-dialog` |
+| `DLG-STARTUP` | 起動時のJSON読込・新規作成 | `#startup-dialog` |
+| `DLG-DOWNLOAD-CONFIRM` | 通常ダウンロードの保存確認 | `#download-confirm-dialog` |
+
+追加2件のダイアログは現在 `data-dialog-id` 未付与です。HTML `id` との管理上の対応を記録し、コードの属性追加は別の改修とします。
 
 ## 5. サイト名クリックによる画面IDコピー
 
@@ -105,14 +117,14 @@
 - サイト名・サブタイトル・フッターの見た目は原則として維持する。
 - 画面IDを常時表示する、隠し文字を配置する、専用アイコンや設定項目を追加することはしない。
 - 現行仕様どおり、`#reading` 表示中はフッターを非表示とする。原稿画面・計測準備・カウントダウン・計測中のためにコピー導線を増設しない。
-- 結果画面では、選択中のタブに対応する `SCR-RESULT-TIME` または `SCR-RESULT-SPEED` をコピーする。
+- 結果画面は `SCR-RESULT-TIME`、独立した見積もり画面は `SCR-ESTIMATE` をコピーする。
 
 コピー機能を使わない場合も、各識別子は台帳を通じて参照可能とする。
 
 ## 6. 実装との対応と運用
 
 - `main[data-screen-id]` に現在の画面識別子を設定する。共通の `#reading` 表示は `mode` と `phase`、結果画面は選択中のタブに応じて更新する。
-- 各入力要素には `data-field-id`、各ダイアログには `data-dialog-id` を設定する。既存HTML `id`、CSSクラス、入力制約、イベント処理はそのまま維持する。
+- 従来の入力要素・ダイアログには `data-field-id` と `data-dialog-id` がある。今回追加した管理識別子の対象はまだ属性未付与のため、既存HTML `id` で対応付ける。既存HTML `id`、CSSクラス、入力制約、イベント処理はそのまま維持する。
 - フッターのサイト名から現在の画面IDをコピーし、既存通知UIで成功または失敗を知らせる。`#reading` 表示中は従来どおりフッターを非表示とし、別のコピー操作を追加しない。
 - 画面・入力・ダイアログを追加する場合は一意の識別子を付け、本台帳も同時に更新する。識別子は種類をまたいで重複させない。
 - 入力値、本文の保持・保存、計測データ、PDF、書き込み、既存の画面遷移には影響させない。
@@ -124,3 +136,4 @@
 | 2026-10-21 | 1.0 | 画面9件・入力項目23件・ダイアログ7件の識別子とコピー仕様を登録 |
 | 2026-10-21 | 1.1 | 現行コードの識別属性・画面状態連動・フッターの画面IDコピー実装を反映 |
 | 2026-10-21 | 1.2 | `SCR-READ-VIEW` を「原稿画面」と命名し、書込メニュー開閉は同一画面内の操作状態と明記。SCR 9件・FLD 23件・DLG 7件の割当ては不変 |
+| 2026-10-26 | 1.3 | JSON正本のユーザーデータ管理・見積もり専用画面・一時停止／再開を反映。現行SCR 11件・FLD 29件・DLG 9件。旧`SCR-RESULT-SPEED`は参照用に保持 |
