@@ -4,7 +4,7 @@
   const KEY = 'yomijitaku-user-v1', MAX_BYTES = 30 * 1024 * 1024;
   const empty = () => ({ format: 'yomijitaku-user', version: 1, profile: { name: '' }, manuscripts: [], activeId: null, history: [], target: '', plannedMinutes: '20' });
   function validate(data) {
-    const fail = () => { throw new Error('ユーザーデータの形式・内容が正しくありません。'); };
+    const fail = () => { throw new Error('ファイルの形式・内容が正しくありません。よみじたくのユーザーデータJSONかどうかを確認してください。'); };
     const string = (v, max) => typeof v === 'string' && v.length <= max;
     const date = v => typeof v === 'string' && Number.isFinite(Date.parse(v));
     if (!data || data.format !== 'yomijitaku-user' || data.version !== 1 || !string(data.profile?.name, 80) ||
@@ -36,7 +36,7 @@
     return { ...empty(), profile: { name: data.profile.name }, manuscripts, activeId: data.activeId, history, target: data.target, plannedMinutes: data.plannedMinutes };
   }
   function parse(json) {
-    if (new TextEncoder().encode(json).length > MAX_BYTES) throw new Error('ユーザーデータは30MiBまでです。');
+    if (new TextEncoder().encode(json).length > MAX_BYTES) throw new Error('ファイルが大きすぎます（上限は約30MBです）。');
     return validate(JSON.parse(json));
   }
   window.UserLibrary = { KEY, MAX_BYTES, empty, parse, validate };

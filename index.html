@@ -25,7 +25,7 @@
       <p class="eyebrow">READING SUPPORT</p><h1 id="home-title" tabindex="-1">声にする前の、<wbr><span class="home-tagline">ひと支度。</span></h1>
       <p class="lead">読みやすいかたちで、あなたのペースで。<br>朗読のための、小さな道具です。</p>
       <section class="bookshelf" aria-labelledby="library-title">
-        <div class="inline spread"><h2 id="library-title">原稿ライブラリ</h2><button id="new-manuscript" class="primary">＋ 新しい原稿を作る</button></div>
+        <div class="inline spread"><h2 id="library-title">本棚</h2><button id="new-manuscript" class="primary">＋ 新しい原稿を作る</button></div>
         <p id="library-empty" class="muted">読む文章を追加して、あなただけの本棚に。</p>
         <button id="library-load" class="quiet" hidden>保存したデータから続きを始める（ファイルを開く）</button>
         <ul id="library-list" class="library-list"></ul>
@@ -35,10 +35,10 @@
         <button class="entry" data-go="time-input"><span class="entry-number">02 / MEASURE</span><strong>朗読速度を測る <span aria-hidden="true">↗</span></strong><span>声に出して読んで、自分の速度を知る</span></button>
         <button class="entry" data-go="estimate"><span class="entry-number">03 / ESTIMATE</span><strong>朗読時間を見積もる <span aria-hidden="true">↗</span></strong><span>作品の文字数から所要時間を調べる</span></button>
       </div>
-      <details class="user-settings"><summary>プロフィール・ユーザーデータ</summary>
+      <details class="user-settings"><summary>プロフィール・ファイルの保存と読み込み</summary>
         <label for="profile-name">表示名</label><input id="profile-name" maxlength="80" autocomplete="nickname" placeholder="お名前（任意）">
         <p class="muted">ユーザーデータ（全原稿・計測履歴）はJSONファイルで管理します。編集後は「保存」を押してください。ブラウザへの自動保存・端末間の自動同期は行いません。</p>
-        <div class="inline"><button id="export-user">保存</button><button id="import-user">ユーザーデータを読み込む</button></div>
+        <div class="inline"><button id="export-user">保存</button><button id="import-user">保存したファイルを開く</button></div>
         <p class="muted">ユーザー全体のJSONです。原稿1件のJSONは本文入力の「原稿ファイルを読み込む」から利用できます。</p>
       </details>
       <section id="home-results" class="home-results" hidden aria-labelledby="home-results-title">
@@ -119,19 +119,20 @@
       <div class="inline"><button id="again" class="primary">計測設定に戻る</button><button id="retry-measurement">もう一度測る</button><button data-go="estimate">朗読時間を見積もる →</button></div>
       <p id="result-retention" class="muted result-retention" hidden>ホームへ戻っても文章は残ります。再読み込みやタブを閉じると失われます。</p>
       <details class="history-section"><summary>計測履歴 <span id="history-count"></span></summary><ul id="history" class="history"></ul><button id="reset-history" class="quiet">全履歴を削除</button></details>
-      <p class="privacy">計測履歴は直近100件を保持します。ページを閉じる前に「保存」を押してください。</p>
+      <p class="privacy">計測履歴は直近100件まで保持します。保存の状態は画面上部で確認できます。</p>
     </section>
     <section id="estimate" class="view narrow" hidden aria-labelledby="estimate-title">
       <button class="back" data-go="home">← ホーム</button><p class="eyebrow">PLAN YOUR READING</p><h1 id="estimate-title" tabindex="-1">朗読時間を見積もる</h1>
       <div class="pace-card"><h2>平均朗読速度</h2><p id="estimate-average-speed" class="estimate" aria-live="polite"></p><p class="muted">これまでの計測履歴をもとに計算します。</p></div>
       <div id="estimate-empty" class="empty-state" hidden><p>朗読速度の記録がありません。</p><p>はじめに自分の朗読速度を測ると、作品の所要時間を見積もれるようになります。</p><button data-go="time-input" class="primary">朗読速度を測る</button><p class="muted">入力した作品文字数は、計測後も引き継ぎます。</p></div>
+      <div class="inset"><label for="estimate-book">本棚の原稿から選ぶ</label><select id="estimate-book"><option value="">原稿を選んでください</option></select><p id="estimate-book-info" class="muted">原稿を選ぶと、その文字数で推定時間を計算します。</p></div>
       <div class="calculation-grid">
         <section class="calculation-card" aria-labelledby="estimate-duration-title"><h2 id="estimate-duration-title">作品文字数から推定時間を求める</h2><label for="estimate-target">作品全体の文字数</label><div class="inline"><input id="estimate-target" data-field-id="FLD-ESTIMATE-TARGET" type="number" min="1" max="1000000000" step="1" inputmode="numeric" placeholder="例：4500"><span>文字</span></div><p id="estimate-time" class="calculation-value" aria-live="polite"></p></section>
         <section class="calculation-card" aria-labelledby="estimate-capacity-title"><h2 id="estimate-capacity-title">指定時間から文字数を求める</h2><label for="estimate-minutes">予定している朗読時間</label><div class="inline"><input id="estimate-minutes" data-field-id="FLD-ESTIMATE-MINUTES" type="number" min="0.000001" step="any" inputmode="decimal" value="20"><span>分</span></div><p id="estimate-capacity" class="calculation-value" aria-live="polite"></p></section>
       </div>
       <p class="muted">間の取り方や作品によって、実際の時間は変わります。</p>
       <div class="inline"><button id="estimate-results" data-go="results">計測結果・履歴を見る</button><button id="estimate-return" hidden>原稿に戻る</button><button data-go="time-input">朗読速度を測る</button></div>
-      <p class="privacy">計測履歴は直近100件を保持します。ページを閉じる前に「保存」を押してください。</p>
+      <p class="privacy">計測履歴は直近100件まで保持します。保存の状態は画面上部で確認できます。</p>
     </section>
   </main>
   <footer id="footer"><span><span id="screen-id-copy" role="button" tabindex="0" aria-label="現在の画面IDをコピー">よみじたく</span> 〜 朗読支援サイト 〜</span></footer>

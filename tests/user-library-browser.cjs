@@ -102,7 +102,7 @@ const installPicker = async page => page.evaluate(() => {
       assert.match(await page.locator('#library-list li').first().textContent(), /改題した第二冊/);
       assert.equal(await dirty(page), 'true', 'renaming is an unsaved change');
       await page.locator('#library-list li').first().getByRole('button', { name: /を削除/ }).click(); await page.locator('#confirm-cancel').click(); await page.waitForTimeout(50);
-      assert.equal(await dirty(page), 'false');
+      assert.equal(await dirty(page), 'true', 'cancelling a deletion keeps the unsaved rename');
       await page.locator('#library-list li').first().getByRole('button', { name: /を削除/ }).click(); await page.locator('#confirm-ok').click();
       await page.waitForFunction(() => document.querySelectorAll('#library-list li').length === 1); assert.equal(await dirty(page), 'true');
       assert.match(await page.locator('#notice').textContent(), /ファイルに反映するには「保存」を押してください/);
@@ -149,6 +149,11 @@ const installPicker = async page => page.evaluate(() => {
     assert.equal(await dirty(page), 'false'); await page.clock.resume();
     await page.locator('.brand').click();
     assert.match(await page.locator('#library-list li').first().textContent(), /朗読目安 約/, 'shelf shows an estimated reading time once history exists');
+    await page.locator('#home [data-go=estimate]').click();
+    await page.locator('#estimate-book').selectOption({ index: 1 });
+    assert.notEqual(await page.locator('#estimate-target').inputValue(), '', 'choosing a book fills its character count');
+    assert.match(await page.locator('#estimate-time').textContent(), /約.*分/, 'choosing a book shows its estimated time directly');
+    assert.match(await page.locator('#estimate-book-info').textContent(), /推定時間を表示しています/);
     await context.close();
     // Legacy migration is opt-in, leaves source unchanged even after a successful save.
     for (const raw of [JSON.stringify(portable), '{broken']) {

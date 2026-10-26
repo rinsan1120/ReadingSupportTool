@@ -923,7 +923,7 @@
     if (book) {
       const manuscript = JSON.parse(window.ManuscriptMarks.serializeManuscript(readAnnotations, readMarks));
       const draft = $('read-text').value;
-      if (draft.length > window.ReadingAnnotations.MAX_TEXT_LENGTH) throw new Error('本文は200,000 UTF-16文字までです。');
+      if (draft.length > window.ReadingAnnotations.MAX_TEXT_LENGTH) throw new Error('本文が長すぎます（上限は約200,000文字です）。原稿を分けてください。');
       const title = $('manuscript-title').value.trim() || '無題の原稿';
       const pending = pendingReadPaste?.input === draft ? pendingReadPaste.model.toJSON() : null;
       if (book.draft !== draft || book.title !== title || JSON.stringify(book.manuscript) !== JSON.stringify(manuscript) || JSON.stringify(book.pending) !== JSON.stringify(pending)) {
@@ -973,7 +973,7 @@
     const totalChars = library.history.reduce((sum, r) => sum + r.characters, 0);
     const charsPerMinute = totalSeconds > 0 ? totalChars / totalSeconds * 60 : 0;
     const key = JSON.stringify([renamingId, library.activeId, charsPerMinute,
-      library.manuscripts.map(b => [b.id, b.title, b.updatedAt, b.draft.length, b.draft.slice(0, 50)])]);
+      library.manuscripts.map(b => [b.id, b.title, b.updatedAt, b.draft.length, countText(b.draft), b.draft.slice(0, 50)])]);
     if (key === libraryRenderKey) return;
     libraryRenderKey = key;
     $('library-empty').hidden = !!library.manuscripts.length;
@@ -1052,7 +1052,22 @@
       actions.append(rename, remove);
       li.append(open, actions); return li;
     }));
+    renderEstimateBooks();
   }
+  function renderEstimateBooks() {
+    const select = $('estimate-book');
+    const selected = select.value;
+    const sorted = [...library.manuscripts].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    select.replaceChildren(new Option('原稿を選んでください', ''),
+      ...sorted.map(book => new Option(`${book.title}（${countText(book.draft).toLocaleString()}文字）`, book.id)));
+    if (sorted.some(book => book.id === selected)) select.value = selected;
+  }
+  $('estimate-book').onchange = () => {
+    const book = library.manuscripts.find(b => b.id === $('estimate-book').value);
+    if (!book) { $('estimate-book-info').textContent = '原稿を選ぶと、その文字数で推定時間を計算します。'; return; }
+    setTarget(String(countText(book.draft)), true); recordChanges(); renderResults();
+    $('estimate-book-info').textContent = `「${book.title}」（${countText(book.draft).toLocaleString()}文字）の推定時間を表示しています。`;
+  };
   $('new-manuscript').onclick = () => {
     if (!syncLibrary()) return;
     try { const book = createBook(); restoreBook(book); syncLibrary(); show('read-input'); $('manuscript-title').focus(); }
@@ -1147,7 +1162,7 @@
     if (!file || restoringUser || savingUser) return;
     restoringUser = true; setFileControlsBusy(true); $('startup-error').textContent = '';
     try {
-      if (file.size > window.UserLibrary.MAX_BYTES) throw new Error('ユーザーデータは30MiBまでです。');
+      if (file.size > window.UserLibrary.MAX_BYTES) throw new Error('ファイルが大きすぎます（上限は約30MBです）。');
       const candidate = window.UserLibrary.parse(new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()));
       if (libraryReady) {
         if (!readyForDirectAction()) return;
