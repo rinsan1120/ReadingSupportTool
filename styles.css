@@ -25,6 +25,8 @@ main[data-screen-id="SCR-READ-VIEW"] #save-user-status { display:none; }
 .book-open { flex:1; min-width:0; text-align:left; overflow-wrap:anywhere; border-left:4px solid var(--accent); }
 .book-open small { display:block; color:var(--muted); margin-top:8px; font-weight:400; }
 .book-open .book-open-label { color:var(--accent); font-weight:700; }
+.book-open .book-active-label { color:#fbbf24; font-weight:700; }
+.library-rename-input { flex:1; min-width:0; padding:12px; color:var(--text); background:var(--bg); border:1px solid #7897c159; border-radius:8px; }
 .user-settings summary { cursor:pointer; padding:4px 0; }
 .user-settings input,#manuscript-title { width:100%; margin:8px 0; padding:12px; color:var(--text); background:var(--bg); border:1px solid #7897c159; border-radius:8px; }
 .bookshelf + .entry-grid { margin-top:24px; }

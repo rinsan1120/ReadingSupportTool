@@ -93,10 +93,19 @@ const installPicker = async page => page.evaluate(() => {
         assert.equal(await page.locator('#library-list li').count(), 2); assert.equal(await page.locator('#profile-name').inputValue(), '未保存の名前');
       }
       await choose(page, portable); await page.locator('#confirm-ok').click(); await loaded(page); assert.equal(await dirty(page), 'false');
+      assert.match(await page.locator('#library-list li').first().textContent(), /第二冊/, 'most recently updated book comes first');
+      assert.match(await page.locator('#library-list li').first().textContent(), /開いている原稿/);
+      assert.equal(await page.locator('#library-list li').first().locator('.book-preview').textContent(), '新しい原稿。');
+      await page.locator('#library-list li').first().getByRole('button', { name: /の名前を変更/ }).click();
+      await page.locator('.library-rename-input').fill('改題した第二冊');
+      await page.locator('#library-list li').first().getByRole('button', { name: '保存', exact: true }).click();
+      assert.match(await page.locator('#library-list li').first().textContent(), /改題した第二冊/);
+      assert.equal(await dirty(page), 'true', 'renaming is an unsaved change');
       await page.locator('#library-list li').first().getByRole('button', { name: /を削除/ }).click(); await page.locator('#confirm-cancel').click(); await page.waitForTimeout(50);
       assert.equal(await dirty(page), 'false');
       await page.locator('#library-list li').first().getByRole('button', { name: /を削除/ }).click(); await page.locator('#confirm-ok').click();
       await page.waitForFunction(() => document.querySelectorAll('#library-list li').length === 1); assert.equal(await dirty(page), 'true');
+      assert.match(await page.locator('#notice').textContent(), /ファイルに反映するには「保存」を押してください/);
       assert.deepEqual(await page.evaluate(() => ({ ...localStorage })), {}, 'no browser writes');
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'home fits');
       await page.locator('#library-list .book-open').click();
@@ -138,6 +147,8 @@ const installPicker = async page => page.evaluate(() => {
     await page.waitForFunction(() => !document.getElementById('save-user-status').disabled);
     const measured = JSON.parse(await page.evaluate(() => window.savedFileJSON)); assert.equal(measured.history.length, 100); assert.equal(measured.history.at(-1).title, '第一冊'); assert.ok(measured.history.at(-1).measuredAt);
     assert.equal(await dirty(page), 'false'); await page.clock.resume();
+    await page.locator('.brand').click();
+    assert.match(await page.locator('#library-list li').first().textContent(), /朗読目安 約/, 'shelf shows an estimated reading time once history exists');
     await context.close();
     // Legacy migration is opt-in, leaves source unchanged even after a successful save.
     for (const raw of [JSON.stringify(portable), '{broken']) {
