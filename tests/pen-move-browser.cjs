@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const { chromium } = require('playwright');
+const { startNew, saveUser } = require('./file-session.cjs');
 const directory = path.resolve(__dirname, '..');
 const output = process.env.READER_TEST_ARTIFACTS || path.join(directory, 'tmp', 'pen-move');
 const files = new Set(['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-writing.js', 'manuscript-print.js', 'user-library.js', 'app.js']);
@@ -27,7 +28,7 @@ const length = points => points.slice(1).reduce((sum, p, i) => sum + Math.hypot(
       const page = await context.newPage(); page.setDefaultTimeout(6000);
       const errors = []; page.on('pageerror', e => errors.push(e.message));
       const url = `http://127.0.0.1:${server.address().port}/`;
-      await page.goto(url); await page.locator('[data-go=read-input]').click();
+      await page.goto(url); await startNew(page); await page.locator('[data-go=read-input]').click();
       const text = '黄昏の空。👩‍👩‍👧‍👦が𠮷\n\n' + Array.from({ length: 100 }, (_, i) => `章${String(i).padStart(3, '0')}：静かな森で今日の出来事をゆっくり語る。\n`).join('');
       const data = { format: 'reading-support-manuscript', version: 4, text, annotations: [{ offset: 2, text: 'そら' }], sourceRubies: [{ start: 0, end: 2, reading: 'たそがれ' }],
         marks: [{ id: 1, type: 'pen', offset: text.indexOf('章001'), layoutKey: '40:1.8:5:0', points: [{ x: 0, y: .6 }, { x: 2, y: .6 }, { x: 2, y: 2.6 }, { x: 4, y: 2.6 }], witnesses: [{ offset: text.indexOf('章001'), x: 0, y: 0 }] },
@@ -133,8 +134,7 @@ const length = points => points.slice(1).reduce((sum, p, i) => sum + Math.hypot(
       await page.locator('[data-close=settings-dialog]').click();
 
       // Real manual save + load, legacy v1-v4 imports, schema rejection.
-      const pending = page.waitForEvent('download'); await page.locator('#export-manuscript').click();
-      const saved = JSON.parse(fs.readFileSync(await (await pending).path(), 'utf8'));
+      const saved = (await saveUser(page)).manuscripts[0].manuscript;
       assert.equal(saved.version, 4); assert.deepEqual(saved.marks, final.items);
       const restored = await page.evaluate(saved => {
         const { manuscript, markings } = ManuscriptMarks.restoreManuscript(JSON.stringify(saved));
@@ -183,9 +183,8 @@ const length = points => points.slice(1).reduce((sum, p, i) => sum + Math.hypot(
         try { const w = ManuscriptWriting.printSnapshot(); w.pens[0].points[0].x = NaN; ManuscriptPrint.prepare(Reader.printSnapshot(), w); return ''; } catch (e) { return e.message; }
       }); assert.match(invalid, /赤ペン.*PDF/);
       await page.evaluate(() => ManuscriptPrint.clear());
-      await page.reload(); await page.locator('[data-go=read-input]').click();
+      await page.reload(); await startNew(page); await page.locator('[data-go=read-input]').click();
       await page.locator('#manuscript-file').setInputFiles({ name: 'moved.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(saved)) });
-      await page.locator('#confirm-ok').click(); // Replace the manuscript restored by autosave.
       await page.waitForFunction(() => !document.getElementById('reading').hidden);
       assert.deepEqual((await state()).items, saved.marks);
       (await state()).pens.forEach((pen, i) => sameShape(pen.points, final.pens[i].points));

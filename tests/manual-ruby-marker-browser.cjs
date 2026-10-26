@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const { chromium } = require('playwright');
+const { startNew } = require('./file-session.cjs');
 const directory = path.resolve(__dirname, '..');
 const files = new Set(['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-writing.js', 'manuscript-print.js', 'user-library.js', 'app.js']);
 const server = http.createServer((req, res) => {
@@ -20,7 +21,7 @@ const server = http.createServer((req, res) => {
       const context = await browser.newContext({ viewport: { width, height: 900 }, isMobile: width < 600, hasTouch: width < 600 });
       const page = await context.newPage();
       const errors = []; page.on('pageerror', e => errors.push(e.message));
-      await page.goto('http://127.0.0.1:' + server.address().port);
+      await page.goto('http://127.0.0.1:' + server.address().port); await startNew(page);
       await page.locator('[data-go=read-input]').click();
       const text = '花筏が風に舞う。\n' + '夏の川を見つめる。\n'.repeat(90);
       const later = text.indexOf('夏', Math.floor(text.length / 2)) + 1;

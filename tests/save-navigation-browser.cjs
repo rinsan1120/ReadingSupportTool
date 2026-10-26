@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const { chromium } = require('playwright');
+const { startNew, saveUser } = require('./file-session.cjs');
 const root = path.resolve(__dirname, '..');
 const files = new Set(['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-writing.js', 'manuscript-print.js', 'user-library.js', 'app.js']);
 const server = http.createServer((req, res) => {
@@ -29,60 +30,43 @@ const original = { format: 'reading-support-manuscript', version: 3, text: '黄�
     const draftText = text => page.locator('#read-text').evaluate((el, text) => { el.value = text; el.dispatchEvent(new Event('input')); }, text);
     const invoke = id => page.locator('#' + id).evaluate(el => el.click());
     const visible = (id, expected = true) => page.waitForFunction(({ id, expected }) => !document.getElementById(id).hidden === expected, { id, expected });
-    const opened = (id, expected = true) => page.waitForFunction(({ id, expected }) => document.getElementById(id).open === expected, { id, expected });
-    const getSave = async (id = 'export-manuscript') => {
-      const pending = page.waitForEvent('download'); await click(id);
-      return JSON.parse(fs.readFileSync(await (await pending).path(), 'utf8'));
-    };
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
-    await page.locator('[data-go=read-input]').click();
+    await startNew(page); await page.locator('[data-go=read-input]').click();
     await page.locator('#manuscript-file').setInputFiles({ name: 'manuscript.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(original)) });
     await visible('reading');
     assert.equal(await page.evaluate(() => ManuscriptWriting.enabled), false);
 
-    // Autosave replaces the former navigation/edit warnings.
-    await click('writing-mode'); await page.waitForFunction(() => ManuscriptWriting.enabled);
-    assert.equal(await page.locator('#confirm-dialog').isVisible(), false);
-    await click('writing-off');
     const canonical = await page.evaluate(data => {
       const { manuscript, markings } = ManuscriptMarks.restoreManuscript(JSON.stringify(data));
       return JSON.parse(ManuscriptMarks.serializeManuscript(manuscript, markings));
     }, original);
-    assert.deepEqual(await getSave(), canonical);
-    for (const route of ['reader-back', 'brand']) {
-      if (route === 'brand') await page.locator('.brand').click(); else await invoke(route);
-      await opened('save-navigation-dialog', false);
-      if (route === 'brand') await page.locator('#library-list .book-open').click();
-      else { await visible('read-input'); await click('open-read'); }
-      await visible('reading');
-    }
-    // A durable-write failure offers the existing manuscript download fallback.
-    await page.evaluate(() => { window.realSetItem = Storage.prototype.setItem; Storage.prototype.setItem = () => { throw Error('quota test'); }; });
-    await invoke('reader-back'); await opened('save-navigation-dialog');
-    await click('save-navigation-cancel'); await page.waitForTimeout(50); await visible('reading');
-    await invoke('reader-back');
-    await page.evaluate(() => { window.originalCreateURL = URL.createObjectURL; URL.createObjectURL = () => { throw Error('download test'); }; });
-    await click('save-navigation-download');
-    assert.match(await page.locator('#save-navigation-error').textContent(), /download test/);
-    await page.evaluate(() => { URL.createObjectURL = window.originalCreateURL; });
-    assert.deepEqual(await getSave('save-navigation-download'), canonical);
-    await click('save-navigation-return'); await page.waitForTimeout(50); await visible('reading');
-    await page.evaluate(() => { Storage.prototype.setItem = window.realSetItem; });
-    await click('retry-save');
-    // Unconfirmed memo edits still block navigation and manual download.
+    assert.deepEqual((await saveUser(page)).manuscripts[0].manuscript, canonical);
+    assert.equal(await page.locator('#user-save-status').getAttribute('data-unsaved'), 'false');
+    // Internal navigation preserves edits in memory and does not request a download.
+    await invoke('reader-back'); await visible('read-input'); await click('open-read');
+    await page.locator('.brand').click(); await page.locator('#library-list .book-open').click();
+    assert.equal(await page.locator('#user-save-status').getAttribute('data-unsaved'), 'false');
+    // Incomplete memo drafts still block saving/navigation, and warn on leaving.
     await click('writing-mode'); await page.locator('[data-writing-tool=memo]').click();
-    await page.locator('.writing-memo').click(); await page.locator('.writing-memo').click(); await page.locator('#writing-memo-input').fill('未確定メモ');
+    await page.locator('.writing-memo').click(); await page.locator('.writing-memo').click();
+    await page.locator('#writing-memo-input').fill('未確定メモ');
     await invoke('reader-back'); await invoke('export-manuscript');
     assert.equal(await page.locator('#writing-memo-input').inputValue(), '未確定メモ');
-    await opened('save-navigation-dialog', false); await click('writing-memo-cancel');
+    assert.equal(await page.locator('#download-confirm-dialog').isVisible(), false);
+    assert.equal(await page.evaluate(() => { const e = new Event('beforeunload', { cancelable: true }); dispatchEvent(e); return e.defaultPrevented; }), true);
+    await click('writing-memo-save');
+    assert.equal(await page.locator('#user-save-status').getAttribute('data-unsaved'), 'true');
+    const edited = await saveUser(page);
+    assert.equal(edited.manuscripts[0].manuscript.marks.find(m => m.type === 'memo').text, '未確定メモ');
     // Text replacement still waits for explicit confirmation before deleting marks.
-    await invoke('reader-back'); await visible('read-input');
-    await draftText('変更した本文'); await click('open-read');
+    await invoke('reader-back'); await draftText('変更した本文'); await click('open-read');
     assert.equal(await page.locator('#confirm-ok').textContent(), '開く'); await click('confirm-cancel');
-    await draftText(original.text); await click('open-read'); assert.deepEqual(await getSave(), canonical);
+    await draftText(original.text); await click('open-read');
+    assert.equal(await page.locator('.writing-memo').count(), 1);
     await invoke('reader-back'); await draftText('新しい本文'); await click('open-read'); await click('confirm-ok');
     await visible('reading'); assert.equal(await page.locator('.writing-memo').count(), 0);
+    assert.deepEqual(await page.evaluate(() => ({ ...localStorage })), {});
     assert.deepEqual(errors, []);
-    console.log('PASS: autosaved navigation, failed save/download fallback, pending memo and deferred replacement guards');
+    console.log('PASS: file saves, in-memory navigation, pending memo warning and deferred replacement guards');
   } finally { await browser.close(); server.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; server.close(); });

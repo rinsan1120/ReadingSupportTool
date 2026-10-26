@@ -1,4 +1,4 @@
-/* Versioned user backups wrap the existing manuscript format without changing it. */
+/* Versioned user files wrap the existing manuscript format without changing it. */
 (() => {
   'use strict';
   const KEY = 'yomijitaku-user-v1', MAX_BYTES = 30 * 1024 * 1024;
@@ -36,7 +36,7 @@
     return { ...empty(), profile: { name: data.profile.name }, manuscripts, activeId: data.activeId, history, target: data.target, plannedMinutes: data.plannedMinutes };
   }
   function parse(json) {
-    if (new TextEncoder().encode(json).length > MAX_BYTES) throw new Error('バックアップは30MiBまでです。');
+    if (new TextEncoder().encode(json).length > MAX_BYTES) throw new Error('ユーザーデータは30MiBまでです。');
     return validate(JSON.parse(json));
   }
   window.UserLibrary = { KEY, MAX_BYTES, empty, parse, validate };

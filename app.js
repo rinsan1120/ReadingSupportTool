@@ -1,8 +1,9 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
-  const STORAGE = 'reading-support-results-v1';
-  let library = null, storedLibrary = null, libraryBlocked = false, saveTimer = 0, libraryReady = false;
+  let library = null, changeTimer = 0, libraryReady = false;
+  let savedUserSnapshot = null, captureFailed = false, userDirty = false, savingUser = false, userFilename = '';
+  let hasLegacyUserData = false, pendingDownloadSnapshot = null;
   let view = 'home', mode = 'read', sourceType = 'sample', sample = null;
   let history = [], target = '', targetManual = false, plannedMinutes = '20';
   let readMeasurementReturn = null;
@@ -200,18 +201,9 @@
   $('screen-id-copy').addEventListener('keydown', event => {
     if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); copyScreenId(); }
   });
-  function persist() {
-    if (libraryReady) saveLibrary();
+  function recordChanges() {
+    if (libraryReady) syncLibrary();
   }
-  try {
-    const stored = JSON.parse(sessionStorage.getItem(STORAGE));
-    if (stored?.version === 1 && Array.isArray(stored.history)) {
-      history = stored.history.filter(r => Number.isSafeInteger(r.characters) && r.characters > 0 && Number.isFinite(r.seconds) && r.seconds > 0 && ['sample', 'custom'].includes(r.type))
-        .map(r => ({ characters: r.characters, seconds: r.seconds, type: r.type }));
-      if (validTarget(stored.target)) { target = String(stored.target); targetManual = true; }
-      if (validMinutes(stored.plannedMinutes)) plannedMinutes = String(stored.plannedMinutes);
-    }
-  } catch { /* A legacy tab may have no accessible storage. */ }
   function setTarget(value, manual = false) {
     target = value; if (manual) targetManual = true;
     $('result-target').value = value; $('estimate-target').value = value;
@@ -227,7 +219,7 @@
   setTarget(target);
   $('planned-minutes').value = plannedMinutes;
   function show(next) {
-    if (libraryReady) saveLibrary();
+    if (libraryReady) syncLibrary();
     if (view === 'reading' && next !== 'reading') { window.ManuscriptWriting.leave(); window.ManuscriptPrint.clear(); window.Reader.leave(); cancelMeasurement(); releaseWake(); }
     document.querySelectorAll('dialog[open]').forEach(d => d.close());
     document.querySelectorAll('.view').forEach(el => el.hidden = el.id !== next);
@@ -335,10 +327,10 @@
   }));
   $('clear-read').onclick = async () => { if ($('read-text').value && await ask('入力した本文を削除しますか？' + replacementLoss())) { $('read-text').value = ''; $('read-text').dispatchEvent(new Event('input')); } };
   ['result-target', 'estimate-target'].forEach(id => $(id).addEventListener('input', () => {
-    setTarget($(id).value, true); persist(); renderResults();
+    setTarget($(id).value, true); recordChanges(); renderResults();
   }));
   ['planned-minutes', 'estimate-minutes'].forEach(id => $(id).addEventListener('input', () => {
-    plannedMinutes = $(id).value; persist(); renderResults();
+    plannedMinutes = $(id).value; recordChanges(); renderResults();
   }));
   async function openReader(nextMode) {
     if (openingReader) return;
@@ -466,33 +458,7 @@
     } catch (error) { notify(`計測用の原稿を準備できません。${error.message}`); }
     finally { openingReader = false; }
   };
-  function downloadManuscript() {
-    if (!readyForDirectAction()) return;
-    if (view !== 'reading' || mode !== 'read') return;
-    let url;
-    const link = document.createElement('a');
-    try {
-      const json = window.ManuscriptMarks.serializeManuscript(readAnnotations, readMarks);
-      const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
-      url = URL.createObjectURL(blob);
-      link.href = url; link.download = 'reading-manuscript.json';
-      document.body.append(link); link.click();
-      window.ManuscriptWriting.setMode(false);
-      window.Reader.setRubyMode(false);
-      return true;
-    } catch (error) {
-      const message = `原稿ファイルを保存できません。${error.message}`;
-      notify(message);
-      if ($('save-navigation-dialog').open) $('save-navigation-error').textContent = message;
-      return false;
-    }
-    finally {
-      link.remove();
-      // Leave time for the browser's local download to consume the blob URL.
-      if (url) setTimeout(() => URL.revokeObjectURL(url), 60000);
-    }
-  };
-  $('export-manuscript').onclick = downloadManuscript;
+  $('export-manuscript').onclick = saveUserData;
   let importing = false;
   $('import-manuscript').onclick = () => $('manuscript-file').click();
   $('manuscript-file').addEventListener('change', async () => {
@@ -522,47 +488,12 @@
     } catch (error) { notify(`原稿を読み込めません。${error.message}`); }
     finally { importing = false; $('import-manuscript').disabled = false; }
   });
-  // Keep the first destination until this dialog is closed. No navigation or
-  // draft mutation occurs when the user cancels.
-  let navigationTarget = null;
   function requestNavigation(next) {
-    if (navigationTarget !== null) return;
+    if (!libraryReady || !readyForDirectAction()) return;
     if (next === 'home' || next === 'read-input') readMeasurementReturn = null;
-    if (view !== 'reading' || mode !== 'read') { show(next); return; }
-    if (!readyForDirectAction()) return;
-    if (saveLibrary()) { show(next); return; }
-    if (!hasReadings(readAnnotations) && !readMarks.hasMarks) { show(next); return; }
-    closeSettings();
-    if (document.querySelector('dialog[open]')) return;
-    navigationTarget = next;
-    const dialog = $('save-navigation-dialog'), scroll = window.scrollY;
-    $('save-navigation-prompt').hidden = false;
-    $('save-navigation-started').hidden = true;
-    $('save-navigation-error').textContent = '';
-    const move = () => { const destination = navigationTarget; dialog.close('move'); show(destination); };
-    $('save-navigation-cancel').onclick = () => dialog.close();
-    $('save-navigation-discard').onclick = move;
-    $('save-navigation-download').onclick = () => {
-      if (!downloadManuscript()) return;
-      $('save-navigation-prompt').hidden = true;
-      $('save-navigation-started').hidden = false;
-      $('save-navigation-return').focus({ preventScroll: true });
-    };
-    $('save-navigation-return').onclick = () => dialog.close('reader');
-    $('save-navigation-move').onclick = move;
-    dialog.returnValue = '';
-    dialog.addEventListener('close', () => {
-      navigationTarget = null;
-      if (view === 'reading') {
-        window.scrollTo(0, scroll);
-      }
-    }, { once: true });
-    dialog.showModal(); $('save-navigation-cancel').focus({ preventScroll: true });
+    show(next);
   }
-  async function approveEditing() {
-    if (navigationTarget !== null || !readyForDirectAction()) return false;
-    return true; // Browser autosave tracks edits; downloaded JSON remains a snapshot.
-  }
+  async function approveEditing() { return readyForDirectAction(); }
   $('reader-back').onclick = () => requestNavigation(mode === 'time' ? 'time-input' : 'read-input');
   $('toolbar-settings').onclick = () => { if (!readyForDirectAction()) return; openSettings(); };
   function closeWritingMenu() {
@@ -797,7 +728,7 @@
       lastMeasuredCustomText = measuredType === 'custom' ? displayedText : null;
       history.push({ characters: measuredCount, seconds, type: measuredType, measuredAt: new Date().toISOString(),
         title: measuredType === 'sample' ? sample.title : readMeasurementReturn ? activeBook()?.title || '無題の原稿' : '用意した文章' });
-      history = history.slice(-100); persist();
+      history = history.slice(-100); recordChanges();
     }
     show('results');
   };
@@ -845,7 +776,7 @@
       detail.textContent = `${i + 1}回目 · ${record.characters.toLocaleString()}文字 / ${record.seconds.toFixed(1)}秒`;
       small.textContent = `${record.measuredAt ? new Date(record.measuredAt).toLocaleString('ja-JP') : '日時不明（旧履歴）'} · ${record.title || (record.type === 'sample' ? '例文' : '用意した文章')}・${Math.round(record.characters / record.seconds * 60).toLocaleString()}文字/分`;
       detail.append(small); remove.textContent = '削除'; remove.setAttribute('aria-label', `${i + 1}回目の計測結果を削除`);
-      remove.onclick = () => { history.splice(i, 1); persist(); renderResults(); };
+      remove.onclick = () => { history.splice(i, 1); recordChanges(); renderResults(); };
       li.append(detail, remove); $('history').append(li);
     });
     $('reset-history').disabled = !history.length;
@@ -866,7 +797,7 @@
   $('again').onclick = returnToSource;
   $('estimate-return').onclick = returnToSource;
   $('retry-measurement').onclick = () => openReader('time');
-  $('reset-history').onclick = async () => { if (await ask('すべての計測履歴を削除しますか？')) { history = []; persist(); renderResults(); } };
+  $('reset-history').onclick = async () => { if (await ask('すべての計測履歴を削除しますか？')) { history = []; recordChanges(); renderResults(); } };
   function readyForDirectAction() {
     if (window.Reader.hasPending) {
       window.Reader.focusPending();
@@ -959,9 +890,17 @@
     $('profile-display').textContent = (library.profile.name ? `${library.profile.name}さんの本棚` : 'あなたの本棚') + (book ? ` · ${book.title}` : '');
   }
   function saveStatus(message, failed = false) {
-    $('autosave-status').textContent = message;
-    $('autosave-status').classList.toggle('save-failed', failed);
-    $('retry-save').hidden = !failed;
+    $('user-save-status').textContent = message;
+    $('user-save-status').classList.toggle('save-failed', failed);
+    $('user-save-status').dataset.unsaved = String(userDirty);
+  }
+  function snapshotKey(data) {
+    // Opening a different book does not change the user's manuscripts or results.
+    return JSON.stringify({ ...data, activeId: null }, (key, value) => value && typeof value === 'object' && !Array.isArray(value)
+      ? Object.fromEntries(Object.keys(value).sort().map(name => [name, value[name]])) : value);
+  }
+  function renderSaveState(message = '') {
+    saveStatus(message || (userDirty ? '未保存の変更があります。JSONファイルに保存してください。' : `変更なし · ${userFilename || '読み込んだユーザーデータ'}`), captureFailed);
   }
   function createBook() {
     if (library.manuscripts.length >= 500) throw new Error('原稿は500件までです。バックアップして整理してください。');
@@ -989,33 +928,23 @@
     library.plannedMinutes = validMinutes(plannedMinutes) ? String(Number(plannedMinutes)) : '20';
     renderIdentity();
   }
-  function writeLibrary(candidate, replace = false) {
-    if (libraryBlocked && !replace) throw new Error('保存データを保護中です。バックアップから復元するか、他のタブを閉じて再読み込みしてください。');
-    const current = localStorage.getItem(window.UserLibrary.KEY);
-    if (current !== storedLibrary) {
-      libraryBlocked = true;
-      throw new Error('別のタブでデータが変更されました。現在の内容をバックアップし、再読み込みしてください。');
-    }
-    const json = JSON.stringify(candidate);
-    if (new TextEncoder().encode(json).length > window.UserLibrary.MAX_BYTES) throw new Error('全データは30MiBまでです。');
-    // A single setItem is atomic: quota/access failure leaves the old value intact.
-    localStorage.setItem(window.UserLibrary.KEY, json);
-    storedLibrary = json; libraryBlocked = false;
-  }
-  function saveLibrary() {
+  function syncLibrary() {
     if (!libraryReady) return false;
-    clearTimeout(saveTimer);
+    clearTimeout(changeTimer);
     try {
-      captureLibrary(); writeLibrary(library);
-      saveStatus('このブラウザに自動保存済み'); renderLibrary(); return true;
+      captureLibrary(); captureFailed = false;
+      userDirty = savedUserSnapshot === null || snapshotKey(library) !== savedUserSnapshot;
+      renderSaveState(); renderLibrary(); return true;
     } catch (error) {
-      saveStatus(`未保存：${error.message} 変更は画面内にのみ保持されています。バックアップもお試しください。`, true); return false;
+      captureFailed = true; userDirty = true;
+      saveStatus(`未保存：${error.message} 変更はこの画面内にのみ保持されています。`, true); return false;
     }
   }
-  function scheduleSave() {
+  function scheduleLibraryChange() {
     if (!libraryReady) return;
-    clearTimeout(saveTimer); saveStatus('変更を保存中…');
-    saveTimer = setTimeout(saveLibrary, 250);
+    // Mark immediately, then capture after the synchronous model operation finishes.
+    userDirty = true; renderSaveState(); clearTimeout(changeTimer);
+    changeTimer = setTimeout(syncLibrary, 150);
   }
   function restoreBook(book) {
     const restored = book ? window.ManuscriptMarks.restoreManuscript(JSON.stringify(book.manuscript)) :
@@ -1041,89 +970,155 @@
       detail.textContent = `${countText(book.draft).toLocaleString()}文字 · ${new Date(book.updatedAt).toLocaleDateString('ja-JP')}`;
       open.append(detail);
       open.onclick = () => {
-        if (!saveLibrary()) { notify('切り替える前に保存を再試行するか、バックアップしてください。'); return; }
-        library.activeId = book.id; restoreBook(book); saveLibrary();
+        if (!syncLibrary()) { notify('入力内容を確認してから原稿を切り替えてください。'); return; }
+        library.activeId = book.id; restoreBook(book); syncLibrary();
         if (book.draft === readInputSnapshot && countText(book.draft)) displayReader('read', readAnnotations.source);
         else show('read-input');
       };
       remove.textContent = '削除'; remove.setAttribute('aria-label', `${book.title}を削除`);
       remove.onclick = async () => {
         if (!await ask(`「${book.title}」とその書き込みを削除します。この操作は取り消せません。必要なら先にバックアップしてください。`, '削除する', '原稿を削除しますか？')) return;
-        if (!saveLibrary()) return;
+        if (!syncLibrary()) return;
         const candidate = structuredClone(library);
         candidate.manuscripts = candidate.manuscripts.filter(b => b.id !== book.id);
         if (candidate.activeId === book.id) candidate.activeId = null;
         try {
-          writeLibrary(candidate); library = candidate;
+          library = candidate;
           if (!library.activeId) restoreBook(null);
-          renderLibrary(); saveStatus('このブラウザに自動保存済み');
+          syncLibrary();
         } catch (error) { saveStatus(`削除できません：${error.message}`, true); }
       };
       li.append(open, remove); return li;
     }));
   }
   $('new-manuscript').onclick = () => {
-    if (!saveLibrary()) return;
-    try { const book = createBook(); restoreBook(book); saveLibrary(); show('read-input'); $('manuscript-title').focus(); }
+    if (!syncLibrary()) return;
+    try { const book = createBook(); restoreBook(book); syncLibrary(); show('read-input'); $('manuscript-title').focus(); }
     catch (error) { notify(error.message); }
   };
-  ['read-text', 'manuscript-title', 'profile-name'].forEach(id => $(id).addEventListener('input', scheduleSave));
+  ['read-text', 'manuscript-title', 'profile-name'].forEach(id => $(id).addEventListener('input', scheduleLibraryChange));
   // Debouncing captures completed model operations, excluding unfinished gestures/editors.
-  document.addEventListener('manuscript-change', scheduleSave);
-  $('retry-save').onclick = saveLibrary;
-  addEventListener('pagehide', saveLibrary);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) saveLibrary(); });
+  document.addEventListener('manuscript-change', scheduleLibraryChange);
   addEventListener('beforeunload', event => {
-    if (!saveLibrary()) { event.preventDefault(); event.returnValue = ''; }
-  });
-  addEventListener('storage', event => {
-    if (event.key === window.UserLibrary.KEY || event.key === null) {
-      libraryBlocked = true; saveStatus('未保存：別のタブでデータが変更されました。バックアップして再読み込みしてください。', true);
+    if (!libraryReady) return;
+    syncLibrary();
+    if (userDirty || window.Reader.hasPending || window.ManuscriptWriting.hasPending) {
+      event.preventDefault(); event.returnValue = '';
     }
   });
-  $('export-user').onclick = () => {
-    let url;
+  document.addEventListener('visibilitychange', () => { if (document.hidden && libraryReady) syncLibrary(); });
+
+  function setFileControlsBusy(busy) {
+    ['export-manuscript', 'export-user', 'save-user-status', 'import-user', 'start-load', 'start-new', 'start-legacy'].forEach(id => { $(id).disabled = busy; });
+  }
+  function downloadJSON(json, filename) {
+    const url = URL.createObjectURL(new Blob([json], { type: 'application/json;charset=utf-8' }));
+    const a = document.createElement('a');
+    try { a.href = url; a.download = filename; document.body.append(a); a.click(); }
+    finally { a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); }
+  }
+  function markFileSaved(key, filename) {
+    savedUserSnapshot = key; userFilename = filename;
+    syncLibrary();
+  }
+  async function saveUserData() {
+    if (!libraryReady || savingUser || !readyForDirectAction() || !syncLibrary()) return;
+    savingUser = true; setFileControlsBusy(true);
+    let writable = null;
     try {
-      captureLibrary(); const validated = window.UserLibrary.validate(library);
+      const validated = window.UserLibrary.validate(library);
       const json = JSON.stringify(validated, null, 2); window.UserLibrary.parse(json);
-      url = URL.createObjectURL(new Blob([json], { type: 'application/json;charset=utf-8' }));
-      const a = document.createElement('a'); a.href = url; a.download = `yomijitaku-user-${new Date().toLocaleDateString('sv-SE')}.json`;
-      document.body.append(a); a.click(); a.remove(); notify('バックアップのダウンロードを開始しました。端末への保存を確認してください。');
-    } catch (error) { notify(`バックアップできません：${error.message}`); }
-    finally { if (url) setTimeout(() => URL.revokeObjectURL(url), 60000); }
+      const key = snapshotKey(validated);
+      const filename = userFilename || `yomijitaku-user-${new Date().toLocaleDateString('sv-SE')}.json`;
+      if (typeof window.showSaveFilePicker === 'function' && window.isSecureContext) {
+        // Keep the picker in the initiating user gesture. Never fall back on cancel/error.
+        const handle = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: 'よみじたく ユーザーデータJSON', accept: { 'application/json': ['.json'] } }] });
+        writable = await handle.createWritable();
+        await writable.write(json); await writable.close(); writable = null;
+        markFileSaved(key, handle.name || filename);
+        notify(userDirty ? 'ファイルを保存しました。保存中に加わった変更は未保存です。' : 'ユーザーデータをファイルに保存しました。');
+      } else {
+        downloadJSON(json, filename);
+        // A download click does not prove that the browser actually saved a file.
+        pendingDownloadSnapshot = { key, filename };
+        $('download-confirm-dialog').showModal(); $('download-not-saved').focus();
+        renderSaveState('ダウンロードを開始しました。端末への保存が未確認です。');
+      }
+    } catch (error) {
+      if (writable) { try { await writable.abort(); } catch { /* Keep the original failure. */ } }
+      syncLibrary();
+      const outcome = error.name === 'AbortError' ? '保存をキャンセルしました。' : `ファイルを保存できません：${error.message}`;
+      saveStatus(`${outcome} ${userDirty ? '未保存の変更があります。' : '元の保存状態を維持しています。'}`, error.name !== 'AbortError');
+    } finally { savingUser = false; setFileControlsBusy(false); }
+  }
+  $('export-user').onclick = saveUserData;
+  $('save-user-status').onclick = saveUserData;
+  $('download-saved').onclick = () => {
+    if (!pendingDownloadSnapshot) return;
+    const saved = pendingDownloadSnapshot; pendingDownloadSnapshot = null;
+    markFileSaved(saved.key, saved.filename); $('download-confirm-dialog').close();
   };
+  $('download-not-saved').onclick = () => $('download-confirm-dialog').close();
+  $('download-confirm-dialog').addEventListener('close', () => { pendingDownloadSnapshot = null; syncLibrary(); });
+
+  function useUserData(candidate, filename = '', saved = false) {
+    clearTimeout(changeTimer);
+    libraryReady = false;
+    library = candidate; history = library.history; target = library.target; plannedMinutes = library.plannedMinutes;
+    $('profile-name').value = library.profile.name; restoreBook(activeBook());
+    timeAnnotations = null; timeMarks = null; timeInputSnapshot = null; $('time-text').value = ''; lastMeasuredCustomText = null;
+    $('time-count').textContent = '計測する本文：0文字';
+    setTarget(target); targetManual = !!target;
+    $('planned-minutes').value = plannedMinutes; $('estimate-minutes').value = plannedMinutes;
+    userFilename = filename; savedUserSnapshot = saved ? snapshotKey(library) : null;
+    libraryReady = true; document.querySelector('main').inert = false;
+    syncLibrary(); renderResults(); show('home');
+  }
   let restoringUser = false;
-  $('import-user').onclick = () => $('user-file').click();
+  const chooseUserFile = () => { if (!savingUser && !restoringUser) $('user-file').click(); };
+  $('import-user').onclick = chooseUserFile;
+  $('start-load').onclick = chooseUserFile;
   $('user-file').onchange = async () => {
     const file = $('user-file').files[0]; $('user-file').value = '';
-    if (!file || restoringUser) return;
-    restoringUser = true; $('import-user').disabled = true;
+    if (!file || restoringUser || savingUser) return;
+    restoringUser = true; setFileControlsBusy(true); $('startup-error').textContent = '';
     try {
-      if (file.size > window.UserLibrary.MAX_BYTES) throw new Error('バックアップは30MiBまでです。');
+      if (file.size > window.UserLibrary.MAX_BYTES) throw new Error('ユーザーデータは30MiBまでです。');
       const candidate = window.UserLibrary.parse(new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()));
-      if (!await ask(`表示名：${candidate.profile.name || '未設定'}\n原稿：${candidate.manuscripts.length}件／計測履歴：${candidate.history.length}件\n\n現在のユーザーデータ全体を置き換えます。自動統合はしません。必要ならキャンセルして先にバックアップしてください。`, '全体を入れ替える', 'バックアップから復元しますか？')) return;
-      clearTimeout(saveTimer);
-      writeLibrary(candidate, true); // Durable write must succeed before changing live models.
-      library = candidate; history = library.history; target = library.target; plannedMinutes = library.plannedMinutes;
-      $('profile-name').value = library.profile.name; restoreBook(activeBook());
-      timeAnnotations = null; timeMarks = null; timeInputSnapshot = null; $('time-text').value = ''; lastMeasuredCustomText = null;
-      setTarget(target); targetManual = !!target;
-      $('planned-minutes').value = plannedMinutes; $('estimate-minutes').value = plannedMinutes;
-      saveLibrary(); renderResults(); show('home'); notify('ユーザーデータ全体を復元しました。');
-    } catch (error) { notify(`復元できません。現在のデータは変更していません。${error.message}`); }
-    finally { restoringUser = false; $('import-user').disabled = false; }
+      if (libraryReady) {
+        if (!readyForDirectAction()) return;
+        syncLibrary();
+        if (!await ask(`表示名：${candidate.profile.name || '未設定'}\n原稿：${candidate.manuscripts.length}件／計測履歴：${candidate.history.length}件\n\n現在のユーザーデータ全体を置き換えます。${userDirty ? '未保存の変更は失われます。必要ならキャンセルして先に保存してください。' : '自動統合はしません。'}`, '読み込む', 'ユーザーデータを読み込みますか？')) return;
+      }
+      useUserData(candidate, file.name, true);
+      notify('ユーザーデータJSONを読み込みました。');
+    } catch (error) {
+      const message = `読み込めません。現在のデータは変更していません。${error.message}`;
+      if (!libraryReady) $('startup-error').textContent = message; else notify(message);
+    } finally { restoringUser = false; setFileControlsBusy(false); }
+  };
+  $('start-new').onclick = () => useUserData(window.UserLibrary.empty());
+  $('start-legacy').onclick = () => {
+    try {
+      // Read again on explicit selection. Migration never removes or overwrites the source.
+      const raw = localStorage.getItem(window.UserLibrary.KEY);
+      if (raw === null) throw new Error('ブラウザ保存データが見つかりません。');
+      useUserData(window.UserLibrary.parse(raw));
+      notify('ブラウザ保存データを引き継ぎました。「ユーザーデータを保存」でJSONに保存してください。');
+    } catch (error) { $('startup-error').textContent = `引き継げません。元データは保持しています。${error.message}`; }
+  };
+  $('export-legacy').onclick = () => {
+    try {
+      const raw = localStorage.getItem(window.UserLibrary.KEY);
+      if (raw === null) throw new Error('データが見つかりません。');
+      downloadJSON(raw, 'yomijitaku-browser-data.json');
+      $('startup-error').textContent = '旧データのダウンロードを開始しました。端末への保存をご確認ください。元データはブラウザに残しています。';
+    } catch (error) { $('startup-error').textContent = `取り出せません：${error.message}`; }
   };
   library = window.UserLibrary.empty();
-  try {
-    storedLibrary = localStorage.getItem(window.UserLibrary.KEY);
-    if (storedLibrary !== null) library = window.UserLibrary.parse(storedLibrary);
-    else library.history = history.slice(-100).map(r => ({ ...r, measuredAt: null, title: r.type === 'sample' ? '例文' : '用意した文章' }));
-    if (storedLibrary === null) { library.target = String(target); library.plannedMinutes = String(plannedMinutes); }
-  } catch (error) {
-    libraryBlocked = true; saveStatus(`保存データを読み込めません：${error.message} 既存データは上書きしません。`, true);
-  }
-  history = library.history; target = library.target; plannedMinutes = library.plannedMinutes;
-  $('profile-name').value = library.profile.name; restoreBook(activeBook());
-  setTarget(target); targetManual = !!target; $('planned-minutes').value = plannedMinutes;
-  libraryReady = true; renderLibrary(); renderHomeResults(); saveLibrary();
+  try { hasLegacyUserData = localStorage.getItem(window.UserLibrary.KEY) !== null; }
+  catch { $('startup-storage-note').textContent = 'ブラウザ保存データを確認できませんでした。JSONの読み込み・新規作成は利用できます。'; }
+  $('legacy-user-data').hidden = !hasLegacyUserData;
+  $('startup-dialog').addEventListener('cancel', event => event.preventDefault());
+  $('startup-dialog').showModal();
 })();

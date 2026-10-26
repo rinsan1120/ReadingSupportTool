@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const { chromium } = require('playwright');
+const { startNew, saveUser } = require('./file-session.cjs');
 const root = path.resolve(__dirname, '..');
 const files = new Set(['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-writing.js', 'manuscript-print.js', 'user-library.js', 'app.js']);
 const server = http.createServer((req, res) => {
@@ -21,7 +22,7 @@ const server = http.createServer((req, res) => {
       const page = await browser.newPage({ viewport: { width, height: 950 }, acceptDownloads: true });
       page.setDefaultTimeout(8000);
       const errors = []; page.on('pageerror', e => errors.push(e.message));
-      await page.goto(`http://127.0.0.1:${server.address().port}/`);
+      await page.goto(`http://127.0.0.1:${server.address().port}/`); await startNew(page);
       const source = '黄昏の空を見ながら、静かな声で本を読みます。'.repeat(140);
       const manuscript = { format: 'reading-support-manuscript', version: 4, text: source,
         annotations: [{ offset: 2, text: 'たそがれ' }], sourceRubies: [{ start: 0, end: 2, reading: 'たそがれ' }],
@@ -116,8 +117,7 @@ const server = http.createServer((req, res) => {
         console.log(`PASS ${width}px ${scenario}: ${result.prepared.pages} pages, ${result.notes} memo bodies, ${result.notePages} note pages`);
         await page.evaluate(() => ManuscriptPrint.clear());
       }
-      const download = page.waitForEvent('download'); await page.locator('#export-manuscript').click();
-      assert.deepEqual(JSON.parse(fs.readFileSync(await (await download).path(), 'utf8')), manuscript, 'saved JSON unchanged');
+      assert.deepEqual((await saveUser(page)).manuscripts[0].manuscript, manuscript, 'manuscript JSON unchanged inside user file');
       assert.deepEqual(errors, []); await page.close();
     }
     if (output) fs.writeFileSync(path.join(output, 'memo-layout-manifest.json'), JSON.stringify(manifest, null, 2));
