@@ -1004,7 +1004,9 @@
           if (event.key === 'Enter') { event.preventDefault(); finish(true); }
           if (event.key === 'Escape') finish(false);
         });
-        li.append(input, save, cancel); return li;
+        const editActions = document.createElement('div'); editActions.className = 'book-actions';
+        editActions.append(save, cancel);
+        li.append(input, editActions); return li;
       }
       const open = document.createElement('button'), detail = document.createElement('small'), rename = document.createElement('button'), remove = document.createElement('button');
       open.className = 'book-open'; open.textContent = book.title; open.setAttribute('aria-label', `${book.title}を開く`);
@@ -1046,7 +1048,9 @@
           notify(hasUserFile ? '原稿を削除しました。ファイルに反映するには「保存」を押してください。' : '原稿を削除しました。');
         } catch (error) { saveStatus(`削除できません：${error.message}`, true); }
       };
-      li.append(open, rename, remove); return li;
+      const actions = document.createElement('div'); actions.className = 'book-actions';
+      actions.append(rename, remove);
+      li.append(open, actions); return li;
     }));
   }
   $('new-manuscript').onclick = () => {

@@ -21,7 +21,9 @@ main[data-screen-id="SCR-READ-VIEW"] #save-user-status { display:none; }
 .library-status .save-failed { color:#fca5a5; font-weight:700; }
 .bookshelf,.user-settings { margin-top:28px; padding:20px; border:1px solid var(--border); border-radius:14px; background:var(--panel); }
 .library-list { list-style:none; padding:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:12px; }
-.library-list li { display:flex; align-items:center; gap:6px; min-width:0; }
+.library-list li { display:flex; flex-direction:column; align-items:stretch; gap:6px; min-width:0; }
+.book-actions { display:flex; gap:6px; }
+.book-actions button { flex:1; padding:8px; min-height:40px; }
 .book-open { flex:1; min-width:0; text-align:left; overflow-wrap:anywhere; border-left:4px solid var(--accent); }
 .book-open small { display:block; color:var(--muted); margin-top:8px; font-weight:400; }
 .book-open .book-open-label { color:var(--accent); font-weight:700; }
