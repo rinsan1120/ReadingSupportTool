@@ -4,7 +4,7 @@ const path = require('node:path');
 const http = require('node:http');
 const { chromium } = require('playwright');
 const directory = path.resolve(__dirname, '..');
-const files = new Set(['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-writing.js', 'manuscript-print.js', 'app.js']);
+const files = new Set(['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-writing.js', 'manuscript-print.js', 'user-library.js', 'app.js']);
 const server = http.createServer((req, res) => {
   const name = new URL(req.url, 'http://localhost').pathname.slice(1) || 'index.html';
   if (!files.has(name)) return res.writeHead(404).end();
@@ -57,7 +57,7 @@ const server = http.createServer((req, res) => {
         return { legacy, invalid };
       }, data);
       assert.ok(validations.legacy.every(Boolean)); assert.ok(validations.invalid.every(Boolean));
-      await page.locator('#writing-mode').click(); await page.locator('#confirm-ok').click();
+      await page.locator('#writing-mode').click(); // Autosave removes the former file-edit warning.
       assert.deepEqual(await page.locator('.writing-tools > button > span').allTextContents(), ['ペン', 'マーカー', 'メモ', 'ルビ', '消去', '戻す']);
       assert.ok(await page.locator('#writing-mode').isVisible());
       assert.equal(await page.locator('#writing-mode').getAttribute('aria-expanded'), 'true');
@@ -164,6 +164,9 @@ const server = http.createServer((req, res) => {
       assert.equal(saved.version, 4); assert.deepEqual(saved.marks, beforeMove.items);
       const roundTrip = await page.evaluate(saved => ManuscriptMarks.restoreManuscript(JSON.stringify(saved)).markings.items, saved);
       assert.deepEqual(roundTrip, saved.marks);
+      await page.waitForFunction(() => document.getElementById('autosave-status').textContent === 'このブラウザに自動保存済み');
+      await page.reload(); await page.locator('#library-list .book-open').click();
+      assert.deepEqual(await page.evaluate(() => ManuscriptWriting.printSnapshot().items), saved.marks, 'all pen colors survive browser reload');
       assert.deepEqual(errors, []);
       await context.close(); console.log(width + 'px: pen submenu, mouse/touch colors, move/Undo, JSON and PDF passed');
     }

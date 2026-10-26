@@ -5,7 +5,7 @@ const path = require('node:path');
 const http = require('node:http');
 const { chromium } = require('playwright');
 const directory = path.resolve(__dirname, '..');
-const files = new Set(['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-writing.js', 'manuscript-print.js', 'app.js']);
+const files = new Set(['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-writing.js', 'manuscript-print.js', 'user-library.js', 'app.js']);
 const server = http.createServer((req, res) => {
   const name = new URL(req.url, 'http://localhost').pathname.slice(1) || 'index.html';
   if (!files.has(name)) return res.writeHead(404).end();
@@ -107,7 +107,7 @@ const server = http.createServer((req, res) => {
       assert.equal(white.dom, beforeWhite.dom);
       await page.locator('#paper-mode').click();
       assert.equal((await inspect()).color, dark.color);
-      await page.locator('#writing-mode').click(); await page.locator('#confirm-ok').click();
+      await page.locator('#writing-mode').click(); // Autosave removes the former file-edit warning.
       await page.locator('[data-writing-tool=eraser]').click();
       await page.locator('.reading-annotation[data-offset="2"]').first().click();
       assert.ok(!(await inspect()).writing.items.some(m => m.id === 1), 'eraser works on highlighted reading');

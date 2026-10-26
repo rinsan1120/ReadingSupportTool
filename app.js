@@ -2,6 +2,7 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const STORAGE = 'reading-support-results-v1';
+  let library = null, storedLibrary = null, libraryBlocked = false, saveTimer = 0, libraryReady = false;
   let view = 'home', mode = 'read', sourceType = 'sample', sample = null;
   let history = [], target = '', targetManual = false, plannedMinutes = '20';
   let readMeasurementReturn = null;
@@ -10,7 +11,7 @@
   let partialOn = false, partialLimit = '200', measuredPartial = false, timingRange = null;
   let readAnnotations = new window.ReadingAnnotations();
   let readMarks = new window.ManuscriptMarks();
-  let savedManuscript = false, editWarningPending = false, pendingReadPaste = null;
+  let pendingReadPaste = null;
   const replacementLoss = () => hasReadings(readAnnotations) || readMarks.hasMarks
     ? ' 読み仮名・書き込みは、変更後の本文を開くまで保持されます。開く際に削除を確認します。' : '';
   // A textarea normalizes CRLF/CR to LF. Retain the exact imported source until
@@ -200,8 +201,7 @@
     if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); copyScreenId(); }
   });
   function persist() {
-    try { sessionStorage.setItem(STORAGE, JSON.stringify({ version: 1, history, target: validTarget(target) ? Number(target) : null, plannedMinutes: validMinutes(plannedMinutes) ? Number(plannedMinutes) : 20 })); }
-    catch { notify('このブラウザでは結果を保存できません。この画面を開いている間は利用できます。'); }
+    if (libraryReady) saveLibrary();
   }
   try {
     const stored = JSON.parse(sessionStorage.getItem(STORAGE));
@@ -211,7 +211,7 @@
       if (validTarget(stored.target)) { target = String(stored.target); targetManual = true; }
       if (validMinutes(stored.plannedMinutes)) plannedMinutes = String(stored.plannedMinutes);
     }
-  } catch { /* Storage is optional; text is never stored. */ }
+  } catch { /* A legacy tab may have no accessible storage. */ }
   function setTarget(value, manual = false) {
     target = value; if (manual) targetManual = true;
     $('result-target').value = value; $('estimate-target').value = value;
@@ -227,6 +227,7 @@
   setTarget(target);
   $('planned-minutes').value = plannedMinutes;
   function show(next) {
+    if (libraryReady) saveLibrary();
     if (view === 'reading' && next !== 'reading') { window.ManuscriptWriting.leave(); window.ManuscriptPrint.clear(); window.Reader.leave(); cancelMeasurement(); releaseWake(); }
     document.querySelectorAll('dialog[open]').forEach(d => d.close());
     document.querySelectorAll('.view').forEach(el => el.hidden = el.id !== next);
@@ -352,7 +353,7 @@
         if ((hasReadings(readAnnotations) || readMarks.hasMarks) && !await ask('この文章を開くと、現在の原稿の読み仮名・赤ペン・マーカー・文字メモはすべて削除されます。変更後の本文を開きますか？', '開く')) return;
         if (pasted) readAnnotations = pasted;
         else readAnnotations.reset(text);
-        pendingReadPaste = null; savedManuscript = false;
+        pendingReadPaste = null;
         readMarks = new window.ManuscriptMarks(text);
         readInputSnapshot = $('read-text').value;
       }
@@ -478,7 +479,6 @@
       document.body.append(link); link.click();
       window.ManuscriptWriting.setMode(false);
       window.Reader.setRubyMode(false);
-      savedManuscript = true;
       return true;
     } catch (error) {
       const message = `原稿ファイルを保存できません。${error.message}`;
@@ -508,12 +508,12 @@
       const { manuscript: restored, markings } = window.ManuscriptMarks.restoreManuscript(json);
       if (view !== 'read-input') return;
       if (($('read-text').value || readAnnotations.source || hasReadings(readAnnotations) || readMarks.hasMarks) &&
-        !await ask('現在の本文・読み仮名・赤ペン・マーカー・文字メモを、選択した原稿ファイルの内容で置き換えますか？未保存の変更は失われます。', '置き換える')) return;
+        !await ask('現在の本文・読み仮名・赤ペン・マーカー・文字メモを、選択した原稿ファイルの内容で置き換えますか？この原稿の内容は置き換わります。', '置き換える')) return;
       // All validation and confirmation have succeeded. Commit together, using
       // the same model and rendering path as manually entered manuscripts.
       readAnnotations = restored;
       readMarks = markings;
-      pendingReadPaste = null; savedManuscript = true;
+      pendingReadPaste = null;
       $('read-text').value = restored.source;
       readInputSnapshot = $('read-text').value;
       $('read-text').dispatchEvent(new Event('input'));
@@ -526,10 +526,11 @@
   // draft mutation occurs when the user cancels.
   let navigationTarget = null;
   function requestNavigation(next) {
-    if (navigationTarget !== null || editWarningPending) return;
+    if (navigationTarget !== null) return;
     if (next === 'home' || next === 'read-input') readMeasurementReturn = null;
     if (view !== 'reading' || mode !== 'read') { show(next); return; }
     if (!readyForDirectAction()) return;
+    if (saveLibrary()) { show(next); return; }
     if (!hasReadings(readAnnotations) && !readMarks.hasMarks) { show(next); return; }
     closeSettings();
     if (document.querySelector('dialog[open]')) return;
@@ -558,17 +559,9 @@
     }, { once: true });
     dialog.showModal(); $('save-navigation-cancel').focus({ preventScroll: true });
   }
-  async function approveEditing(alreadyEnabled) {
-    if (editWarningPending || navigationTarget !== null || !readyForDirectAction()) return false;
-    if (alreadyEnabled || !savedManuscript) return true;
-    closeSettings();
-    if (document.querySelector('dialog[open]')) return false;
-    editWarningPending = true;
-    try {
-      if (!await ask('編集内容は既存のJSONファイルへ自動反映されません。編集後は「原稿を保存」から再保存してください。', '編集を始める', '原稿の編集を始めますか？')) return false;
-      savedManuscript = false;
-      return true;
-    } finally { editWarningPending = false; }
+  async function approveEditing() {
+    if (navigationTarget !== null || !readyForDirectAction()) return false;
+    return true; // Browser autosave tracks edits; downloaded JSON remains a snapshot.
   }
   $('reader-back').onclick = () => requestNavigation(mode === 'time' ? 'time-input' : 'read-input');
   $('toolbar-settings').onclick = () => { if (!readyForDirectAction()) return; openSettings(); };
@@ -802,7 +795,9 @@
     cancelMeasurement();
     if (Number.isFinite(seconds) && seconds > 0) {
       lastMeasuredCustomText = measuredType === 'custom' ? displayedText : null;
-      history.push({ characters: measuredCount, seconds, type: measuredType }); persist();
+      history.push({ characters: measuredCount, seconds, type: measuredType, measuredAt: new Date().toISOString(),
+        title: measuredType === 'sample' ? sample.title : readMeasurementReturn ? activeBook()?.title || '無題の原稿' : '用意した文章' });
+      history = history.slice(-100); persist();
     }
     show('results');
   };
@@ -848,7 +843,7 @@
     history.forEach((record, i) => {
       const li = document.createElement('li'), detail = document.createElement('div'), small = document.createElement('small'), remove = document.createElement('button');
       detail.textContent = `${i + 1}回目 · ${record.characters.toLocaleString()}文字 / ${record.seconds.toFixed(1)}秒`;
-      small.textContent = `${record.type === 'sample' ? '例文' : '用意した文章'}・${Math.round(record.characters / record.seconds * 60).toLocaleString()}文字/分`;
+      small.textContent = `${record.measuredAt ? new Date(record.measuredAt).toLocaleString('ja-JP') : '日時不明（旧履歴）'} · ${record.title || (record.type === 'sample' ? '例文' : '用意した文章')}・${Math.round(record.characters / record.seconds * 60).toLocaleString()}文字/分`;
       detail.append(small); remove.textContent = '削除'; remove.setAttribute('aria-label', `${i + 1}回目の計測結果を削除`);
       remove.onclick = () => { history.splice(i, 1); persist(); renderResults(); };
       li.append(detail, remove); $('history').append(li);
@@ -957,4 +952,178 @@
   addEventListener('resize', resetToolbarViewport);
   addEventListener('orientationchange', resetToolbarViewport);
   window.visualViewport?.addEventListener('resize', resetToolbarViewport);
+
+  function activeBook() { return library?.manuscripts.find(book => book.id === library.activeId); }
+  function renderIdentity() {
+    const book = activeBook();
+    $('profile-display').textContent = (library.profile.name ? `${library.profile.name}さんの本棚` : 'あなたの本棚') + (book ? ` · ${book.title}` : '');
+  }
+  function saveStatus(message, failed = false) {
+    $('autosave-status').textContent = message;
+    $('autosave-status').classList.toggle('save-failed', failed);
+    $('retry-save').hidden = !failed;
+  }
+  function createBook() {
+    if (library.manuscripts.length >= 500) throw new Error('原稿は500件までです。バックアップして整理してください。');
+    const now = new Date().toISOString();
+    const book = { id: crypto.randomUUID(), title: '無題の原稿', createdAt: now, updatedAt: now, draft: '', pending: null,
+      manuscript: JSON.parse(window.ManuscriptMarks.serializeManuscript(new window.ReadingAnnotations(), new window.ManuscriptMarks())) };
+    library.manuscripts.push(book); library.activeId = book.id; return book;
+  }
+  function captureLibrary() {
+    let book = activeBook();
+    if (!book && ($('read-text').value || readAnnotations.source)) book = createBook();
+    if (book) {
+      const manuscript = JSON.parse(window.ManuscriptMarks.serializeManuscript(readAnnotations, readMarks));
+      const draft = $('read-text').value;
+      if (draft.length > window.ReadingAnnotations.MAX_TEXT_LENGTH) throw new Error('本文は200,000 UTF-16文字までです。');
+      const title = $('manuscript-title').value.trim() || '無題の原稿';
+      const pending = pendingReadPaste?.input === draft ? pendingReadPaste.model.toJSON() : null;
+      if (book.draft !== draft || book.title !== title || JSON.stringify(book.manuscript) !== JSON.stringify(manuscript) || JSON.stringify(book.pending) !== JSON.stringify(pending)) {
+        Object.assign(book, { draft, title, manuscript, pending, updatedAt: new Date().toISOString() });
+      }
+    }
+    library.profile.name = $('profile-name').value;
+    library.history = history;
+    library.target = validTarget(target) ? String(Number(target)) : '';
+    library.plannedMinutes = validMinutes(plannedMinutes) ? String(Number(plannedMinutes)) : '20';
+    renderIdentity();
+  }
+  function writeLibrary(candidate, replace = false) {
+    if (libraryBlocked && !replace) throw new Error('保存データを保護中です。バックアップから復元するか、他のタブを閉じて再読み込みしてください。');
+    const current = localStorage.getItem(window.UserLibrary.KEY);
+    if (current !== storedLibrary) {
+      libraryBlocked = true;
+      throw new Error('別のタブでデータが変更されました。現在の内容をバックアップし、再読み込みしてください。');
+    }
+    const json = JSON.stringify(candidate);
+    if (new TextEncoder().encode(json).length > window.UserLibrary.MAX_BYTES) throw new Error('全データは30MiBまでです。');
+    // A single setItem is atomic: quota/access failure leaves the old value intact.
+    localStorage.setItem(window.UserLibrary.KEY, json);
+    storedLibrary = json; libraryBlocked = false;
+  }
+  function saveLibrary() {
+    if (!libraryReady) return false;
+    clearTimeout(saveTimer);
+    try {
+      captureLibrary(); writeLibrary(library);
+      saveStatus('このブラウザに自動保存済み'); renderLibrary(); return true;
+    } catch (error) {
+      saveStatus(`未保存：${error.message} 変更は画面内にのみ保持されています。バックアップもお試しください。`, true); return false;
+    }
+  }
+  function scheduleSave() {
+    if (!libraryReady) return;
+    clearTimeout(saveTimer); saveStatus('変更を保存中…');
+    saveTimer = setTimeout(saveLibrary, 250);
+  }
+  function restoreBook(book) {
+    const restored = book ? window.ManuscriptMarks.restoreManuscript(JSON.stringify(book.manuscript)) :
+      { manuscript: new window.ReadingAnnotations(), markings: new window.ManuscriptMarks() };
+    readAnnotations = restored.manuscript; readMarks = restored.markings;
+    $('read-text').value = book?.draft || '';
+    readInputSnapshot = readAnnotations.source.replace(/\r\n?/g, '\n');
+    pendingReadPaste = book?.pending ? { model: window.ReadingAnnotations.fromData(book.pending), input: book.draft } : null;
+    $('manuscript-title').value = book?.title || '';
+    $('read-count').textContent = `${countText($('read-text').value)}文字`;
+    readPaper = false; readMeasurementReturn = null;
+    renderIdentity();
+  }
+  let libraryRenderKey = '';
+  function renderLibrary() {
+    const key = JSON.stringify(library.manuscripts.map(b => [b.id, b.title, b.updatedAt, b.draft.length]));
+    if (key === libraryRenderKey) return;
+    libraryRenderKey = key;
+    $('library-empty').hidden = !!library.manuscripts.length;
+    $('library-list').replaceChildren(...[...library.manuscripts].reverse().map(book => {
+      const li = document.createElement('li'), open = document.createElement('button'), detail = document.createElement('small'), remove = document.createElement('button');
+      open.className = 'book-open'; open.textContent = book.title;
+      detail.textContent = `${countText(book.draft).toLocaleString()}文字 · ${new Date(book.updatedAt).toLocaleDateString('ja-JP')}`;
+      open.append(detail);
+      open.onclick = () => {
+        if (!saveLibrary()) { notify('切り替える前に保存を再試行するか、バックアップしてください。'); return; }
+        library.activeId = book.id; restoreBook(book); saveLibrary();
+        if (book.draft === readInputSnapshot && countText(book.draft)) displayReader('read', readAnnotations.source);
+        else show('read-input');
+      };
+      remove.textContent = '削除'; remove.setAttribute('aria-label', `${book.title}を削除`);
+      remove.onclick = async () => {
+        if (!await ask(`「${book.title}」とその書き込みを削除します。この操作は取り消せません。必要なら先にバックアップしてください。`, '削除する', '原稿を削除しますか？')) return;
+        if (!saveLibrary()) return;
+        const candidate = structuredClone(library);
+        candidate.manuscripts = candidate.manuscripts.filter(b => b.id !== book.id);
+        if (candidate.activeId === book.id) candidate.activeId = null;
+        try {
+          writeLibrary(candidate); library = candidate;
+          if (!library.activeId) restoreBook(null);
+          renderLibrary(); saveStatus('このブラウザに自動保存済み');
+        } catch (error) { saveStatus(`削除できません：${error.message}`, true); }
+      };
+      li.append(open, remove); return li;
+    }));
+  }
+  $('new-manuscript').onclick = () => {
+    if (!saveLibrary()) return;
+    try { const book = createBook(); restoreBook(book); saveLibrary(); show('read-input'); $('manuscript-title').focus(); }
+    catch (error) { notify(error.message); }
+  };
+  ['read-text', 'manuscript-title', 'profile-name'].forEach(id => $(id).addEventListener('input', scheduleSave));
+  // Debouncing captures completed model operations, excluding unfinished gestures/editors.
+  document.addEventListener('manuscript-change', scheduleSave);
+  $('retry-save').onclick = saveLibrary;
+  addEventListener('pagehide', saveLibrary);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) saveLibrary(); });
+  addEventListener('beforeunload', event => {
+    if (!saveLibrary()) { event.preventDefault(); event.returnValue = ''; }
+  });
+  addEventListener('storage', event => {
+    if (event.key === window.UserLibrary.KEY || event.key === null) {
+      libraryBlocked = true; saveStatus('未保存：別のタブでデータが変更されました。バックアップして再読み込みしてください。', true);
+    }
+  });
+  $('export-user').onclick = () => {
+    let url;
+    try {
+      captureLibrary(); const validated = window.UserLibrary.validate(library);
+      const json = JSON.stringify(validated, null, 2); window.UserLibrary.parse(json);
+      url = URL.createObjectURL(new Blob([json], { type: 'application/json;charset=utf-8' }));
+      const a = document.createElement('a'); a.href = url; a.download = `yomijitaku-user-${new Date().toLocaleDateString('sv-SE')}.json`;
+      document.body.append(a); a.click(); a.remove(); notify('バックアップのダウンロードを開始しました。端末への保存を確認してください。');
+    } catch (error) { notify(`バックアップできません：${error.message}`); }
+    finally { if (url) setTimeout(() => URL.revokeObjectURL(url), 60000); }
+  };
+  let restoringUser = false;
+  $('import-user').onclick = () => $('user-file').click();
+  $('user-file').onchange = async () => {
+    const file = $('user-file').files[0]; $('user-file').value = '';
+    if (!file || restoringUser) return;
+    restoringUser = true; $('import-user').disabled = true;
+    try {
+      if (file.size > window.UserLibrary.MAX_BYTES) throw new Error('バックアップは30MiBまでです。');
+      const candidate = window.UserLibrary.parse(new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()));
+      if (!await ask(`表示名：${candidate.profile.name || '未設定'}\n原稿：${candidate.manuscripts.length}件／計測履歴：${candidate.history.length}件\n\n現在のユーザーデータ全体を置き換えます。自動統合はしません。必要ならキャンセルして先にバックアップしてください。`, '全体を入れ替える', 'バックアップから復元しますか？')) return;
+      clearTimeout(saveTimer);
+      writeLibrary(candidate, true); // Durable write must succeed before changing live models.
+      library = candidate; history = library.history; target = library.target; plannedMinutes = library.plannedMinutes;
+      $('profile-name').value = library.profile.name; restoreBook(activeBook());
+      timeAnnotations = null; timeMarks = null; timeInputSnapshot = null; $('time-text').value = ''; lastMeasuredCustomText = null;
+      setTarget(target); targetManual = !!target;
+      $('planned-minutes').value = plannedMinutes; $('estimate-minutes').value = plannedMinutes;
+      saveLibrary(); renderResults(); show('home'); notify('ユーザーデータ全体を復元しました。');
+    } catch (error) { notify(`復元できません。現在のデータは変更していません。${error.message}`); }
+    finally { restoringUser = false; $('import-user').disabled = false; }
+  };
+  library = window.UserLibrary.empty();
+  try {
+    storedLibrary = localStorage.getItem(window.UserLibrary.KEY);
+    if (storedLibrary !== null) library = window.UserLibrary.parse(storedLibrary);
+    else library.history = history.slice(-100).map(r => ({ ...r, measuredAt: null, title: r.type === 'sample' ? '例文' : '用意した文章' }));
+    if (storedLibrary === null) { library.target = String(target); library.plannedMinutes = String(plannedMinutes); }
+  } catch (error) {
+    libraryBlocked = true; saveStatus(`保存データを読み込めません：${error.message} 既存データは上書きしません。`, true);
+  }
+  history = library.history; target = library.target; plannedMinutes = library.plannedMinutes;
+  $('profile-name').value = library.profile.name; restoreBook(activeBook());
+  setTarget(target); targetManual = !!target; $('planned-minutes').value = plannedMinutes;
+  libraryReady = true; renderLibrary(); renderHomeResults(); saveLibrary();
 })();

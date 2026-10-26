@@ -5,7 +5,7 @@ const http = require('node:http');
 const { chromium } = require('playwright');
 const directory = path.resolve(__dirname, '..');
 const output = process.env.READER_TEST_ARTIFACTS || path.join(directory, 'tmp');
-const files = new Set(['index.html','styles.css','samples.js','reading-annotations.js','html-ruby.js','reader.js','manuscript-writing.js','manuscript-print.js','app.js']);
+const files = new Set(['index.html','styles.css','samples.js','reading-annotations.js','html-ruby.js','reader.js','manuscript-writing.js','manuscript-print.js','user-library.js', 'app.js']);
 const server = http.createServer((req,res) => {
   const name = new URL(req.url,'http://localhost').pathname.slice(1) || 'index.html';
   if (!files.has(name)) return res.writeHead(404).end();

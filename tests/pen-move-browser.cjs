@@ -6,7 +6,7 @@ const http = require('node:http');
 const { chromium } = require('playwright');
 const directory = path.resolve(__dirname, '..');
 const output = process.env.READER_TEST_ARTIFACTS || path.join(directory, 'tmp', 'pen-move');
-const files = new Set(['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-writing.js', 'manuscript-print.js', 'app.js']);
+const files = new Set(['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-writing.js', 'manuscript-print.js', 'user-library.js', 'app.js']);
 const server = http.createServer((req, res) => {
   const name = new URL(req.url, 'http://localhost').pathname.slice(1) || 'index.html';
   if (!files.has(name)) return res.writeHead(404).end();
@@ -50,7 +50,7 @@ const length = points => points.slice(1).reduce((sum, p, i) => sum + Math.hypot(
       assert.deepEqual((await state()).items, initial.items);
       await page.evaluate(data => Reader.show(data.text, ReadingAnnotations.fromData(data)), data);
 
-      await page.locator('#writing-mode').click(); await page.locator('#confirm-ok').click();
+      await page.locator('#writing-mode').click(); // Autosave removes the former file-edit warning.
       await page.locator('[data-writing-tool=move]').click();
       const reveal = async () => {
         await page.evaluate(() => { const w = ManuscriptWriting.printSnapshot(), r = document.getElementById('reader').getBoundingClientRect(); scrollBy(0, r.top + w.pens[0].points[0].y - innerHeight * .55); });
@@ -118,7 +118,7 @@ const length = points => points.slice(1).reduce((sum, p, i) => sum + Math.hypot(
       await page.locator('#writing-undo').click();
 
       // Keep the existing confirm/cancel/session mechanics for display settings.
-      await page.locator('#operations').click(); await page.locator('#open-settings').click();
+      await page.locator('#toolbar-settings').click();
       if (width < 600) await page.locator('#tab-line-height').click();
       const originalHeight = await page.locator('#line-height').inputValue();
       const changeHeight = value => page.locator('#line-height').evaluate((el, value) => { el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }, value);
@@ -185,6 +185,7 @@ const length = points => points.slice(1).reduce((sum, p, i) => sum + Math.hypot(
       await page.evaluate(() => ManuscriptPrint.clear());
       await page.reload(); await page.locator('[data-go=read-input]').click();
       await page.locator('#manuscript-file').setInputFiles({ name: 'moved.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(saved)) });
+      await page.locator('#confirm-ok').click(); // Replace the manuscript restored by autosave.
       await page.waitForFunction(() => !document.getElementById('reading').hidden);
       assert.deepEqual((await state()).items, saved.marks);
       (await state()).pens.forEach((pen, i) => sameShape(pen.points, final.pens[i].points));
