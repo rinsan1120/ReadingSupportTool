@@ -4,15 +4,16 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const { chromium } = require('playwright');
+const { startNew, installMemoryPicker, snapshotUser } = require('./file-session.cjs');
 const root = path.resolve(__dirname, '..');
-const files = new Set(['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-writing.js', 'manuscript-print.js', 'app.js']);
+const files = new Set(['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-writing.js', 'manuscript-print.js', 'user-library.js', 'app.js']);
 const server = http.createServer((req, res) => {
   const name = new URL(req.url, 'http://localhost').pathname.slice(1) || 'index.html';
   if (!files.has(name)) return res.writeHead(404).end();
   res.setHeader('Content-Type', (name.endsWith('.js') ? 'text/javascript' : name.endsWith('.css') ? 'text/css' : 'text/html') + '; charset=utf-8');
   res.end(fs.readFileSync(path.join(root, name)));
 });
-const records = page => page.evaluate(() => JSON.parse(sessionStorage.getItem('reading-support-results-v1'))?.history || []);
+const records = async page => (await snapshotUser(page)).history;
 const text = (page, id) => page.locator('#' + id).textContent();
 const invoke = (page, id) => page.locator('#' + id).evaluate(el => el.onclick());
 const snapshot = page => page.evaluate(() => window.ManuscriptWriting.printSnapshot());
@@ -74,7 +75,7 @@ const screenshot = async (page, name) => {
         const page = await context.newPage(); page.setDefaultTimeout(8000);
         const errors = []; page.on('pageerror', e => errors.push(e.message));
         await page.clock.install({ time: new Date('2026-10-26T00:00:00Z') });
-        await page.goto(`http://127.0.0.1:${server.address().port}/`);
+        await page.goto(`http://127.0.0.1:${server.address().port}/`); await startNew(page); await installMemoryPicker(page);
         await page.clock.pauseAt(new Date('2026-10-26T00:01:00Z'));
         await page.locator('#home [data-go=read-input]').click();
         const manuscript = { format: 'reading-support-manuscript', version: 3,

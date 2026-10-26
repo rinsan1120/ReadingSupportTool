@@ -3,8 +3,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const { chromium } = require('playwright');
+const { startNew, saveUser, loadUser } = require('./file-session.cjs');
 const directory = path.resolve(__dirname, '..');
-const files = new Set(['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-writing.js', 'manuscript-print.js', 'app.js']);
+const files = new Set(['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-writing.js', 'manuscript-print.js', 'user-library.js', 'app.js']);
 const server = http.createServer((req, res) => {
   const name = new URL(req.url, 'http://localhost').pathname.slice(1) || 'index.html';
   if (!files.has(name)) return res.writeHead(404).end();
@@ -19,7 +20,7 @@ const server = http.createServer((req, res) => {
       const context = await browser.newContext({ viewport: { width, height: 900 }, isMobile: width < 600, hasTouch: true });
       const page = await context.newPage(), errors = [];
       page.on('pageerror', e => errors.push(e.message));
-      await page.goto('http://127.0.0.1:' + server.address().port);
+      await page.goto('http://127.0.0.1:' + server.address().port); await startNew(page);
       await page.locator('[data-go=read-input]').click();
       const text = '静かな森を歩いて風の音を聞く。\n'.repeat(90);
       const pen = (id, offset, color, points = [{ x: 0, y: .7 }, { x: 2, y: .7 }]) => ({
@@ -57,7 +58,7 @@ const server = http.createServer((req, res) => {
         return { legacy, invalid };
       }, data);
       assert.ok(validations.legacy.every(Boolean)); assert.ok(validations.invalid.every(Boolean));
-      await page.locator('#writing-mode').click(); await page.locator('#confirm-ok').click();
+      await page.locator('#writing-mode').click(); // Autosave removes the former file-edit warning.
       assert.deepEqual(await page.locator('.writing-tools > button > span').allTextContents(), ['ペン', 'マーカー', 'メモ', 'ルビ', '消去', '戻す']);
       assert.ok(await page.locator('#writing-mode').isVisible());
       assert.equal(await page.locator('#writing-mode').getAttribute('aria-expanded'), 'true');
@@ -159,11 +160,12 @@ const server = http.createServer((req, res) => {
       assert.ok(new Set(pdf.paths.filter(p => p.id === 2).map(p => p.page)).size > 1, 'colored stroke spans PDF pages');
       for (const p of pdf.paths) assert.equal(p.color, ['rgb(197, 34, 40)', 'rgb(37, 99, 235)', 'rgb(21, 128, 61)'][(p.id - 1) % 3]);
       assert.deepEqual(pdf.paths.map(({ color, ...p }) => p), pdf.redPaths.map(({ color, ...p }) => p), 'color has no effect on PDF geometry');
-      const downloadPromise = page.waitForEvent('download'); await page.locator('#export-manuscript').click();
-      const download = await downloadPromise, saved = JSON.parse(fs.readFileSync(await download.path(), 'utf8'));
+      const userFile = await saveUser(page), saved = userFile.manuscripts[0].manuscript;
       assert.equal(saved.version, 4); assert.deepEqual(saved.marks, beforeMove.items);
       const roundTrip = await page.evaluate(saved => ManuscriptMarks.restoreManuscript(JSON.stringify(saved)).markings.items, saved);
       assert.deepEqual(roundTrip, saved.marks);
+      await page.reload(); await loadUser(page, userFile); await page.locator('#library-list .book-open').click();
+      assert.deepEqual(await page.evaluate(() => ManuscriptWriting.printSnapshot().items), saved.marks, 'all pen colors survive a user file round trip');
       assert.deepEqual(errors, []);
       await context.close(); console.log(width + 'px: pen submenu, mouse/touch colors, move/Undo, JSON and PDF passed');
     }

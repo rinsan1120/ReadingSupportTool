@@ -6,7 +6,7 @@ const http = require('node:http');
 const { chromium } = require('playwright');
 const directory = path.resolve(__dirname, '..'), output = path.join(directory, 'tmp/pdfs');
 const fixture = fs.readFileSync(path.join(__dirname, 'fixtures/aozora-ruby.html'), 'utf8');
-const files = ['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-writing.js', 'manuscript-print.js', 'app.js'];
+const files = ['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-writing.js', 'manuscript-print.js', 'user-library.js', 'app.js'];
 const server = http.createServer((req, res) => {
   const name = req.url === '/' ? 'index.html' : req.url.slice(1);
   if (!files.includes(name)) { res.writeHead(404).end(); return; }

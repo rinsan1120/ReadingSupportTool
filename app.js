@@ -1,7 +1,9 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
-  const STORAGE = 'reading-support-results-v1';
+  let library = null, changeTimer = 0, libraryReady = false;
+  let savedUserSnapshot = null, captureFailed = false, userDirty = false, savingUser = false, userFilename = '', hasUserFile = false;
+  let hasLegacyUserData = false, pendingDownloadSnapshot = null;
   let view = 'home', mode = 'read', sourceType = 'sample', sample = null;
   let history = [], target = '', targetManual = false, plannedMinutes = '20';
   let readMeasurementReturn = null;
@@ -10,7 +12,7 @@
   let partialOn = false, partialLimit = '200', measuredPartial = false, timingRange = null;
   let readAnnotations = new window.ReadingAnnotations();
   let readMarks = new window.ManuscriptMarks();
-  let savedManuscript = false, editWarningPending = false, pendingReadPaste = null;
+  let pendingReadPaste = null;
   const replacementLoss = () => hasReadings(readAnnotations) || readMarks.hasMarks
     ? ' 読み仮名・書き込みは、変更後の本文を開くまで保持されます。開く際に削除を確認します。' : '';
   // A textarea normalizes CRLF/CR to LF. Retain the exact imported source until
@@ -176,7 +178,7 @@
     $('reader-state').textContent = !measuring ? '原稿編集中' : phase === 'running' ? '計測中' : phase === 'paused' ? '一時停止中' : phase === 'resuming' ? '再開準備中' : phase === 'countdown' ? '計測開始前' : '計測準備';
     $('reader-progress').classList.toggle('is-measuring', active);
     renderSteps('reader-steps', measuring, active ? 2 : 1);
-    const backLabel = measuring ? '計測設定に戻る' : '本文入力に戻る';
+    const backLabel = measuring ? '計測設定に戻る' : '本文を編集';
     $('reader-back').querySelector('span').textContent = backLabel;
     $('reader-back').setAttribute('aria-label', backLabel);
   }
@@ -199,19 +201,9 @@
   $('screen-id-copy').addEventListener('keydown', event => {
     if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); copyScreenId(); }
   });
-  function persist() {
-    try { sessionStorage.setItem(STORAGE, JSON.stringify({ version: 1, history, target: validTarget(target) ? Number(target) : null, plannedMinutes: validMinutes(plannedMinutes) ? Number(plannedMinutes) : 20 })); }
-    catch { notify('このブラウザでは結果を保存できません。この画面を開いている間は利用できます。'); }
+  function recordChanges() {
+    if (libraryReady) syncLibrary();
   }
-  try {
-    const stored = JSON.parse(sessionStorage.getItem(STORAGE));
-    if (stored?.version === 1 && Array.isArray(stored.history)) {
-      history = stored.history.filter(r => Number.isSafeInteger(r.characters) && r.characters > 0 && Number.isFinite(r.seconds) && r.seconds > 0 && ['sample', 'custom'].includes(r.type))
-        .map(r => ({ characters: r.characters, seconds: r.seconds, type: r.type }));
-      if (validTarget(stored.target)) { target = String(stored.target); targetManual = true; }
-      if (validMinutes(stored.plannedMinutes)) plannedMinutes = String(stored.plannedMinutes);
-    }
-  } catch { /* Storage is optional; text is never stored. */ }
   function setTarget(value, manual = false) {
     target = value; if (manual) targetManual = true;
     $('result-target').value = value; $('estimate-target').value = value;
@@ -227,6 +219,7 @@
   setTarget(target);
   $('planned-minutes').value = plannedMinutes;
   function show(next) {
+    if (libraryReady) syncLibrary();
     if (view === 'reading' && next !== 'reading') { window.ManuscriptWriting.leave(); window.ManuscriptPrint.clear(); window.Reader.leave(); cancelMeasurement(); releaseWake(); }
     document.querySelectorAll('dialog[open]').forEach(d => d.close());
     document.querySelectorAll('.view').forEach(el => el.hidden = el.id !== next);
@@ -302,8 +295,11 @@
           sourceRubies: imported.sourceRubies.map(r => ({ ...r, start: r.start + begin, end: r.end + begin })) }));
       }
       const replacingReadings = ruby && whole && (hasReadings(retained) || retainedMarks?.hasMarks);
-      if (((el.value && end > begin) || replacingReadings) && !await ask(replacingReadings ?
-        '入力欄の本文と読み仮名を、貼り付けた文章と元の読み仮名で置き換えますか？' + (id === 'read-text' ? replacementLoss() : timeMarks?.hasMarks ? ' 計測用の書き込みも削除されます。「文章を読む」の原稿は保持します。' : '') : '選択中の本文を貼り付けた文章で置き換えますか？', '置き換える')) return;
+      // Partial-selection pastes lose nothing beyond the selected text, which
+      // native undo restores, so they no longer ask. Whole-text replacement
+      // and ruby imports that would discard readings/marks still confirm.
+      if ((replacingReadings || (whole && el.value)) && !await ask(replacingReadings ?
+        '入力欄の本文と読み仮名を、貼り付けた文章と元の読み仮名で置き換えますか？' + (id === 'read-text' ? replacementLoss() : timeMarks?.hasMarks ? ' 計測用の書き込みも削除されます。「文章を読む」の原稿は保持します。' : '') : '入力済みの本文全体を、貼り付けた文章で置き換えますか？', '置き換える')) return;
       if (view !== previousView || el.value !== previous) return;
       el.setRangeText(plain, begin, end, 'end');
       if (imported) {
@@ -334,10 +330,10 @@
   }));
   $('clear-read').onclick = async () => { if ($('read-text').value && await ask('入力した本文を削除しますか？' + replacementLoss())) { $('read-text').value = ''; $('read-text').dispatchEvent(new Event('input')); } };
   ['result-target', 'estimate-target'].forEach(id => $(id).addEventListener('input', () => {
-    setTarget($(id).value, true); persist(); renderResults();
+    setTarget($(id).value, true); recordChanges(); renderResults();
   }));
   ['planned-minutes', 'estimate-minutes'].forEach(id => $(id).addEventListener('input', () => {
-    plannedMinutes = $(id).value; persist(); renderResults();
+    plannedMinutes = $(id).value; recordChanges(); renderResults();
   }));
   async function openReader(nextMode) {
     if (openingReader) return;
@@ -352,7 +348,7 @@
         if ((hasReadings(readAnnotations) || readMarks.hasMarks) && !await ask('この文章を開くと、現在の原稿の読み仮名・赤ペン・マーカー・文字メモはすべて削除されます。変更後の本文を開きますか？', '開く')) return;
         if (pasted) readAnnotations = pasted;
         else readAnnotations.reset(text);
-        pendingReadPaste = null; savedManuscript = false;
+        pendingReadPaste = null;
         readMarks = new window.ManuscriptMarks(text);
         readInputSnapshot = $('read-text').value;
       }
@@ -465,34 +461,7 @@
     } catch (error) { notify(`計測用の原稿を準備できません。${error.message}`); }
     finally { openingReader = false; }
   };
-  function downloadManuscript() {
-    if (!readyForDirectAction()) return;
-    if (view !== 'reading' || mode !== 'read') return;
-    let url;
-    const link = document.createElement('a');
-    try {
-      const json = window.ManuscriptMarks.serializeManuscript(readAnnotations, readMarks);
-      const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
-      url = URL.createObjectURL(blob);
-      link.href = url; link.download = 'reading-manuscript.json';
-      document.body.append(link); link.click();
-      window.ManuscriptWriting.setMode(false);
-      window.Reader.setRubyMode(false);
-      savedManuscript = true;
-      return true;
-    } catch (error) {
-      const message = `原稿ファイルを保存できません。${error.message}`;
-      notify(message);
-      if ($('save-navigation-dialog').open) $('save-navigation-error').textContent = message;
-      return false;
-    }
-    finally {
-      link.remove();
-      // Leave time for the browser's local download to consume the blob URL.
-      if (url) setTimeout(() => URL.revokeObjectURL(url), 60000);
-    }
-  };
-  $('export-manuscript').onclick = downloadManuscript;
+  $('export-manuscript').onclick = saveUserData;
   let importing = false;
   $('import-manuscript').onclick = () => $('manuscript-file').click();
   $('manuscript-file').addEventListener('change', async () => {
@@ -501,75 +470,39 @@
     if (!file || importing || view !== 'read-input') return;
     importing = true; $('import-manuscript').disabled = true;
     try {
-      if (file.size > window.ReadingAnnotations.MAX_FILE_BYTES) throw new Error('原稿ファイルは10MiBまでです。');
+      if (file.size > window.ReadingAnnotations.MAX_FILE_BYTES) throw new Error('原稿ファイルが大きすぎます（上限は約10MBです）。');
       let json;
       try { json = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()); }
       catch { throw new Error('UTF-8のJSONファイルを読み取れませんでした。'); }
+      let chosenFormat = null;
+      try { chosenFormat = JSON.parse(json)?.format; } catch { /* The restore step below reports invalid files. */ }
+      if (chosenFormat === 'yomijitaku-user') {
+        notify('これはユーザーデータ全体のファイルです。移行用の取り込みではありません。ホームの「保存したファイルを開く」から読み込んでください。');
+        return;
+      }
       const { manuscript: restored, markings } = window.ManuscriptMarks.restoreManuscript(json);
       if (view !== 'read-input') return;
       if (($('read-text').value || readAnnotations.source || hasReadings(readAnnotations) || readMarks.hasMarks) &&
-        !await ask('現在の本文・読み仮名・赤ペン・マーカー・文字メモを、選択した原稿ファイルの内容で置き換えますか？未保存の変更は失われます。', '置き換える')) return;
+        !await ask('現在の本文・読み仮名・赤ペン・マーカー・文字メモを、選択した旧形式ファイルの内容で置き換えますか？この原稿の内容は置き換わります。', '置き換える')) return;
       // All validation and confirmation have succeeded. Commit together, using
       // the same model and rendering path as manually entered manuscripts.
       readAnnotations = restored;
       readMarks = markings;
-      pendingReadPaste = null; savedManuscript = true;
+      pendingReadPaste = null;
       $('read-text').value = restored.source;
       readInputSnapshot = $('read-text').value;
       $('read-text').dispatchEvent(new Event('input'));
       displayReader('read', restored.source);
-      notify('原稿ファイルを読み込みました。');
+      notify('旧形式の原稿ファイルを取り込みました。');
     } catch (error) { notify(`原稿を読み込めません。${error.message}`); }
     finally { importing = false; $('import-manuscript').disabled = false; }
   });
-  // Keep the first destination until this dialog is closed. No navigation or
-  // draft mutation occurs when the user cancels.
-  let navigationTarget = null;
   function requestNavigation(next) {
-    if (navigationTarget !== null || editWarningPending) return;
+    if (!libraryReady || !readyForDirectAction()) return;
     if (next === 'home' || next === 'read-input') readMeasurementReturn = null;
-    if (view !== 'reading' || mode !== 'read') { show(next); return; }
-    if (!readyForDirectAction()) return;
-    if (!hasReadings(readAnnotations) && !readMarks.hasMarks) { show(next); return; }
-    closeSettings();
-    if (document.querySelector('dialog[open]')) return;
-    navigationTarget = next;
-    const dialog = $('save-navigation-dialog'), scroll = window.scrollY;
-    $('save-navigation-prompt').hidden = false;
-    $('save-navigation-started').hidden = true;
-    $('save-navigation-error').textContent = '';
-    const move = () => { const destination = navigationTarget; dialog.close('move'); show(destination); };
-    $('save-navigation-cancel').onclick = () => dialog.close();
-    $('save-navigation-discard').onclick = move;
-    $('save-navigation-download').onclick = () => {
-      if (!downloadManuscript()) return;
-      $('save-navigation-prompt').hidden = true;
-      $('save-navigation-started').hidden = false;
-      $('save-navigation-return').focus({ preventScroll: true });
-    };
-    $('save-navigation-return').onclick = () => dialog.close('reader');
-    $('save-navigation-move').onclick = move;
-    dialog.returnValue = '';
-    dialog.addEventListener('close', () => {
-      navigationTarget = null;
-      if (view === 'reading') {
-        window.scrollTo(0, scroll);
-      }
-    }, { once: true });
-    dialog.showModal(); $('save-navigation-cancel').focus({ preventScroll: true });
+    show(next);
   }
-  async function approveEditing(alreadyEnabled) {
-    if (editWarningPending || navigationTarget !== null || !readyForDirectAction()) return false;
-    if (alreadyEnabled || !savedManuscript) return true;
-    closeSettings();
-    if (document.querySelector('dialog[open]')) return false;
-    editWarningPending = true;
-    try {
-      if (!await ask('編集内容は既存のJSONファイルへ自動反映されません。編集後は「原稿を保存」から再保存してください。', '編集を始める', '原稿の編集を始めますか？')) return false;
-      savedManuscript = false;
-      return true;
-    } finally { editWarningPending = false; }
-  }
+  async function approveEditing() { return readyForDirectAction(); }
   $('reader-back').onclick = () => requestNavigation(mode === 'time' ? 'time-input' : 'read-input');
   $('toolbar-settings').onclick = () => { if (!readyForDirectAction()) return; openSettings(); };
   function closeWritingMenu() {
@@ -802,7 +735,9 @@
     cancelMeasurement();
     if (Number.isFinite(seconds) && seconds > 0) {
       lastMeasuredCustomText = measuredType === 'custom' ? displayedText : null;
-      history.push({ characters: measuredCount, seconds, type: measuredType }); persist();
+      history.push({ characters: measuredCount, seconds, type: measuredType, measuredAt: new Date().toISOString(),
+        title: measuredType === 'sample' ? sample.title : readMeasurementReturn ? activeBook()?.title || '無題の原稿' : '用意した文章' });
+      history = history.slice(-100); recordChanges();
     }
     show('results');
   };
@@ -848,9 +783,9 @@
     history.forEach((record, i) => {
       const li = document.createElement('li'), detail = document.createElement('div'), small = document.createElement('small'), remove = document.createElement('button');
       detail.textContent = `${i + 1}回目 · ${record.characters.toLocaleString()}文字 / ${record.seconds.toFixed(1)}秒`;
-      small.textContent = `${record.type === 'sample' ? '例文' : '用意した文章'}・${Math.round(record.characters / record.seconds * 60).toLocaleString()}文字/分`;
+      small.textContent = `${record.measuredAt ? new Date(record.measuredAt).toLocaleString('ja-JP') : '日時不明（旧履歴）'} · ${record.title || (record.type === 'sample' ? '例文' : '用意した文章')}・${Math.round(record.characters / record.seconds * 60).toLocaleString()}文字/分`;
       detail.append(small); remove.textContent = '削除'; remove.setAttribute('aria-label', `${i + 1}回目の計測結果を削除`);
-      remove.onclick = () => { history.splice(i, 1); persist(); renderResults(); };
+      remove.onclick = () => { history.splice(i, 1); recordChanges(); renderResults(); };
       li.append(detail, remove); $('history').append(li);
     });
     $('reset-history').disabled = !history.length;
@@ -871,7 +806,7 @@
   $('again').onclick = returnToSource;
   $('estimate-return').onclick = returnToSource;
   $('retry-measurement').onclick = () => openReader('time');
-  $('reset-history').onclick = async () => { if (await ask('すべての計測履歴を削除しますか？')) { history = []; persist(); renderResults(); } };
+  $('reset-history').onclick = async () => { if (await ask('すべての計測履歴を削除しますか？')) { history = []; recordChanges(); renderResults(); } };
   function readyForDirectAction() {
     if (window.Reader.hasPending) {
       window.Reader.focusPending();
@@ -957,4 +892,324 @@
   addEventListener('resize', resetToolbarViewport);
   addEventListener('orientationchange', resetToolbarViewport);
   window.visualViewport?.addEventListener('resize', resetToolbarViewport);
+
+  function activeBook() { return library?.manuscripts.find(book => book.id === library.activeId); }
+  function renderIdentity() {
+    const book = activeBook();
+    $('profile-display').textContent = (library.profile.name ? `${library.profile.name}さんの本棚` : 'あなたの本棚') + (book ? ` · ${book.title}` : '');
+  }
+  function saveStatus(message, failed = false) {
+    $('user-save-status').textContent = message;
+    $('user-save-status').classList.toggle('save-failed', failed);
+    $('user-save-status').dataset.unsaved = String(userDirty);
+  }
+  function snapshotKey(data) {
+    // Opening a different book does not change the user's manuscripts or results.
+    return JSON.stringify({ ...data, activeId: null }, (key, value) => value && typeof value === 'object' && !Array.isArray(value)
+      ? Object.fromEntries(Object.keys(value).sort().map(name => [name, value[name]])) : value);
+  }
+  function renderSaveState(message = '') {
+    // Distinguish "no file yet" from "unsaved changes": only real edits warn.
+    const fallback = userDirty ? '未保存の変更があります。「保存」でファイルに保存してください。'
+      : hasUserFile ? `保存済み · ${userFilename}` : '保存先ファイルはまだありません。「保存」でファイルを作ってください。';
+    saveStatus(message || fallback, captureFailed);
+    const readerState = $('reader-save-state');
+    if (readerState) readerState.hidden = !userDirty;
+  }
+  function createBook() {
+    if (library.manuscripts.length >= 500) throw new Error('原稿は500件までです。バックアップして整理してください。');
+    const now = new Date().toISOString();
+    const book = { id: crypto.randomUUID(), title: '無題の原稿', createdAt: now, updatedAt: now, draft: '', pending: null,
+      manuscript: JSON.parse(window.ManuscriptMarks.serializeManuscript(new window.ReadingAnnotations(), new window.ManuscriptMarks())) };
+    library.manuscripts.push(book); library.activeId = book.id; return book;
+  }
+  function captureLibrary() {
+    let book = activeBook();
+    if (!book && ($('read-text').value || readAnnotations.source)) book = createBook();
+    if (book) {
+      const manuscript = JSON.parse(window.ManuscriptMarks.serializeManuscript(readAnnotations, readMarks));
+      const draft = $('read-text').value;
+      if (draft.length > window.ReadingAnnotations.MAX_TEXT_LENGTH) throw new Error('本文が長すぎます（上限は約200,000文字です）。原稿を分けてください。');
+      const title = $('manuscript-title').value.trim() || '無題の原稿';
+      const pending = pendingReadPaste?.input === draft ? pendingReadPaste.model.toJSON() : null;
+      if (book.draft !== draft || book.title !== title || JSON.stringify(book.manuscript) !== JSON.stringify(manuscript) || JSON.stringify(book.pending) !== JSON.stringify(pending)) {
+        Object.assign(book, { draft, title, manuscript, pending, updatedAt: new Date().toISOString() });
+      }
+    }
+    library.profile.name = $('profile-name').value;
+    library.history = history;
+    library.target = validTarget(target) ? String(Number(target)) : '';
+    library.plannedMinutes = validMinutes(plannedMinutes) ? String(Number(plannedMinutes)) : '20';
+    renderIdentity();
+  }
+  function syncLibrary() {
+    if (!libraryReady) return false;
+    clearTimeout(changeTimer);
+    try {
+      captureLibrary(); captureFailed = false;
+      userDirty = snapshotKey(library) !== savedUserSnapshot;
+      renderSaveState(); renderLibrary(); return true;
+    } catch (error) {
+      captureFailed = true; userDirty = true;
+      saveStatus(`未保存：${error.message} 変更はこの画面内にのみ保持されています。`, true); return false;
+    }
+  }
+  function scheduleLibraryChange() {
+    if (!libraryReady) return;
+    // Mark immediately, then capture after the synchronous model operation finishes.
+    userDirty = true; renderSaveState(); clearTimeout(changeTimer);
+    changeTimer = setTimeout(syncLibrary, 150);
+  }
+  function restoreBook(book) {
+    const restored = book ? window.ManuscriptMarks.restoreManuscript(JSON.stringify(book.manuscript)) :
+      { manuscript: new window.ReadingAnnotations(), markings: new window.ManuscriptMarks() };
+    readAnnotations = restored.manuscript; readMarks = restored.markings;
+    $('read-text').value = book?.draft || '';
+    readInputSnapshot = readAnnotations.source.replace(/\r\n?/g, '\n');
+    pendingReadPaste = book?.pending ? { model: window.ReadingAnnotations.fromData(book.pending), input: book.draft } : null;
+    $('manuscript-title').value = book?.title || '';
+    $('read-count').textContent = `${countText($('read-text').value)}文字`;
+    readPaper = false; readMeasurementReturn = null;
+    renderIdentity();
+  }
+  let libraryRenderKey = '', renamingId = null;
+  function renderLibrary() {
+    $('library-load').hidden = !!library.manuscripts.length;
+    const totalSeconds = library.history.reduce((sum, r) => sum + r.seconds, 0);
+    const totalChars = library.history.reduce((sum, r) => sum + r.characters, 0);
+    const charsPerMinute = totalSeconds > 0 ? totalChars / totalSeconds * 60 : 0;
+    const key = JSON.stringify([renamingId, library.activeId, charsPerMinute,
+      library.manuscripts.map(b => [b.id, b.title, b.updatedAt, b.draft.length, countText(b.draft), b.draft.slice(0, 50)])]);
+    if (key === libraryRenderKey) return;
+    libraryRenderKey = key;
+    $('library-empty').hidden = !!library.manuscripts.length;
+    const sorted = [...library.manuscripts].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    $('library-list').replaceChildren(...sorted.map(book => {
+      const li = document.createElement('li');
+      if (renamingId === book.id) {
+        const input = document.createElement('input');
+        input.className = 'library-rename-input'; input.value = book.title; input.maxLength = 120;
+        input.setAttribute('aria-label', '新しいタイトル');
+        const save = document.createElement('button'); save.textContent = '保存';
+        const cancel = document.createElement('button'); cancel.textContent = 'やめる';
+        const finish = commit => {
+          if (commit) {
+            if (!syncLibrary()) return;
+            const target = library.manuscripts.find(b => b.id === book.id);
+            const title = input.value.trim() || '無題の原稿';
+            if (target && target.title !== title) {
+              target.title = title; target.updatedAt = new Date().toISOString();
+              if (target.id === library.activeId) $('manuscript-title').value = title;
+            }
+          }
+          renamingId = null; syncLibrary();
+        };
+        save.onclick = () => finish(true);
+        cancel.onclick = () => finish(false);
+        input.addEventListener('keydown', event => {
+          if (event.key === 'Enter') { event.preventDefault(); finish(true); }
+          if (event.key === 'Escape') finish(false);
+        });
+        const editActions = document.createElement('div'); editActions.className = 'book-actions';
+        editActions.append(save, cancel);
+        li.append(input, editActions); return li;
+      }
+      const open = document.createElement('button'), detail = document.createElement('small'), rename = document.createElement('button'), remove = document.createElement('button');
+      open.className = 'book-open'; open.textContent = book.title; open.setAttribute('aria-label', `${book.title}を開く`);
+      const count = countText(book.draft);
+      const estimate = count && charsPerMinute ? ` · 朗読目安 約${count / charsPerMinute < 1 ? '1分未満' : `${Math.round(count / charsPerMinute)}分`}` : '';
+      detail.textContent = `${count.toLocaleString()}文字 · ${new Date(book.updatedAt).toLocaleDateString('ja-JP')}${estimate}`;
+      open.append(detail);
+      const preview = book.draft.replace(/\s+/g, ' ').trim().slice(0, 50);
+      if (preview) { const p = document.createElement('small'); p.className = 'book-preview'; p.textContent = preview; open.append(p); }
+      if (book.id === library.activeId) {
+        const active = document.createElement('small'); active.className = 'book-active-label'; active.textContent = '開いている原稿';
+        open.append(active); open.setAttribute('aria-current', 'true');
+      }
+      const openLabel = document.createElement('small'); openLabel.className = 'book-open-label'; openLabel.textContent = 'この原稿を開く';
+      open.append(openLabel);
+      open.onclick = () => {
+        if (!syncLibrary()) { notify('入力内容を確認してから原稿を切り替えてください。'); return; }
+        library.activeId = book.id; restoreBook(book); syncLibrary();
+        if (book.draft === readInputSnapshot && countText(book.draft)) displayReader('read', readAnnotations.source);
+        else show('read-input');
+      };
+      rename.textContent = '名前を変更'; rename.setAttribute('aria-label', `${book.title}の名前を変更`);
+      rename.onclick = () => {
+        renamingId = book.id; libraryRenderKey = ''; renderLibrary();
+        const input = document.querySelector('.library-rename-input');
+        if (input) { input.focus(); input.select(); }
+      };
+      remove.textContent = '削除'; remove.setAttribute('aria-label', `${book.title}を削除`);
+      remove.onclick = async () => {
+        if (!await ask(`「${book.title}」とその書き込みを削除します。この操作は取り消せません。必要なら先にバックアップしてください。`, '削除する', '原稿を削除しますか？')) return;
+        if (!syncLibrary()) return;
+        const candidate = structuredClone(library);
+        candidate.manuscripts = candidate.manuscripts.filter(b => b.id !== book.id);
+        if (candidate.activeId === book.id) candidate.activeId = null;
+        try {
+          library = candidate;
+          if (!library.activeId) restoreBook(null);
+          syncLibrary();
+          notify(hasUserFile ? '原稿を削除しました。ファイルに反映するには「保存」を押してください。' : '原稿を削除しました。');
+        } catch (error) { saveStatus(`削除できません：${error.message}`, true); }
+      };
+      const actions = document.createElement('div'); actions.className = 'book-actions';
+      actions.append(rename, remove);
+      li.append(open, actions); return li;
+    }));
+    renderEstimateBooks();
+  }
+  function renderEstimateBooks() {
+    const select = $('estimate-book');
+    const selected = select.value;
+    const sorted = [...library.manuscripts].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    select.replaceChildren(new Option('原稿を選んでください', ''),
+      ...sorted.map(book => new Option(`${book.title}（${countText(book.draft).toLocaleString()}文字）`, book.id)));
+    if (sorted.some(book => book.id === selected)) select.value = selected;
+  }
+  $('estimate-book').onchange = () => {
+    const book = library.manuscripts.find(b => b.id === $('estimate-book').value);
+    if (!book) { $('estimate-book-info').textContent = '原稿を選ぶと、その文字数で推定時間を計算します。'; return; }
+    setTarget(String(countText(book.draft)), true); recordChanges(); renderResults();
+    $('estimate-book-info').textContent = `「${book.title}」（${countText(book.draft).toLocaleString()}文字）の推定時間を表示しています。`;
+  };
+  $('new-manuscript').onclick = () => {
+    if (!syncLibrary()) return;
+    try { const book = createBook(); restoreBook(book); syncLibrary(); show('read-input'); $('manuscript-title').focus(); }
+    catch (error) { notify(error.message); }
+  };
+  ['read-text', 'manuscript-title', 'profile-name'].forEach(id => $(id).addEventListener('input', scheduleLibraryChange));
+  // Debouncing captures completed model operations, excluding unfinished gestures/editors.
+  document.addEventListener('manuscript-change', scheduleLibraryChange);
+  addEventListener('beforeunload', event => {
+    if (!libraryReady) return;
+    syncLibrary();
+    if (userDirty || window.Reader.hasPending || window.ManuscriptWriting.hasPending) {
+      event.preventDefault(); event.returnValue = '';
+    }
+  });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && libraryReady) syncLibrary(); });
+
+  function setFileControlsBusy(busy) {
+    ['export-manuscript', 'export-user', 'save-user-status', 'import-user', 'start-load', 'start-new', 'start-legacy'].forEach(id => { $(id).disabled = busy; });
+  }
+  function downloadJSON(json, filename) {
+    const url = URL.createObjectURL(new Blob([json], { type: 'application/json;charset=utf-8' }));
+    const a = document.createElement('a');
+    try { a.href = url; a.download = filename; document.body.append(a); a.click(); }
+    finally { a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); }
+  }
+  function markFileSaved(key, filename) {
+    savedUserSnapshot = key; userFilename = filename; hasUserFile = true;
+    syncLibrary();
+  }
+  async function saveUserData() {
+    if (!libraryReady || savingUser || !readyForDirectAction() || !syncLibrary()) return;
+    savingUser = true; setFileControlsBusy(true);
+    let writable = null;
+    try {
+      const validated = window.UserLibrary.validate(library);
+      const json = JSON.stringify(validated, null, 2); window.UserLibrary.parse(json);
+      const key = snapshotKey(validated);
+      const filename = userFilename || `yomijitaku-user-${new Date().toLocaleDateString('sv-SE')}.json`;
+      if (typeof window.showSaveFilePicker === 'function' && window.isSecureContext) {
+        // Keep the picker in the initiating user gesture. Never fall back on cancel/error.
+        const handle = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: 'よみじたく ユーザーデータJSON', accept: { 'application/json': ['.json'] } }] });
+        writable = await handle.createWritable();
+        await writable.write(json); await writable.close(); writable = null;
+        markFileSaved(key, handle.name || filename);
+        notify(userDirty ? 'ファイルを保存しました。保存中に加わった変更は未保存です。' : 'ユーザーデータをファイルに保存しました。');
+      } else {
+        downloadJSON(json, filename);
+        // A download click does not prove that the browser actually saved a file.
+        pendingDownloadSnapshot = { key, filename };
+        $('download-filename').textContent = filename;
+        $('download-confirm-dialog').showModal(); $('download-not-saved').focus();
+        renderSaveState(`「${filename}」のダウンロードを開始しました。端末への保存が未確認です。`);
+      }
+    } catch (error) {
+      if (writable) { try { await writable.abort(); } catch { /* Keep the original failure. */ } }
+      syncLibrary();
+      const outcome = error.name === 'AbortError' ? '保存をキャンセルしました。' : `ファイルを保存できません：${error.message}`;
+      saveStatus(`${outcome} ${userDirty ? '未保存の変更があります。' : '元の保存状態を維持しています。'}`, error.name !== 'AbortError');
+    } finally { savingUser = false; setFileControlsBusy(false); }
+  }
+  $('export-user').onclick = saveUserData;
+  $('save-user-status').onclick = saveUserData;
+  $('download-saved').onclick = () => {
+    if (!pendingDownloadSnapshot) return;
+    const saved = pendingDownloadSnapshot; pendingDownloadSnapshot = null;
+    markFileSaved(saved.key, saved.filename); $('download-confirm-dialog').close();
+  };
+  $('download-not-saved').onclick = () => $('download-confirm-dialog').close();
+  $('download-confirm-dialog').addEventListener('close', () => { pendingDownloadSnapshot = null; syncLibrary(); });
+
+  function useUserData(candidate, filename = '', saved = false) {
+    clearTimeout(changeTimer);
+    libraryReady = false;
+    library = candidate; history = library.history; target = library.target; plannedMinutes = library.plannedMinutes;
+    $('profile-name').value = library.profile.name; restoreBook(activeBook());
+    timeAnnotations = null; timeMarks = null; timeInputSnapshot = null; $('time-text').value = ''; lastMeasuredCustomText = null;
+    $('time-count').textContent = '計測する本文：0文字';
+    setTarget(target); targetManual = !!target;
+    $('planned-minutes').value = plannedMinutes; $('estimate-minutes').value = plannedMinutes;
+    userFilename = filename; hasUserFile = saved; savedUserSnapshot = snapshotKey(library);
+    libraryReady = true; document.querySelector('main').inert = false;
+    syncLibrary(); renderResults(); show('home');
+  }
+  let restoringUser = false;
+  const chooseUserFile = () => { if (!savingUser && !restoringUser) $('user-file').click(); };
+  $('import-user').onclick = chooseUserFile;
+  $('library-load').onclick = chooseUserFile;
+  $('start-load').onclick = chooseUserFile;
+  $('user-file').onchange = async () => {
+    const file = $('user-file').files[0]; $('user-file').value = '';
+    if (!file || restoringUser || savingUser) return;
+    restoringUser = true; setFileControlsBusy(true); $('startup-error').textContent = '';
+    let chosenText = '';
+    try {
+      if (file.size > window.UserLibrary.MAX_BYTES) throw new Error('ファイルが大きすぎます（上限は約30MBです）。');
+      chosenText = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
+      const candidate = window.UserLibrary.parse(chosenText);
+      if (libraryReady) {
+        if (!readyForDirectAction()) return;
+        syncLibrary();
+        if (!await ask(`表示名：${candidate.profile.name || '未設定'}\n原稿：${candidate.manuscripts.length}件／計測履歴：${candidate.history.length}件\n\n現在のユーザーデータ全体を置き換えます。${userDirty ? '未保存の変更は失われます。必要ならキャンセルして先に保存してください。' : '自動統合はしません。'}`, '読み込む', 'ユーザーデータを読み込みますか？')) return;
+      }
+      useUserData(candidate, file.name, true);
+      notify('ユーザーデータJSONを読み込みました。');
+    } catch (error) {
+      let chosenFormat = null;
+      try { chosenFormat = JSON.parse(chosenText)?.format; } catch { /* Keep the original error. */ }
+      const message = chosenFormat === 'reading-support-manuscript'
+        ? 'これは旧形式の原稿ファイルのようです。ユーザーデータ全体ではありません。本文入力の「旧形式の原稿ファイルを取り込む」から取り込んでください。現在のデータは変更していません。'
+        : `読み込めません。現在のデータは変更していません。${error.message}`;
+      if (!libraryReady) $('startup-error').textContent = message; else notify(message);
+    } finally { restoringUser = false; setFileControlsBusy(false); }
+  };
+  $('start-new').onclick = () => useUserData(window.UserLibrary.empty());
+  $('start-legacy').onclick = () => {
+    try {
+      // Read again on explicit selection. Migration never removes or overwrites the source.
+      const raw = localStorage.getItem(window.UserLibrary.KEY);
+      if (raw === null) throw new Error('ブラウザ保存データが見つかりません。');
+      useUserData(window.UserLibrary.parse(raw));
+      notify('ブラウザ保存データを引き継ぎました。「保存」でJSONファイルに保存してください。');
+    } catch (error) { $('startup-error').textContent = `引き継げません。元データは保持しています。${error.message}`; }
+  };
+  $('export-legacy').onclick = () => {
+    try {
+      const raw = localStorage.getItem(window.UserLibrary.KEY);
+      if (raw === null) throw new Error('データが見つかりません。');
+      downloadJSON(raw, 'yomijitaku-browser-data.json');
+      $('startup-error').textContent = '旧データのダウンロードを開始しました。端末への保存をご確認ください。元データはブラウザに残しています。';
+    } catch (error) { $('startup-error').textContent = `取り出せません：${error.message}`; }
+  };
+  library = window.UserLibrary.empty();
+  try { hasLegacyUserData = localStorage.getItem(window.UserLibrary.KEY) !== null; }
+  catch { $('startup-storage-note').textContent = 'ブラウザ保存データを確認できませんでした。JSONの読み込み・新規作成は利用できます。'; }
+  $('legacy-user-data').hidden = !hasLegacyUserData;
+  $('startup-dialog').addEventListener('cancel', event => event.preventDefault());
+  $('startup-dialog').showModal();
 })();

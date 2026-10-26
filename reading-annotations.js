@@ -23,9 +23,10 @@
       if (entry) entry.text = value;
       else this.entries.push({ offset, text: value });
       this.entries.sort((a, b) => a.offset - b.offset);
+      if (typeof document !== 'undefined') document.dispatchEvent(new Event('manuscript-change'));
       return true;
     }
-    remove(offset) { this.entries = this.entries.filter(a => a.offset !== offset); }
+    remove(offset) { this.entries = this.entries.filter(a => a.offset !== offset); if (typeof document !== 'undefined') document.dispatchEvent(new Event('manuscript-change')); }
     toJSON() {
       return { format: 'reading-support-manuscript', version: 2, text: this.source,
         annotations: this.entries.map(({ offset, text }) => ({ offset, text })),

@@ -2,6 +2,7 @@
  * items enter manuscript JSON; history, transient gestures and DOM never do. */
 (() => {
   const copy = value => structuredClone(value);
+  const changed = () => document.dispatchEvent(new Event('manuscript-change'));
   window.ManuscriptMarks = class {
     static MAX_MARKS = 1000;
     static MAX_POINTS = 2000;
@@ -11,7 +12,7 @@
     static PEN_COLORS = ['red', 'blue', 'green'];
     constructor(source = '') { this.source = source; this.items = []; this.history = []; this.nextId = 1; this.memoSettings = { fontSize: 16, opacity: .9 }; }
     get hasMarks() { return this.items.length > 0; }
-    remember() { this.history.push(copy(this.items)); if (this.history.length > 40) this.history.shift(); }
+    remember() { this.history.push(copy(this.items)); if (this.history.length > 40) this.history.shift(); changed(); }
     add(item) {
       const used = new Set(this.items.map(mark => mark.id));
       while (used.has(this.nextId)) this.nextId = this.nextId === Number.MAX_SAFE_INTEGER ? 1 : this.nextId + 1;
@@ -31,7 +32,7 @@
           !Number.isFinite(value.opacity) || value.opacity < .2 || value.opacity > 1) throw new Error('メモ設定は文字サイズ12〜28、不透明度0.2〜1で指定してください。');
       return { fontSize: value.fontSize, opacity: value.opacity };
     }
-    undo() { if (this.history.length) this.items = this.history.pop(); }
+    undo() { if (this.history.length) { this.items = this.history.pop(); changed(); } }
     movePen(id, changes) {
       const index = this.items.findIndex(item => item.id === id && item.type === 'pen');
       if (index < 0) return;
@@ -510,6 +511,7 @@
     e.preventDefault();
     if (editable && enabled && tool === 'memo') model.memoSettings = window.ManuscriptMarks.settings({ fontSize: Number($('memo-font-size').value), opacity: Number($('memo-opacity').value) });
     settingsDialog.close(); render();
+    changed();
   };
   $('memo-settings-cancel').onclick = () => settingsDialog.close();
   document.addEventListener('pointerdown', e => {

@@ -5,7 +5,7 @@ const path = require('node:path');
 const http = require('node:http');
 const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '..');
-const files = new Set(['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-writing.js', 'manuscript-print.js', 'app.js']);
+const files = new Set(['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js', 'reader.js', 'manuscript-writing.js', 'manuscript-print.js', 'user-library.js', 'app.js']);
 const server = http.createServer((req, res) => {
   const name = new URL(req.url, 'http://localhost').pathname.slice(1) || 'index.html';
   if (!files.has(name)) return res.writeHead(404).end();
@@ -196,7 +196,7 @@ const shot = async (page, name) => {
         ] };
       await page.locator('#manuscript-file').setInputFiles({ name: 'draft.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(manuscript)) });
       await page.locator('#reading').waitFor({ state: 'visible' });
-      await readerState(page, '原稿編集中', '本文入力に戻る', 2, 2);
+      await readerState(page, '原稿編集中', '本文を編集', 2, 2);
       await shot(page, `manuscript-${width}`);
       await page.locator('#paper-mode').click();
       await page.locator('#toolbar-settings').click();
@@ -229,7 +229,7 @@ const shot = async (page, name) => {
       await page.locator('#results [data-go=estimate]').click();
       await page.locator('#estimate-return').click();
       await page.waitForTimeout(150);
-      await readerState(page, '原稿編集中', '本文入力に戻る', 2, 2);
+      await readerState(page, '原稿編集中', '本文を編集', 2, 2);
       assert.deepEqual(await page.evaluate(() => window.ManuscriptWriting.printSnapshot()), marksBefore);
       assert.equal(await page.locator('#columns').inputValue(), originalColumns);
       assert.equal(await page.locator('#paper-mode').getAttribute('aria-pressed'), 'true');
