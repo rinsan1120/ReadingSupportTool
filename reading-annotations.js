@@ -45,7 +45,13 @@
     }
     static fromData(data) {
       if (!data || typeof data !== 'object' || Array.isArray(data) || data.format !== 'reading-support-manuscript') throw new Error('原稿ファイルのformatが一致しません。');
-      if (![1, 2, 3, 4].includes(data.version)) throw new Error('対応していないversionです。対応バージョンは1・2・3・4です。');
+      if (![1, 2, 3, 4, 5].includes(data.version)) throw new Error('対応していないversionです。対応バージョンは1〜5です。');
+      const fields = (value, allowed) => {
+        if (value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).some(key => !allowed.includes(key))) throw new Error('未対応の原稿フィールドがあります。情報を保護するため読み込みを中止しました。');
+      };
+      fields(data, ['format', 'version', 'text', 'annotations', 'sourceRubies', 'marks', 'memoSettings', 'writingDirection']);
+      for (const entry of Array.isArray(data.annotations) ? data.annotations : []) fields(entry, ['offset', 'text']);
+      for (const ruby of Array.isArray(data.sourceRubies) ? data.sourceRubies : []) fields(ruby, ['start', 'end', 'reading']);
       if (typeof data.text !== 'string') throw new Error('本文textは文字列である必要があります。');
       if (data.text.length > this.MAX_TEXT_LENGTH) throw new Error('本文は200,000 UTF-16文字までです。');
       if (!Array.isArray(data.annotations)) throw new Error('annotationsは配列である必要があります。');

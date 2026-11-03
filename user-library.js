@@ -5,6 +5,11 @@
   const empty = () => ({ format: 'yomijitaku-user', version: 1, profile: { name: '' }, manuscripts: [], activeId: null, history: [], target: '', plannedMinutes: '20' });
   function validate(data) {
     const fail = () => { throw new Error('ファイルの形式・内容が正しくありません。よみじたくのユーザーデータJSONかどうかを確認してください。'); };
+    const fields = (value, allowed) => {
+      if (value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).some(key => !allowed.includes(key))) throw new Error('未対応の保存情報があります。情報を保護するため読み込みを中止しました。');
+    };
+    fields(data, ['format', 'version', 'profile', 'manuscripts', 'activeId', 'history', 'target', 'plannedMinutes']);
+    fields(data?.profile, ['name']);
     const string = (v, max) => typeof v === 'string' && v.length <= max;
     const date = v => typeof v === 'string' && Number.isFinite(Date.parse(v));
     if (!data || data.format !== 'yomijitaku-user' || data.version !== 1 || !string(data.profile?.name, 80) ||
@@ -14,6 +19,7 @@
         !data.plannedMinutes.trim() || !Number.isFinite(Number(data.plannedMinutes)) || Number(data.plannedMinutes) <= 0) fail();
     const ids = new Set();
     const manuscripts = data.manuscripts.map(item => {
+      fields(item, ['id', 'title', 'createdAt', 'updatedAt', 'draft', 'manuscript', 'pending']);
       if (!item || !string(item.id, 100) || !item.id || ids.has(item.id) || !string(item.title, 120) || !item.title.trim() ||
           !date(item.createdAt) || !date(item.updatedAt) || !string(item.draft, window.ReadingAnnotations.MAX_TEXT_LENGTH)) fail();
       ids.add(item.id);
@@ -21,6 +27,7 @@
       const manuscript = JSON.parse(window.ManuscriptMarks.serializeManuscript(restored.manuscript, restored.markings));
       let pending = null;
       if (item.pending != null) {
+        fields(item.pending, ['format', 'version', 'text', 'annotations', 'sourceRubies']);
         const model = window.ReadingAnnotations.fromData(item.pending);
         if (model.source.replace(/\r\n?/g, '\n') !== item.draft) fail();
         pending = model.toJSON();
@@ -29,6 +36,7 @@
     });
     if (data.activeId !== null && !ids.has(data.activeId)) fail();
     const history = data.history.map(r => {
+      fields(r, ['characters', 'seconds', 'type', 'measuredAt', 'title']);
       if (!r || !Number.isSafeInteger(r.characters) || r.characters <= 0 || !Number.isFinite(r.seconds) || r.seconds <= 0 ||
           !['sample', 'custom'].includes(r.type) || (r.measuredAt !== null && !date(r.measuredAt)) || !string(r.title, 120)) fail();
       return { characters: r.characters, seconds: r.seconds, type: r.type, measuredAt: r.measuredAt, title: r.title };

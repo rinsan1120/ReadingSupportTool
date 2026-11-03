@@ -272,6 +272,7 @@
   // ruby ranges together with it after replacement confirmation has succeeded.
   let pasting = false;
   ['read-text', 'time-text'].forEach(id => $(id).addEventListener('paste', async event => {
+    if ($(id).readOnly) { event.preventDefault(); return; }
     const html = event.clipboardData?.getData('text/html');
     const el = $(id), begin = el.selectionStart, end = el.selectionEnd;
     const ruby = html && /<ruby[\s>]/i.test(html);
@@ -344,7 +345,7 @@
       } finally { confirming = false; }
     });
   });
-  $('clear-read').onclick = async () => { if ($('read-text').value && await ask('入力した本文を削除しますか？' + replacementLoss())) { $('read-text').value = ''; $('read-text').dispatchEvent(new Event('input')); } };
+  $('clear-read').onclick = async () => { if (hasHiddenWriting()) { notify('縦書きの書き込みを保護するため本文を削除できません。通常版で変更してください。'); return; } if ($('read-text').value && await ask('入力した本文を削除しますか？' + replacementLoss())) { $('read-text').value = ''; $('read-text').dispatchEvent(new Event('input')); } };
   ['result-target', 'estimate-target'].forEach(id => $(id).addEventListener('input', () => {
     setTarget($(id).value, true); recordChanges(); renderResults();
   }));
@@ -361,11 +362,14 @@
     openingReader = true;
     try {
       if (nextMode === 'read' && (text !== readAnnotations.source || pasted)) {
+        if (hasHiddenWriting()) { displayReader('read', readAnnotations.source); notify('縦書きの書き込み位置を保護するため保存済みの原稿を表示します。入力中の本文は下書きとして保持します。本文の変更は通常版へ戻ってから行ってください。'); return; }
         if ((hasReadings(readAnnotations) || readMarks.hasMarks) && !await ask('この文章を開くと、現在の原稿の読み仮名・赤ペン・マーカー・文字メモはすべて削除されます。変更後の本文を開きますか？', '開く')) return;
         if (pasted) readAnnotations = pasted;
         else readAnnotations.reset(text);
         pendingReadPaste = null;
+        const retainedDirection = readMarks.direction;
         readMarks = new window.ManuscriptMarks(text);
+        readMarks.direction = retainedDirection;
         readInputSnapshot = $('read-text').value;
       }
       if (nextMode === 'time' && sourceType === 'custom' && timeAnnotations && text !== timeAnnotations.source) {
@@ -417,7 +421,7 @@
       if (view !== 'reading' || mode !== 'read') return;
       const snapshot = window.Reader.printSnapshot();
       pdfAnchor = window.Reader.capture();
-      const writing = window.ManuscriptWriting.printSnapshot();
+      const writing = window.ManuscriptWriting.printSnapshot({ forPrint: true });
       const result = window.ManuscriptPrint.prepare(snapshot, writing);
       $('pdf-small-warning').hidden = result.points >= 9;
       $('pdf-small-warning').textContent = '文字が小さくなるため、キャンセルして本文幅を狭くするか文字サイズを大きくしてから出力することをおすすめします。長い読み仮名がある場合は、内容の短縮もご検討ください。';
@@ -464,6 +468,7 @@
       copied.sourceRubies = readAnnotations.sourceRubies.map(({ start, end, reading }) => ({ start, end, reading }));
       if (readMarks.source !== text) throw new Error('本文と書き込みの原文が一致しません。');
       const copiedMarks = window.ManuscriptMarks.fromItems(readMarks.items, copied, readMarks.memoSettings);
+      copiedMarks.direction = readMarks.direction;
       timeAnnotations = copied; timeMarks = copiedMarks;
       timingPaper.custom = { text, on: readPaper };
       $('time-text').value = text; timeInputSnapshot = $('time-text').value;
@@ -504,6 +509,8 @@
       // the same model and rendering path as manually entered manuscripts.
       readAnnotations = restored;
       readMarks = markings;
+      $('read-text').readOnly = hasHiddenWriting();
+      $('rollback-protection').hidden = !hasHiddenWriting();
       pendingReadPaste = null;
       $('read-text').value = restored.source;
       readInputSnapshot = $('read-text').value;
@@ -946,6 +953,8 @@
     library.manuscripts.push(book); library.activeId = book.id; return book;
   }
   function captureLibrary() {
+    $('read-text').readOnly = hasHiddenWriting();
+    $('rollback-protection').hidden = !hasHiddenWriting();
     let book = activeBook();
     if (!book && ($('read-text').value || readAnnotations.source)) book = createBook();
     if (book) {
@@ -986,10 +995,15 @@
     userDirty = true; renderSaveState(); clearTimeout(changeTimer);
     changeTimer = setTimeout(syncLibrary, 150);
   }
+  function hasHiddenWriting() {
+    return readMarks.items.some(item => item.type === 'pen' && item.direction === 'vertical' || item.type === 'memo' && item.verticalPosition !== undefined);
+  }
   function restoreBook(book) {
     const restored = book ? window.ManuscriptMarks.restoreManuscript(JSON.stringify(book.manuscript)) :
       { manuscript: new window.ReadingAnnotations(), markings: new window.ManuscriptMarks() };
     readAnnotations = restored.manuscript; readMarks = restored.markings;
+    $('read-text').readOnly = hasHiddenWriting();
+    $('rollback-protection').hidden = !hasHiddenWriting();
     $('read-text').value = book?.draft || '';
     readInputSnapshot = readAnnotations.source.replace(/\r\n?/g, '\n');
     pendingReadPaste = book?.pending ? { model: window.ReadingAnnotations.fromData(book.pending), input: book.draft } : null;

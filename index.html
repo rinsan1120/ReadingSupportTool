@@ -7,19 +7,20 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="description" content="文章を読みやすく整え、自分の朗読速度から作品の朗読時間を調べるツール。">
   <title>よみじたく | 朗読支援サイト</title>
-  <link rel="stylesheet" href="styles.css?v=browser-save">
+  <link rel="stylesheet" href="styles.css?v=rollback-v5">
   <script src="samples.js" defer></script>
-  <script src="reading-annotations.js?v=memo-bubbles" defer></script>
+  <script src="reading-annotations.js?v=rollback-v5" defer></script>
   <script src="html-ruby.js" defer></script>
-  <script src="reader.js?v=ruby-markers" defer></script>
-  <script src="manuscript-writing.js?v=writing-menu" defer></script>
+  <script src="reader.js?v=rollback-v5" defer></script>
+  <script src="manuscript-writing.js?v=rollback-v5" defer></script>
   <script src="manuscript-print.js?v=memo-layout" defer></script>
-  <script src="user-library.js?v=browser-save" defer></script>
-  <script src="app.js?v=browser-save" defer></script>
+  <script src="user-library.js?v=rollback-v5" defer></script>
+  <script src="app.js?v=rollback-v5" defer></script>
 </head>
 <body>
   <header class="site-header"><button class="brand" data-go="home"><span aria-hidden="true">☾</span> よみじたく <small>朗読支援サイト</small></button></header>
   <main data-screen-id="SCR-HOME" inert>
+    <p class="muted">互換ロールバック版：横書きで利用できます。縦書きの保存情報は保持します。</p>
     <div class="library-status"><span id="profile-display"></span><span id="user-save-status" role="status" aria-live="polite">ユーザーデータを選んでください</span><button id="save-user-status">保存</button><button id="retry-browser-save" hidden>自動保存を再試行</button></div>
     <section id="home" class="view narrow" aria-labelledby="home-title">
       <p class="eyebrow">READING SUPPORT</p><h1 id="home-title" tabindex="-1">声にする前の、<wbr><span class="home-tagline">ひと支度。</span></h1>
@@ -53,6 +54,7 @@
       <label for="manuscript-title">原稿のタイトル</label><input id="manuscript-title" maxlength="120" placeholder="無題の原稿">
       <p class="muted">別の原稿を開くときは、ホームの本棚から選べます。</p>
       <label for="read-text">朗読する作品の本文</label><textarea id="read-text" data-field-id="FLD-READ-BODY" rows="12" placeholder="全文でも、一部でも。ここに文章を貼り付けてください。" spellcheck="false" autocomplete="off"></textarea>
+      <p id="rollback-protection" class="muted" hidden>縦書きの書き込み位置を保護するため本文は編集できません。ルビ・マーカー・メモ・横書きペンは編集できます。本文の変更は通常版へ戻ってから行ってください。</p>
       <div class="inline spread"><p id="read-count" class="muted">0文字</p><button id="clear-read" class="quiet">本文を削除</button></div>
       <p id="annotation-retention" class="muted" hidden>読み仮名・書き込みを保持しています。本文を変更して原稿画面を開く場合は、これらの削除を確認します。</p>
       <p id="writing-retention" class="muted" hidden>原稿の書き込みを保持しています。保存状況は画面上部に表示します。</p>
