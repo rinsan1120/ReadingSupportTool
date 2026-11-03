@@ -179,15 +179,14 @@
   <input id="user-file" type="file" accept=".json,application/json" hidden>
   <dialog id="startup-dialog" aria-labelledby="startup-title">
     <p class="eyebrow">よみじたく</p><h2 id="startup-title">よみじたくを始める</h2>
-    <p>原稿や書き込み、朗読速度の記録は、このブラウザに自動保存されます。次回も続きから利用できます。</p>
-    <section class="startup-backup" aria-labelledby="startup-backup-title">
-      <h3 id="startup-backup-title">大切なデータの保存について</h3>
-      <p>ブラウザに自動保存されたデータは、ブラウザ上のデータ削除などにより、予期せず消える場合があります。</p>
-      <p>定期的にデータをファイルに保存することをおすすめします。</p>
+      <section class="startup-backup" aria-labelledby="startup-backup-title">
+      <h3 id="startup-backup-title">データの保存について</h3>
+      <p>データはブラウザ上に自動保存されますが、ブラウザ上のデータ削除などにより、予期せず消える場合があります。</p>
+      <p>そのため画面上部の保存ボタンより、定期的にデータをファイルに保存することをおすすめします。</p>
       <p>保存したデータは別の端末でよみじたくを利用する際にも利用可能です。</p>
     </section>
     <div class="startup-options">
-      <button id="start-browser" class="startup-choice primary" aria-describedby="start-browser-help"><span>はじめる</span><small id="start-browser-help">初めての方も、続きから利用する方もこちら</small></button>
+      <button id="start-browser" class="startup-choice primary" aria-describedby="start-browser-help"><span>はじめる</span><small id="start-browser-help">保存済みデータファイルをお持ちでない方はこちら</small></button>
       <button id="start-load" class="startup-choice" aria-describedby="start-load-help"><span>保存したデータを開く</span><small id="start-load-help">端末に保存したデータファイルを読み込む</small></button>
     </div>
     <p id="startup-error" role="alert"></p>
