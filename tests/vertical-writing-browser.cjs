@@ -35,9 +35,7 @@ const glyph = async (page, offset) => {
   }, offset);
 };
 const switchDirection = async (page, value) => {
-  await page.locator('#toolbar-settings').click();
-  await page.locator('#writing-direction').selectOption(value);
-  await page.locator('[data-close=settings-dialog]').click();
+  await page.locator(`button[data-direction=${value}]`).click();
   assert.equal(await page.evaluate(() => Reader.direction), value);
 };
 const modelTests = page => page.evaluate(() => {
@@ -69,7 +67,20 @@ const modelTests = page => page.evaluate(() => {
       await page.locator('#reader').waitFor();
       assert.equal(await page.evaluate(() => Reader.direction), 'horizontal');
       const initial = await items(page);
+      await page.locator('button[data-direction=horizontal]').click();
+      assert.equal(await page.locator('#direction-notice').isVisible(), false, 'same direction stays quiet');
+      await page.clock.install();
       await switchDirection(page, 'vertical');
+      assert.equal(await page.locator('button[data-direction=vertical]').getAttribute('aria-pressed'), 'true');
+      assert.equal(await page.locator('#settings-dialog #writing-direction').count(), 0);
+      assert.equal(await page.locator('#direction-notice').isVisible(), true);
+      assert.ok(await page.locator('.reader-toolbar button:not([hidden])').evaluateAll(buttons => buttons.every(b => {
+        const r=b.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth + 1 && b.scrollWidth <= b.clientWidth + 1;
+      })), 'toolbar labels fit');
+      await page.screenshot({path: path.join(output, `toolbar-${width}.png`)});
+      await page.clock.fastForward(10001);
+      assert.equal(await page.locator('#direction-notice').isVisible(), false, 'notice expires automatically');
+      await page.clock.resume();
       assert.deepEqual(await items(page), initial, 'switch must not mutate marks');
       assert.equal(await page.locator('#writing-pen path[data-mark-id]').count(), 0);
       const layout = await page.evaluate(() => {
@@ -130,14 +141,16 @@ const modelTests = page => page.evaluate(() => {
       await page.locator('[data-writing-tool=memo]').click();
       const note = page.locator('.writing-memo .memo-body').first();
       await note.evaluate(el => scrollBy(0, el.getBoundingClientRect().top - document.querySelector('.reader-controls').getBoundingClientRect().bottom - 80));
+      await page.waitForTimeout(220); // Let the sticky toolbar settle after scrolling.
       const box = await note.boundingBox();
       await drag({ x: box.x + 40, y: box.y + 15 }, { x: box.x + 30, y: box.y + 55 });
       const positioned = (await items(page)).find(i => i.id === 3);
       assert.ok(positioned.verticalPosition); assert.equal(positioned.dx, initial.find(i => i.id === 3).dx);
+      await page.clock.fastForward(6501); // Expire the unrelated legacy-import toast before dragging its covered tip.
       const target = await glyph(page, 0);
       const tipBox = await page.locator('.writing-memo .memo-tip').first().boundingBox();
       await drag({ x: tipBox.x + tipBox.width / 2, y: tipBox.y + tipBox.height / 2 }, target);
-      assert.equal((await items(page)).find(i => i.id === 3).offset, 0, 'tip drag changes shared target');
+      assert.equal((await items(page)).find(i => i.id === 3).offset, 0, 'tip drag changes shared target '+JSON.stringify({tipBox,target}));
       await page.locator('#writing-undo').click();
       assert.equal((await items(page)).find(i => i.id === 3).offset, 6);
       await page.locator('[data-writing-tool=marker]').click();
@@ -162,10 +175,12 @@ const modelTests = page => page.evaluate(() => {
       }
       await page.evaluate(() => { Reader.configure({ columns: document.getElementById('reader').clientWidth / 22, height: 1.8, breaks: 5 }); });
       await glyph(page, 200);
+      await page.locator('button[data-direction=horizontal]').evaluate(el => el.focus({ preventScroll: true }));
+      await page.waitForTimeout(220); // Finish the existing auto-hide toolbar transition before capturing.
       const anchor = await page.evaluate(() => Reader.capture());
       await switchDirection(page, 'horizontal');
       const nearby = await page.evaluate(offset => { const r = document.getElementById('reader').getBoundingClientRect(), g = Reader.getWritingGeometry().byOffset.get(offset); return r.top + g.y; }, anchor.offset);
-      assert.ok(nearby >= 0 && nearby <= 900, 'switch retains the visible source position');
+      assert.ok(nearby >= 0 && nearby <= 900, 'switch retains the visible source position '+JSON.stringify({anchor,nearby}));
       await switchDirection(page, 'vertical');
       for (let i = 0; i < 3; i++) { await switchDirection(page, 'horizontal'); await switchDirection(page, 'vertical'); }
       assert.deepEqual(await items(page), stored);

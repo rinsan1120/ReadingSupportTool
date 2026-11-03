@@ -376,6 +376,7 @@
     displayReader(nextMode, text);
   }
   function displayReader(nextMode, text, readerReturnState = null) {
+    clearTimeout(directionNoticeTimer); $('direction-notice').hidden = true;
     mode = nextMode;
     displayedText = text;
     const paper = timingPaper[sourceType];
@@ -654,7 +655,7 @@
     rememberSettings();
   }
   function syncWritingDirection(value) {
-    $('writing-direction').value = value;
+    document.querySelectorAll('button[data-direction]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.direction === value)));
     $('vertical-help').hidden = value !== 'vertical';
     $('columns-label').textContent = value === 'vertical' ? '文字サイズの目安（小さい値ほど大きい文字）' : '1行の文字数目安';
     $('tab-columns').textContent = value === 'vertical' ? '文字サイズ' : '文字数';
@@ -664,16 +665,34 @@
     $('break-lines-value').textContent = breaks ? `${breaks}表示${value === 'vertical' ? '列' : '行'}ごと` : 'なし';
     $('settings-help').textContent = value === 'vertical' ? '表示幅は区画の幅、文字サイズと列間隔は文字の大きさと列の間隔を調整します。' : '表示幅は行の長さ、文字数は文字の大きさを調整します。';
   }
-  $('writing-direction').onchange = () => {
+  let directionNoticeTimer = 0;
+  function hideDirectionNotice() {
+    if (window.Reader.hasPending || window.ManuscriptWriting.hasPending) {
+      directionNoticeTimer = setTimeout(hideDirectionNotice, 1000); return;
+    }
+    const anchor = view === 'reading' ? window.Reader.capture() : null;
+    $('direction-notice').hidden = true;
+    if (anchor) window.Reader.restore(anchor);
+  }
+  new MutationObserver(() => {
+    document.querySelectorAll('button[data-direction]').forEach(button => { button.disabled = $('toolbar-settings').disabled; });
+  }).observe($('toolbar-settings'), { attributes: true, attributeFilter: ['disabled'] });
+  document.querySelectorAll('button[data-direction]').forEach(button => button.onclick = () => {
     if (view !== 'reading' || phase !== 'idle') return;
-    const value = $('writing-direction').value;
+    const value = button.dataset.direction;
+    if (value === window.Reader.direction || !readyForDirectAction()) return;
+    const anchor = window.Reader.capture();
     window.ManuscriptWriting.cancelPending();
     const marks = mode === 'read' ? readMarks : timeMarks;
     if (marks) marks.direction = value;
     window.Reader.configure({ direction: value });
     syncWritingDirection(value);
+    $('direction-notice').hidden = false;
+    window.Reader.restore(anchor);
+    clearTimeout(directionNoticeTimer);
+    directionNoticeTimer = setTimeout(hideDirectionNotice, 10000);
     if (mode === 'read') document.dispatchEvent(new Event('manuscript-change'));
-  };
+  });
   async function commitSetting() {
     if (!pendingSetting || confirmingSetting || pointerAdjusting || keyboardAdjusting) return;
     const change = pendingSetting, session = settingsSession;
