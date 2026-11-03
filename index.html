@@ -7,15 +7,15 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="description" content="文章を読みやすく整え、自分の朗読速度から作品の朗読時間を調べるツール。">
   <title>よみじたく | 朗読支援サイト</title>
-  <link rel="stylesheet" href="styles.css?v=browser-save">
+  <link rel="stylesheet" href="styles.css?v=stable-mobile-scroll">
   <script src="samples.js" defer></script>
-  <script src="reading-annotations.js?v=memo-bubbles" defer></script>
+  <script src="reading-annotations.js?v=vertical-writing" defer></script>
   <script src="html-ruby.js" defer></script>
-  <script src="reader.js?v=ruby-markers" defer></script>
-  <script src="manuscript-writing.js?v=writing-menu" defer></script>
-  <script src="manuscript-print.js?v=memo-layout" defer></script>
+  <script src="reader.js?v=stable-mobile-scroll" defer></script>
+  <script src="manuscript-writing.js?v=stable-mobile-scroll" defer></script>
+  <script src="manuscript-print.js?v=stable-mobile-scroll" defer></script>
   <script src="user-library.js?v=browser-save" defer></script>
-  <script src="app.js?v=browser-save" defer></script>
+  <script src="app.js?v=stable-mobile-scroll" defer></script>
 </head>
 <body>
   <header class="site-header"><button class="brand" data-go="home"><span aria-hidden="true">☾</span> よみじたく <small>朗読支援サイト</small></button></header>
@@ -83,6 +83,10 @@
             <button id="wake" type="button" aria-label="画面点灯維持：OFF" hidden><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10M6 5a9 9 0 1 0 12 0"/></svg><span>点灯維持</span><span class="button-state">OFF</span></button>
           </div>
           <div id="reader-actions" role="group" aria-label="原稿画面の操作">
+            <div id="writing-direction" role="group" aria-label="原稿の表示方向">
+              <button type="button" data-direction="horizontal" aria-pressed="true">横書き</button>
+              <button type="button" data-direction="vertical" aria-pressed="false">縦書き</button>
+            </div>
             <button id="paper-mode" type="button" aria-pressed="false" aria-label="白背景：OFF"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h7v18H5Z" fill="currentColor" stroke="none"/><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M12 3v18m3-13h2m-2 4h2m-2 4h2"/></svg><span>白背景</span><span class="button-state">OFF</span></button>
             <button id="toolbar-settings" type="button" aria-label="表示設定"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="12" r="2" fill="currentColor"/><circle cx="8" cy="18" r="2" fill="currentColor"/></svg><span>表示設定</span></button>
             <button id="writing-mode" aria-expanded="false" aria-controls="writing-toolbar" aria-label="書込メニュー" hidden><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m4 16-1 5 5-1L21 7l-5-5ZM13 5l5 5"/></svg><span>書込<wbr>メニュー</span></button>
@@ -91,6 +95,7 @@
             <button id="export-pdf" aria-label="PDF出力" hidden><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2h10l5 5v15H5ZM15 2v6h5"/><text x="6" y="17" font-size="7" fill="currentColor" stroke="none">PDF</text></svg><span>PDF</span></button>
           </div>
         </div>
+        <p id="direction-notice" role="status" hidden>ペンの書き込みは、縦書きと横書きで別々に保存されます。<br>切り替え先には引き継がれませんが、元の表示方向に戻すと、以前の書き込みが再表示されます。</p>
         <div id="writing-toolbar" aria-label="書き込みツール" hidden>
           <div class="writing-menu-heading"><button id="writing-off" type="button" aria-label="書込メニューを閉じる">×</button></div>
           <div class="writing-tools" role="group" aria-label="使用するツール"><button data-writing-tool="pen" aria-pressed="true" aria-label="ペン"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m4 16-1 5 5-1L21 7l-5-5ZM13 5l5 5"/></svg><span>ペン</span></button><button data-writing-tool="marker" aria-pressed="false" aria-label="マーカー"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m4 15 9-12 7 5-9 12Zm0 0 7 5M2 22h12"/></svg><span>マーカー</span></button><button data-writing-tool="memo" aria-pressed="false" aria-label="文字メモ"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h16v13l-6 5H4ZM14 21v-5h6M7 7h10M7 11h8"/></svg><span>メモ</span></button><button data-writing-tool="ruby" aria-pressed="false" aria-label="ルビ"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><text x="3" y="7" font-size="6" fill="currentColor" stroke="none">よみ</text><text x="3" y="21" font-size="15" fill="currentColor" stroke="none">字</text></svg><span>ルビ</span></button><button data-writing-tool="eraser" aria-pressed="false" aria-label="消去"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m3 15 12-12 7 7-12 12H8Zm5-5 9 9M10 22h12"/></svg><span>消去</span></button><button id="writing-undo" aria-label="元に戻す" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4 2 10l6 6M2 10h12a7 7 0 0 1 0 14"/></svg><span>戻す</span></button></div>
@@ -145,15 +150,17 @@
       <button id="tab-break-lines" role="tab" aria-selected="false" aria-controls="setting-break-lines" data-setting="break-lines" tabindex="-1">区切り</button>
     </div>
     <div id="setting-width"><label for="reader-width">本文の表示幅 <output id="reader-width-value">900px</output></label><input id="reader-width" data-field-id="FLD-SETTINGS-READER-WIDTH" type="range" min="480" max="1400" step="1" value="900"></div>
-    <div id="setting-columns"><label for="columns">1行の文字数目安 <output id="columns-value">約41文字</output></label><input id="columns" data-field-id="FLD-SETTINGS-COLUMNS" type="range" min="25" max="50" value="41"></div>
-    <div id="setting-line-height"><label for="line-height">行間 <output id="line-height-value">1.8</output></label><input id="line-height" data-field-id="FLD-SETTINGS-LINE-HEIGHT" type="range" min="1.2" max="2.6" step="0.1" value="1.8"></div>
+    <p id="vertical-help" class="muted" hidden>各区画を右から左へ読み、下へスクロールすると続きが読めます。ペンは縦横別に保存されます。</p>
+    <div id="setting-columns"><label for="columns"><span id="columns-label">1行の文字数目安</span> <output id="columns-value">約41文字</output></label><input id="columns" data-field-id="FLD-SETTINGS-COLUMNS" type="range" min="25" max="50" value="41"></div>
+    <div id="setting-line-height"><label for="line-height"><span id="line-height-label">行間</span> <output id="line-height-value">1.8</output></label><input id="line-height" data-field-id="FLD-SETTINGS-LINE-HEIGHT" type="range" min="1.2" max="2.6" step="0.1" value="1.8"></div>
     <div id="setting-break-lines"><label for="break-lines">自動区切り <output id="break-lines-value">5表示行ごと</output></label><input id="break-lines" data-field-id="FLD-SETTINGS-BREAK-LINES" type="range" min="0" max="10" value="5"></div>
-    <p class="muted settings-help">表示幅は行の長さ、文字数は文字の大きさを調整します。</p>
+    <p id="settings-help" class="muted settings-help">表示幅は行の長さ、文字数は文字の大きさを調整します。</p>
   </dialog>
   <p id="notice" class="notice" role="status" hidden></p>
   <div id="manuscript-print"></div>
   <dialog id="pdf-dialog" data-dialog-id="DLG-PDF" aria-labelledby="pdf-title">
     <h2 id="pdf-title">PDF出力</h2>
+    <p>原稿画面と同じ表示方向で出力します。ペンと文字メモの配置も、その表示方向のものを使用します。</p>
     <p>次の印刷画面で「PDFとして保存」を選んでください。端末によっては共有・プリントからPDFを保存します。</p>
     <p class="muted">A4・縦向き・倍率100%を基本とし、ヘッダーとフッターはOFFにしてください。保存が完了したかは印刷画面でご確認ください。</p>
     <p id="pdf-small-warning" hidden></p>
@@ -172,15 +179,14 @@
   <input id="user-file" type="file" accept=".json,application/json" hidden>
   <dialog id="startup-dialog" aria-labelledby="startup-title">
     <p class="eyebrow">よみじたく</p><h2 id="startup-title">よみじたくを始める</h2>
-    <p>原稿や書き込み、朗読速度の記録は、このブラウザに自動保存されます。次回も続きから利用できます。</p>
-    <section class="startup-backup" aria-labelledby="startup-backup-title">
-      <h3 id="startup-backup-title">大切なデータの保存について</h3>
-      <p>ブラウザに自動保存されたデータは、ブラウザ上のデータ削除などにより、予期せず消える場合があります。</p>
-      <p>定期的にデータをファイルに保存することをおすすめします。</p>
+      <section class="startup-backup" aria-labelledby="startup-backup-title">
+      <h3 id="startup-backup-title">データの保存について</h3>
+      <p>データはブラウザ上に自動保存されますが、ブラウザ上のデータ削除などにより、予期せず消える場合があります。</p>
+      <p>そのため画面上部の保存ボタンより、定期的にデータをファイルに保存することをおすすめします。</p>
       <p>保存したデータは別の端末でよみじたくを利用する際にも利用可能です。</p>
     </section>
     <div class="startup-options">
-      <button id="start-browser" class="startup-choice primary" aria-describedby="start-browser-help"><span>はじめる</span><small id="start-browser-help">初めての方も、続きから利用する方もこちら</small></button>
+      <button id="start-browser" class="startup-choice primary" aria-describedby="start-browser-help"><span>はじめる</span><small id="start-browser-help">保存済みデータファイルをお持ちでない方はこちら</small></button>
       <button id="start-load" class="startup-choice" aria-describedby="start-load-help"><span>保存したデータを開く</span><small id="start-load-help">端末に保存したデータファイルを読み込む</small></button>
     </div>
     <p id="startup-error" role="alert"></p>

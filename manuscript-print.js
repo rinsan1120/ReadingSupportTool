@@ -81,6 +81,20 @@
   }
   function prepare(snapshot, writing = { items: [], pens: [] }) {
     clear();
+    const vertical = snapshot.direction === 'vertical';
+    if (vertical) {
+      // Split at viewport-section boundaries before unfolding. Every fragment
+      // remains a rigid vector stroke; only its translation changes in print.
+      const sections = snapshot.sections;
+      if (!sections?.length) throw new Error('縦書きの区画情報を確認できないためPDFを準備できません。');
+      writing = { ...writing, pens: writing.pens.flatMap(pen => {
+        if (pen.points.length < 2 || pen.points.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) throw new Error('ペンの描画座標を確認できないためPDFを準備できません。');
+        return [...splitStroke(pen.points, sections)].flatMap(([row, paths]) => paths.map(points => {
+          const s = sections[row];
+          return { ...pen, first: s.first, last: s.last, points: points.map(p => ({ x: p.y - s.top, y: s.base + s.right - p.x })) };
+        }));
+      }) };
+    }
     let pendingAuto = 0;
     const lines = snapshot.lines.flatMap((line, index) => {
       pendingAuto += line.autoBefore;
@@ -109,7 +123,9 @@
     for (const pen of writing.pens) {
       if (pen.points.length < 2 || pen.points.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) throw new Error('赤ペンの描画座標を確認できないためPDFを準備できません。');
       for (const point of pen.points) { minX = Math.min(minX, point.x - 1.4); maxX = Math.max(maxX, point.x + 1.4); }
-      for (const [row, paths] of splitStroke(pen.points, lines)) lines[row].strokes.push({ id: pen.id, paths, color: pen.color ?? 'red' });
+      const targetLines = vertical ? lines.filter(line => line.index >= pen.first && line.index <= pen.last) : lines;
+      if (!targetLines.length) throw new Error('ペンに対応する本文の列を確認できないためPDFを準備できません。');
+      for (const [row, paths] of splitStroke(pen.points, targetLines)) targetLines[row].strokes.push({ id: pen.id, paths, color: pen.color ?? 'red' });
     }
     // Connected lines containing the same annotation stay on the same page.
     const last = new Map();
@@ -130,7 +146,8 @@
     }
     root.classList.add('print-measuring');
     const measurePage = document.createElement('section'); measurePage.className = 'manuscript-page'; root.append(measurePage);
-    const bounds = measurePage.getBoundingClientRect();
+    const paperBounds = measurePage.getBoundingClientRect();
+    const bounds = vertical ? { width: paperBounds.height, height: paperBounds.width } : paperBounds;
     const maxGroupHeight = groups.reduce((height, g) => Math.max(height, g.extentBottom - g.extentTop), 0);
     const scale = Math.min(1, bounds.width / (maxX - minX), (bounds.height - 1) / maxGroupHeight);
     const memoInset = 2 * scale, tipInset = 6 * scale;
@@ -167,6 +184,7 @@
     }
     for (const { lines: pageLines, memos } of pages) {
       const sheet = document.createElement('section'); sheet.className = 'manuscript-page';
+      if (vertical) sheet.classList.add('manuscript-vertical');
       const canvas = document.createElement('div'); canvas.className = 'manuscript-canvas';
       // Attach the canvas before measuring its text and print-sized bubbles.
       sheet.append(canvas); root.append(sheet);
@@ -174,8 +192,14 @@
       // engines may fragment/clip the unscaled overflow of a transformed canvas.
       canvas.dataset.scale = scale;
       const left = (bounds.width - ((maxX - minX) * scale)) / 2 - minX * scale;
-      Object.assign(canvas.style, scaledFont, { width: `${snapshot.width * scale}px`, left: `${left}px` });
-      const markerLayer = svg('svg', { class: 'manuscript-markers', width: snapshot.width * scale, height: bounds.height }, canvas);
+      const canvasLeft = vertical ? 0 : left;
+      const place = (x, y) => vertical ? { x: paperBounds.width - y * scale, y: left + x * scale } : { x: x * scale, y: y * scale };
+      const placeBox = box => {
+        const p = place(box.x, box.y + (vertical ? box.height : 0));
+        return { x: p.x, y: p.y, width: (vertical ? box.height : box.width) * scale, height: (vertical ? box.width : box.height) * scale };
+      };
+      Object.assign(canvas.style, scaledFont, { width: `${vertical ? paperBounds.width : snapshot.width * scale}px`, left: `${canvasLeft}px` });
+      const markerLayer = svg('svg', { class: 'manuscript-markers', width: vertical ? paperBounds.width : snapshot.width * scale, height: paperBounds.height }, canvas);
       for (const line of pageLines) {
         const row = document.createElement('div'); row.className = 'manuscript-line';
         row.dataset.sourceLine = line.index;
@@ -191,12 +215,15 @@
             span.classList.add('manuscript-source-ruby');
             span.dataset.start = piece.sourceRuby.start; span.dataset.end = piece.sourceRuby.end;
             inkNode = base;
-            readingProbes.push({ reading, canvas, left: piece.sourceRuby.readingBounds.left * scale,
-              top: (line.placedTop + piece.sourceRuby.readingBounds.top - line.top) * scale });
+            const r = piece.sourceRuby.readingBounds;
+            const target = placeBox({ x: r.left, y: line.placedTop + r.top - line.top, width: r.width, height: r.height });
+            readingProbes.push({ reading, canvas, left: target.x, top: target.y });
           } else span.textContent = piece.text;
-          span.style.left = `${piece.left * scale}px`;
+          const target = vertical ? placeBox({ x: piece.left, y: line.placedTop + piece.top - line.top, width: piece.width, height: piece.height })
+            : { x: piece.left * scale, y: (line.placedTop + piece.top - line.top) * scale };
+          span.style.left = `${target.x}px`;
           row.append(span);
-          probes.push({ span, inkNode, top: (line.placedTop + piece.top - line.top) * scale, left: piece.left * scale });
+          probes.push({ span, inkNode, top: target.y, left: target.x });
         }
         canvas.append(row);
       }
@@ -209,24 +236,26 @@
           const included = box.offset !== undefined ? item.start < box.offset && box.offset <= item.end
             : box.end > item.start && box.start < item.end;
           if (!line || !included) continue;
-          svg('rect', { x: box.x * scale, y: (box.y + line.placedTop - line.top) * scale,
-            width: box.width * scale, height: box.height * scale, 'data-mark-id': item.id,
+          svg('rect', { ...placeBox({ ...box, y: box.y + line.placedTop - line.top }), 'data-mark-id': item.id,
             ...(box.offset !== undefined ? { 'data-annotation': box.offset } : { 'data-offset': box.start }),
             'data-color': item.color ?? 'yellow' }, markerLayer);
         }
       }
-      const penLayer = svg('svg', { class: 'manuscript-pens', width: snapshot.width * scale, height: bounds.height }, canvas);
+      const penLayer = svg('svg', { class: 'manuscript-pens', width: vertical ? paperBounds.width : snapshot.width * scale, height: paperBounds.height }, canvas);
       for (const line of pageLines) for (const stroke of line.strokes) {
         for (const path of stroke.paths) for (const point of path) {
-          const x = left + point.x * scale, y = (point.y + line.placedTop - line.top) * scale, radius = 1.4 * scale;
-          if (x - radius < -.01 || x + radius > bounds.width + .01 || y - radius < -.01 || y + radius > bounds.height + .01) {
+          const p = place(point.x, point.y + line.placedTop - line.top);
+          const x = canvasLeft + p.x, y = p.y, radius = 1.4 * scale;
+          if (x - radius < -.01 || x + radius > paperBounds.width + .01 || y - radius < -.01 || y + radius > paperBounds.height + .01) {
             throw new Error('赤ペンが印刷領域を超えるためPDFを準備できません。赤ペンを移動してから出力してください。');
           }
         }
-        const d = stroke.paths.map(points => points.map((point, i) => `${i ? 'L' : 'M'}${point.x * scale},${(point.y + line.placedTop - line.top) * scale}`).join(' ')).join(' ');
+        const d = stroke.paths.map(points => points.map((point, i) => {
+          const p = place(point.x, point.y + line.placedTop - line.top); return `${i ? 'L' : 'M'}${p.x},${p.y}`;
+        }).join(' ')).join(' ');
         svg('path', { d, 'stroke-width': 2.8 * scale, 'data-mark-id': stroke.id, 'data-source-line': line.index, 'data-color': stroke.color }, penLayer);
       }
-      memoPages.push({ sheet, canvas, pageLines, placedLines, memos, left });
+      memoPages.push({ sheet, canvas, pageLines, placedLines, memos, left: canvasLeft, place });
     }
     // Match glyph boxes (including font fallback/emoji) rather than assuming a
     // font's ascent. Read in one batch before writing final frozen coordinates.
@@ -247,7 +276,7 @@
     readingPositions.forEach(({ reading, left, top }) => { reading.style.left = `${left}px`; reading.style.top = `${top}px`; });
     // Only now are the final base/ruby ink boxes known. Keep bubble bodies clear
     // of them, vector marks and already placed bubbles, without moving the text.
-    for (const { sheet, canvas, pageLines, placedLines, memos, left } of memoPages) {
+    for (const { sheet, canvas, pageLines, placedLines, memos, left, place } of memoPages) {
       if (!memos.length) continue;
       const paper = sheet.getBoundingClientRect(), gap = Math.max(3, 4 * scale);
       const obstacles = [...sheet.querySelectorAll('.manuscript-piece,.manuscript-ruby-reading,.manuscript-pens path,.manuscript-markers rect')].map(el => {
@@ -257,11 +286,13 @@
       const overflow = [];
       for (const memo of memos) {
         const line = placedLines.get(memo.glyph.line), font = parseFloat(snapshot.font.fontSize) * scale;
-        const gx = (memo.glyph.x + memo.glyph.width / 2) * scale;
-        const gy = (memo.glyph.y + memo.glyph.height / 2 + line.placedTop - line.top) * scale;
+        const center = place(memo.glyph.x + memo.glyph.width / 2, memo.glyph.y + memo.glyph.height / 2 + line.placedTop - line.top);
+        const gx = center.x, gy = center.y;
         const preferred = { x: left + gx + memo.item.dx * font, y: gy + memo.item.dy * font };
         const position = memoPosition(memo.width, memo.height, preferred, obstacles, paper, memoInset, gap);
-        if (!position) { overflow.push({ ...memo, line }); continue; }
+        if (!position) {
+          overflow.push({ ...memo, line }); continue;
+        }
         const tx = clamp(left + gx + memo.item.tx * font, tipInset, paper.width - tipInset) - left;
         const ty = clamp(gy + memo.item.ty * font, tipInset, paper.height - tipInset);
         printBubble(memo.item, memoSettings, position.x - left, position.y, tx, ty, canvas, scale);
@@ -294,7 +325,8 @@
           if (!notePage) newNotePage();
           const reference = document.createElement('p'); reference.className = 'manuscript-note-reference';
           reference.dataset.sourceLine = memo.line.index;
-          reference.textContent = `メモ${memo.number}${part ? '（続き）' : ''} · 本文${sourcePage}ページ ${lineNumber}行目「${quote}」`;
+          reference.textContent = `メモ${memo.number}${part ? '（続き）' : ''} · 本文${sourcePage}ページ ${lineNumber}${vertical ? '列目（右から）' : '行目'}「${quote}」`;
+          reference.dataset.offset = memo.item.offset;
           reference.style.top = `${cursor}px`; notePage.append(reference);
           const y = cursor + reference.offsetHeight + bodyGap, available = paper.height - inset - y;
           if (measure(memo, units[0]) > available) { reference.remove(); newNotePage(); continue; }
