@@ -20,6 +20,7 @@
 .startup-choice span { font-size:1rem; font-weight:600; }
 .startup-choice small { color:var(--muted); font-size:.85rem; font-weight:400; line-height:1.4; }
 .startup-choice.primary small { color:#334155; }
+.startup-choice .startup-caution { padding-top:4px; border-top:1px solid var(--border); }
 #legacy-user-data { border-top:1px solid var(--border); margin-top:24px; padding-top:12px; }
 #startup-error { color:#fca5a5; overflow-wrap:anywhere; }
 main[data-screen-id="SCR-READ-VIEW"] #save-user-status { display:none; }
