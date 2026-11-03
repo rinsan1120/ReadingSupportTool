@@ -1038,6 +1038,7 @@
         save.onclick = () => finish(true);
         cancel.onclick = () => finish(false);
         input.addEventListener('keydown', event => {
+          if (event.key === 'Enter' && (event.isComposing || event.keyCode === 229)) return;
           if (event.key === 'Enter') { event.preventDefault(); finish(true); }
           if (event.key === 'Escape') finish(false);
         });
