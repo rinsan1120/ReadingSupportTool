@@ -7,20 +7,20 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="description" content="文章を読みやすく整え、自分の朗読速度から作品の朗読時間を調べるツール。">
   <title>よみじたく | 朗読支援サイト</title>
-  <link rel="stylesheet" href="styles.css?v=file-data">
+  <link rel="stylesheet" href="styles.css?v=browser-save">
   <script src="samples.js" defer></script>
   <script src="reading-annotations.js?v=memo-bubbles" defer></script>
   <script src="html-ruby.js" defer></script>
   <script src="reader.js?v=ruby-markers" defer></script>
   <script src="manuscript-writing.js?v=writing-menu" defer></script>
   <script src="manuscript-print.js?v=memo-layout" defer></script>
-  <script src="user-library.js?v=1" defer></script>
-  <script src="app.js?v=file-data" defer></script>
+  <script src="user-library.js?v=browser-save" defer></script>
+  <script src="app.js?v=browser-save" defer></script>
 </head>
 <body>
   <header class="site-header"><button class="brand" data-go="home"><span aria-hidden="true">☾</span> よみじたく <small>朗読支援サイト</small></button></header>
   <main data-screen-id="SCR-HOME" inert>
-    <div class="library-status"><span id="profile-display"></span><span id="user-save-status" role="status" aria-live="polite">ユーザーデータを選んでください</span><button id="save-user-status">保存</button></div>
+    <div class="library-status"><span id="profile-display"></span><span id="user-save-status" role="status" aria-live="polite">ユーザーデータを選んでください</span><button id="save-user-status">保存</button><button id="retry-browser-save" hidden>自動保存を再試行</button></div>
     <section id="home" class="view narrow" aria-labelledby="home-title">
       <p class="eyebrow">READING SUPPORT</p><h1 id="home-title" tabindex="-1">声にする前の、<wbr><span class="home-tagline">ひと支度。</span></h1>
       <p class="lead">読みやすいかたちで、あなたのペースで。<br>朗読のための、小さな道具です。</p>
@@ -37,7 +37,7 @@
       </div>
       <details class="user-settings"><summary>プロフィール・ファイルの保存と読み込み</summary>
         <label for="profile-name">表示名</label><input id="profile-name" maxlength="80" autocomplete="nickname" placeholder="お名前（任意）">
-        <p class="muted">ユーザーデータ（全原稿・計測履歴）はJSONファイルで管理します。編集後は「保存」を押してください。ブラウザへの自動保存・端末間の自動同期は行いません。</p>
+        <p id="storage-guidance" class="muted">ユーザーデータ（全原稿・計測履歴）はJSONファイルで管理します。編集内容は自動保存されません。作業終了前に「保存」を押してください。</p>
         <div class="inline"><button id="export-user">保存</button><button id="import-user">保存したファイルを開く</button></div>
         <p class="muted">ここで開くのはユーザーデータ全体のJSONです。旧形式の原稿1件のJSONは、本文入力の「旧形式の原稿ファイルを取り込む」から移行用として取り込めます。</p>
       </details>
@@ -45,7 +45,7 @@
         <div><h2 id="home-results-title">これまでの計測結果</h2><p>平均朗読速度：<strong id="home-average-speed"></strong></p></div>
         <button data-go="results">結果を見る →</button>
       </section>
-      <p class="privacy">データはこの画面内で編集し、JSONファイルに保存します。外部へ送信しません。</p>
+      <p id="storage-privacy" class="privacy">データはこの画面内で編集し、JSONファイルに保存します。外部へ送信しません。</p>
     </section>
     <section id="read-input" class="view narrow" hidden aria-labelledby="read-title">
       <button class="back" data-go="home">← ホーム</button><p class="eyebrow">READ</p><h1 id="read-title" tabindex="-1">原稿を準備する</h1>
@@ -172,12 +172,16 @@
   <input id="user-file" type="file" accept=".json,application/json" hidden>
   <dialog id="startup-dialog" aria-labelledby="startup-title">
     <p class="eyebrow">よみじたく</p><h2 id="startup-title">よみじたくを始める</h2>
-    <p>原稿と計測履歴は、1つのファイル（ユーザーデータJSON）にまとめて保存されています。前回保存したファイルがあれば、読み込むと続きから始められます。ファイルがない場合は、新しく始めてください。<strong>一度ファイルを作ったら、次からは同じファイルに上書き保存していくのがおすすめです。</strong></p>
-    <div class="inline"><button id="start-load" class="primary">保存したデータから続きを始める</button><button id="start-new">初めて使う・新しく始める</button></div>
-    <p class="muted">編集した内容は自動では保存されません。使い終わる前に「保存」を押してファイルに保存してください。</p>
-    <section id="legacy-user-data" hidden><h3>以前のブラウザ保存データがあります</h3>
-      <p>引き継いでからJSONファイルに保存できます。元のブラウザ保存データは削除・上書きしません。以後の変更はJSONに保存し、次回からそのファイルを読み込んでください。</p>
-      <div class="inline"><button id="start-legacy">ブラウザ保存データを引き継ぐ</button><button id="export-legacy">旧データをそのまま取り出す</button></div>
+    <p>原稿・書き込み・計測履歴の保存方法を選んでください。</p>
+    <div class="startup-options">
+      <div><button id="start-load" class="primary" aria-describedby="start-load-help">保存したデータから続きを始める</button><p id="start-load-help" class="muted">保存済みのユーザーデータJSONを開きます。</p></div>
+      <div><button id="start-new" aria-describedby="start-new-help">初めて使う・新しく始める</button><p id="start-new-help" class="muted">新規データでJSONファイル管理を始めます。編集後は「保存」が必要です。</p></div>
+      <div><button id="start-browser" aria-describedby="start-browser-help">ファイルを作らず続ける</button><p id="start-browser-help" class="muted">このブラウザに自動保存します。保存データがあれば続きから再開します。サイトデータの削除で失われ、別のブラウザ・端末へは自動で引き継がれません。</p></div>
+    </div>
+    <p class="muted">JSONファイル管理では自動保存されません。作業終了前に「保存」してください。次回も同じファイルを開いて続けられます。</p>
+    <section id="legacy-user-data" hidden><h3>ブラウザ保存データがあります</h3>
+      <p>「ファイルを作らず続ける」で再開できます。JSONファイル管理へ移す場合は、下の「JSONファイル管理に引き継ぐ」を選んでから「保存」してください。ブラウザ側のデータは残します。</p>
+      <div class="inline"><button id="start-legacy">JSONファイル管理に引き継ぐ</button><button id="export-legacy">ブラウザ保存データをそのまま取り出す</button></div>
     </section>
     <p id="startup-storage-note" class="muted"></p><p id="startup-error" role="alert"></p>
   </dialog>

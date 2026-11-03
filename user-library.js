@@ -39,5 +39,26 @@
     if (new TextEncoder().encode(json).length > MAX_BYTES) throw new Error('ファイルが大きすぎます（上限は約30MBです）。');
     return validate(JSON.parse(json));
   }
-  window.UserLibrary = { KEY, MAX_BYTES, empty, parse, validate };
+  function openBrowser(storage = localStorage) {
+    let stored = storage.getItem(KEY), blocked = false;
+    // Parse before exposing a writable session. Invalid older data stays intact.
+    const data = stored === null ? empty() : parse(stored);
+    let saved = JSON.stringify(data);
+    return {
+      data,
+      save(candidate) {
+        if (blocked || storage.getItem(KEY) !== stored) {
+          blocked = true;
+          throw new Error('別のタブでブラウザ保存データが変更されました。現在の内容をJSONにバックアップし、再読み込みしてください。');
+        }
+        const json = JSON.stringify(candidate);
+        if (new TextEncoder().encode(json).length > MAX_BYTES) throw new Error('保存データが大きすぎます（上限は約30MBです）。');
+        if (stored !== null && json === saved) return;
+        // Atomic setItem preserves the previous data if quota/access fails.
+        storage.setItem(KEY, json);
+        stored = json; saved = json;
+      }
+    };
+  }
+  window.UserLibrary = { KEY, MAX_BYTES, empty, parse, validate, openBrowser };
 })();

@@ -3,6 +3,7 @@
   const $ = id => document.getElementById(id);
   let library = null, changeTimer = 0, libraryReady = false;
   let savedUserSnapshot = null, captureFailed = false, userDirty = false, savingUser = false, userFilename = '', hasUserFile = false;
+  let storageMode = 'file', browserSession = null, browserSaveError = '';
   let hasLegacyUserData = false, pendingDownloadSnapshot = null;
   let view = 'home', mode = 'read', sourceType = 'sample', sample = null;
   let history = [], target = '', targetManual = false, plannedMinutes = '20';
@@ -933,7 +934,10 @@
     // Distinguish "no file yet" from "unsaved changes": only real edits warn.
     const fallback = userDirty ? '未保存の変更があります。「保存」でファイルに保存してください。'
       : hasUserFile ? `保存済み · ${userFilename}` : '保存先ファイルはまだありません。「保存」でファイルを作ってください。';
-    saveStatus(message || fallback, captureFailed);
+    const browserStatus = browserSaveError ? `ブラウザ内に保存できません：${browserSaveError} 変更は画面内に保持しています。JSONへのバックアップも利用できます。`
+      : userDirty ? 'ブラウザ内に自動保存中…' : 'このブラウザに自動保存済み';
+    saveStatus(message || (storageMode === 'browser' ? browserStatus : fallback), captureFailed || !!browserSaveError);
+    $('retry-browser-save').hidden = storageMode !== 'browser' || !browserSaveError;
     const readerState = $('reader-save-state');
     if (readerState) readerState.hidden = !userDirty;
   }
@@ -969,6 +973,12 @@
     try {
       captureLibrary(); captureFailed = false;
       userDirty = snapshotKey(library) !== savedUserSnapshot;
+      if (storageMode === 'browser') {
+        try {
+          browserSession.save(library);
+          savedUserSnapshot = snapshotKey(library); userDirty = false; browserSaveError = '';
+        } catch (error) { browserSaveError = error.message; userDirty = true; }
+      }
       renderSaveState(); renderLibrary(); return true;
     } catch (error) {
       captureFailed = true; userDirty = true;
@@ -1072,7 +1082,8 @@
           library = candidate;
           if (!library.activeId) restoreBook(null);
           syncLibrary();
-          notify(hasUserFile ? '原稿を削除しました。ファイルに反映するには「保存」を押してください。' : '原稿を削除しました。');
+          notify(storageMode === 'browser' ? browserSaveError ? '原稿を削除しましたが、自動保存に失敗しています。保存状態を確認してください。' : '原稿を削除し、ブラウザ内に保存しました。'
+            : hasUserFile ? '原稿を削除しました。ファイルに反映するには「保存」を押してください。' : '原稿を削除しました。');
         } catch (error) { saveStatus(`削除できません：${error.message}`, true); }
       };
       const actions = document.createElement('div'); actions.className = 'book-actions';
@@ -1111,9 +1122,14 @@
     }
   });
   document.addEventListener('visibilitychange', () => { if (document.hidden && libraryReady) syncLibrary(); });
+  addEventListener('pagehide', () => { if (libraryReady) syncLibrary(); });
+  addEventListener('storage', event => {
+    if (libraryReady && storageMode === 'browser' && (event.key === window.UserLibrary.KEY || event.key === null)) syncLibrary();
+  });
+  $('retry-browser-save').onclick = syncLibrary;
 
   function setFileControlsBusy(busy) {
-    ['export-manuscript', 'export-user', 'save-user-status', 'import-user', 'start-load', 'start-new', 'start-legacy'].forEach(id => { $(id).disabled = busy; });
+    ['export-manuscript', 'export-user', 'save-user-status', 'import-user', 'start-load', 'start-new', 'start-browser', 'start-legacy'].forEach(id => { $(id).disabled = busy; });
   }
   function downloadJSON(json, filename) {
     const url = URL.createObjectURL(new Blob([json], { type: 'application/json;charset=utf-8' }));
@@ -1122,7 +1138,7 @@
     finally { a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); }
   }
   function markFileSaved(key, filename) {
-    savedUserSnapshot = key; userFilename = filename; hasUserFile = true;
+    if (storageMode === 'file') { savedUserSnapshot = key; userFilename = filename; hasUserFile = true; }
     syncLibrary();
   }
   async function saveUserData() {
@@ -1140,7 +1156,8 @@
         writable = await handle.createWritable();
         await writable.write(json); await writable.close(); writable = null;
         markFileSaved(key, handle.name || filename);
-        notify(userDirty ? 'ファイルを保存しました。保存中に加わった変更は未保存です。' : 'ユーザーデータをファイルに保存しました。');
+        notify(storageMode === 'browser' ? 'JSONのバックアップを保存しました。ブラウザ内自動保存を継続します。'
+          : userDirty ? 'ファイルを保存しました。保存中に加わった変更は未保存です。' : 'ユーザーデータをファイルに保存しました。');
       } else {
         downloadJSON(json, filename);
         // A download click does not prove that the browser actually saved a file.
@@ -1153,7 +1170,8 @@
       if (writable) { try { await writable.abort(); } catch { /* Keep the original failure. */ } }
       syncLibrary();
       const outcome = error.name === 'AbortError' ? '保存をキャンセルしました。' : `ファイルを保存できません：${error.message}`;
-      saveStatus(`${outcome} ${userDirty ? '未保存の変更があります。' : '元の保存状態を維持しています。'}`, error.name !== 'AbortError');
+      if (storageMode === 'browser') renderSaveState(`${outcome} ${browserSaveError ? 'ブラウザ内の保存にも失敗しています。JSONへのバックアップを再試行してください。' : userDirty ? 'ブラウザ内に未保存の変更があります。' : 'ブラウザ内の自動保存データは保持しています。'}`);
+      else saveStatus(`${outcome} ${userDirty ? '未保存の変更があります。' : '元の保存状態を維持しています。'}`, error.name !== 'AbortError');
     } finally { savingUser = false; setFileControlsBusy(false); }
   }
   $('export-user').onclick = saveUserData;
@@ -1166,9 +1184,17 @@
   $('download-not-saved').onclick = () => $('download-confirm-dialog').close();
   $('download-confirm-dialog').addEventListener('close', () => { pendingDownloadSnapshot = null; syncLibrary(); });
 
-  function useUserData(candidate, filename = '', saved = false) {
+  function useUserData(candidate, filename = '', saved = false, session = null) {
     clearTimeout(changeTimer);
     libraryReady = false;
+    storageMode = session ? 'browser' : 'file'; browserSession = session; browserSaveError = ''; captureFailed = false;
+    $('storage-guidance').textContent = session
+      ? '全原稿・ルビ・書き込み・計測履歴は、このブラウザ内に自動保存します。サイトデータを削除すると失われます。別のブラウザ・端末へは自動で引き継がれません。必要に応じてJSONにバックアップできます。'
+      : 'ユーザーデータ（全原稿・計測履歴）はJSONファイルで管理します。編集内容は自動保存されません。作業終了前に「保存」を押してください。';
+    $('storage-privacy').textContent = session ? 'データはこのブラウザ内に保存します。外部へ送信しません。' : 'データはこの画面内で編集し、JSONファイルに保存します。外部へ送信しません。';
+    ['export-user', 'save-user-status'].forEach(id => { $(id).textContent = session ? 'JSONにバックアップ' : '保存'; });
+    $('export-manuscript').querySelector('span').textContent = session ? 'バックアップ' : '保存';
+    $('export-manuscript').setAttribute('aria-label', session ? 'JSONにバックアップ' : '保存');
     library = candidate; history = library.history; target = library.target; plannedMinutes = library.plannedMinutes;
     $('profile-name').value = library.profile.name; restoreBook(activeBook());
     timeAnnotations = null; timeMarks = null; timeInputSnapshot = null; $('time-text').value = ''; lastMeasuredCustomText = null;
@@ -1196,7 +1222,7 @@
       if (libraryReady) {
         if (!readyForDirectAction()) return;
         syncLibrary();
-        if (!await ask(`表示名：${candidate.profile.name || '未設定'}\n原稿：${candidate.manuscripts.length}件／計測履歴：${candidate.history.length}件\n\n現在のユーザーデータ全体を置き換えます。${userDirty ? '未保存の変更は失われます。必要ならキャンセルして先に保存してください。' : '自動統合はしません。'}`, '読み込む', 'ユーザーデータを読み込みますか？')) return;
+        if (!await ask(`表示名：${candidate.profile.name || '未設定'}\n原稿：${candidate.manuscripts.length}件／計測履歴：${candidate.history.length}件\n\n現在のユーザーデータ全体を置き換えます。${userDirty ? '未保存の変更は失われます。必要ならキャンセルして先に保存してください。' : '自動統合はしません。'}${storageMode === 'browser' ? '\nJSONファイル管理に切り替えます。ブラウザ内の保存データは残します。' : ''}`, '読み込む', 'ユーザーデータを読み込みますか？')) return;
       }
       useUserData(candidate, file.name, true);
       notify('ユーザーデータJSONを読み込みました。');
@@ -1210,6 +1236,12 @@
     } finally { restoringUser = false; setFileControlsBusy(false); }
   };
   $('start-new').onclick = () => useUserData(window.UserLibrary.empty());
+  $('start-browser').onclick = () => {
+    try {
+      const session = window.UserLibrary.openBrowser();
+      useUserData(session.data, '', false, session);
+    } catch (error) { $('startup-error').textContent = `ブラウザ内のデータを開けません。既存データは上書きしません。${error.message} JSONファイルでの利用も選べます。`; }
+  };
   $('start-legacy').onclick = () => {
     try {
       // Read again on explicit selection. Migration never removes or overwrites the source.

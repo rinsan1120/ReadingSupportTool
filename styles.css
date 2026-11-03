@@ -15,6 +15,10 @@
 .library-status { max-width:1100px; margin:0 auto; padding:8px 20px; display:flex; flex-wrap:wrap; gap:8px 18px; font-size:.8rem; color:var(--muted); overflow-wrap:anywhere; }
 .library-status span { min-width:0; max-width:100%; }
 .library-status button { min-height:36px; padding:5px 12px; }
+.startup-options { display:grid; gap:12px; }
+.startup-options>div { padding:12px; border:1px solid var(--border); border-radius:8px; }
+.startup-options button { width:100%; white-space:normal; overflow-wrap:anywhere; }
+.startup-options p { margin:8px 0 0; }
 #legacy-user-data { border-top:1px solid var(--border); margin-top:24px; padding-top:12px; }
 #startup-error { color:#fca5a5; overflow-wrap:anywhere; }
 main[data-screen-id="SCR-READ-VIEW"] #save-user-status { display:none; }
