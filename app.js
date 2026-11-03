@@ -778,6 +778,10 @@
     $('preparation').hidden = true; $('measurement-bar').hidden = false;
     window.scrollTo(0, 0);
     window.Reader.refresh(null);
+    if (window.Reader.direction === 'vertical') {
+      const top = $('reader').getBoundingClientRect().top + scrollY;
+      window.scrollTo(0, Math.max(0, top - document.querySelector('.reader-controls').getBoundingClientRect().height - 12));
+    }
     beginCountdown();
   };
   $('pause-measurement').onclick = () => {

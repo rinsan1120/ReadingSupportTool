@@ -130,6 +130,7 @@ const modelTests = page => page.evaluate(() => {
       await page.locator(`.writing-memo[data-mark-id="${createdMemo.id}"] .memo-remove`).click();
       assert.ok(!(await items(page)).some(i => i.id === createdMemo.id));
       await page.locator('[data-writing-tool=pen]').click();
+      await page.clock.fastForward(6501); // Let the import notification expire before pointer drawing.
       const p = await glyph(page, 0); await drag({ x: p.x - 5, y: p.y }, { x: p.x - 5, y: p.y + 40 });
       assert.equal((await items(page)).filter(i => i.type === 'pen').length, 2);
       const verticalPen = (await items(page)).find(i => i.type === 'pen' && i.direction === 'vertical'); assert.ok(verticalPen);

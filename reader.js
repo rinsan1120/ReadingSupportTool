@@ -10,7 +10,16 @@
   let writingGeometry = null;
   let direction = 'horizontal';
   const vertical = () => direction === 'vertical';
-  const columnHeight = () => Math.max(180, Math.min(620, innerHeight * .62));
+  const measurementBar = document.getElementById('measurement-bar');
+  const controls = document.querySelector('.reader-controls');
+  const columnHeight = () => {
+    const preferred = Math.max(180, Math.min(620, innerHeight * .62));
+    if (measurementBar.hidden) return preferred;
+    const viewportHeight = window.visualViewport?.height ?? innerHeight;
+    const available = viewportHeight - controls.getBoundingClientRect().height - measurementBar.getBoundingClientRect().height - 12 - settings.fontSize;
+    return Math.max(1, Math.min(preferred, available));
+  };
+  let lastColumnHeight = 0;
   const readingEdge = () => document.querySelector('.reader-controls').getBoundingClientRect().bottom + 12;
   let annotations = null, annotationsEditable = true, rubyMode = false, draft = null, editAnchor = null;
   let readingChangeGuard = async () => true, readingChangePending = false, editorSuspended = false;
@@ -324,6 +333,7 @@
       marker.textContent = 'ここまでが計測対象です。'; root.append(marker);
     }
     if (vertical()) getWritingGeometry(); // Build the position index during layout, not the first scroll.
+    lastColumnHeight = columnHeight();
     lastAvailable = available;
     lastMobile = mobile.matches;
     restore(anchor);
@@ -645,6 +655,15 @@
     scheduled = requestAnimationFrame(() => layout(savedAnchor));
   });
   observer.observe(root.parentElement);
+  const refreshVisibleHeight = () => {
+    if (!vertical() || printing() || root.closest('[hidden]') || Math.abs(columnHeight() - lastColumnHeight) < .5) return;
+    cancelAnimationFrame(scheduled);
+    scheduled = requestAnimationFrame(() => layout(savedAnchor));
+  };
+  const viewportObserver = new ResizeObserver(refreshVisibleHeight);
+  viewportObserver.observe(controls, { box: 'border-box' });
+  viewportObserver.observe(measurementBar, { box: 'border-box' });
+  window.visualViewport?.addEventListener('resize', refreshVisibleHeight);
   let lastViewportHeight = innerHeight;
   addEventListener('resize', () => {
     const changed = lastViewportHeight !== innerHeight; lastViewportHeight = innerHeight;
