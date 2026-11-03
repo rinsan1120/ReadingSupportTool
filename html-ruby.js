@@ -35,7 +35,10 @@
           const start = text.length;
           nodes.forEach(n => walk(n, pre));
           const reading = [...rt.childNodes].map(readingText).join('').replace(spaces, ' ').trim();
-          sourceRubies.push({ start, end: text.length, reading });
+          // A copied selection can start inside RT and omit its base entirely.
+          // RT is still reading text, but without a selected base there is no
+          // range to annotate. Never invent the missing base or a zero range.
+          if (text.length > start) sourceRubies.push({ start, end: text.length, reading });
         };
         if (readings.length === 1) add(bases, readings[0]);
         else if (bases.every(n => n.nodeName === 'RB') && bases.length === readings.length) {

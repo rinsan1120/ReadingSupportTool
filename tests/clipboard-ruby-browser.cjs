@@ -8,6 +8,11 @@ const { chromium } = require('playwright');
 const { startNew, saveUser } = require('./file-session.cjs');
 const root = path.resolve(__dirname, '..');
 const fixture = fs.readFileSync(path.join(__dirname, 'fixtures/aozora-ruby.html'), 'utf8');
+// Android capture starting inside an RT: its first ruby has no selected base.
+// Only copied style attributes and span wrappers were removed from the fixture.
+const partial = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/aozora-ruby-partial.json'), 'utf8'));
+const capture = process.env.CLIPBOARD_RUBY_CAPTURE ? JSON.parse(fs.readFileSync(process.env.CLIPBOARD_RUBY_CAPTURE, 'utf8'))
+  .records.find(r => r.field === 'plain-target' && r.type === 'paste').clipboard : null;
 const files = new Set(['index.html', 'styles.css', 'samples.js', 'reading-annotations.js', 'html-ruby.js',
   'reader.js', 'manuscript-writing.js', 'manuscript-print.js', 'user-library.js', 'app.js']);
 const server = http.createServer((req, res) => {
@@ -49,11 +54,13 @@ const confirm = async (page, answer) => {
       for (const id of ['read-text', 'time-text']) {
         const cases = [
           { html: fixture, plain: '狐きつねの親子の棲すんでいる森。', rich: true },
+          { html: partial.html, plain: partial.plain, rich: true, partial: true },
+          ...(capture ? [{ ...capture, rich: true, partial: true }] : []),
           { plain: '寒い冬が北方から、狐きつねの親子の棲すんでいる森へ。\n或朝あるあさ洞穴ほらあなから、眼めを抑おさえた。' },
           { plain: '狐（きつね）の話。（ここから後半）漢字(説明)、山（やま）へ行く。\nが・𠮷・👩‍👩‍👧‍👦を残す。' },
           { html: '<p>狐きつねの親子。説明（補足）</p>', plain: '狐きつねの親子。説明（補足）' }
         ];
-        for (const { html = '', plain, rich = false } of cases) {
+        for (const { html = '', plain, rich = false, partial: clipped = false } of cases) {
           const context = await browser.newContext({ viewport: { width, height: 844 }, isMobile: width < 600, hasTouch: width < 600 });
           try {
             const page = await context.newPage(), errors = [], external = [];
@@ -66,7 +73,12 @@ const confirm = async (page, answer) => {
             if (id === 'time-text') await page.locator('[name=source][value=custom]').check();
             const parsed = rich ? await page.evaluate(html => window.HTMLRubyImporter.parse(html).toJSON(), html) : null;
             const expected = parsed?.text ?? plain;
-            if (rich) {
+            if (clipped) {
+              assert.equal(parsed.text, partial.text, 'keep every selected base, omit only explicit RT text');
+              assert.deepEqual(parsed.sourceRubies.map(r => parsed.text.slice(r.start, r.end)), partial.bases);
+              assert.deepEqual(parsed.sourceRubies.map(r => r.reading), partial.readings);
+              assert.equal(parsed.sourceRubies[0].start, 0, 'orphan reading must not shift the next base');
+            } else if (rich) {
               assert.equal(parsed.sourceRubies.length, 6);
               assert.deepEqual(parsed.sourceRubies.map(r => parsed.text.slice(r.start, r.end)), ['狐', '棲', '或朝', '洞穴', '眼', '抑']);
               assert.deepEqual(parsed.sourceRubies.map(r => r.reading), ['きつね', 'す', 'あるあさ', 'ほらあな', 'め', 'おさ']);
@@ -88,17 +100,28 @@ const confirm = async (page, answer) => {
             await page.locator('[data-direction="vertical"]').click();
             assert.equal(await page.evaluate(() => Reader.direction), 'vertical');
             assert.equal(await source(page), expected);
+            assert.deepEqual(await page.locator('#reader rt').allTextContents(), parsed?.sourceRubies.map(r => r.reading) ?? []);
             if (id === 'read-text') {
               const saved = await saveUser(page);
               const manuscript = saved.manuscripts.find(m => m.id === saved.activeId).manuscript;
               assert.equal(manuscript.text, expected);
               assert.deepEqual(manuscript.sourceRubies, parsed?.sourceRubies ?? []);
+              if (clipped) {
+                await page.locator('#reader-back').click();
+                await paste(page, id, html, plain, 1, 1);
+                assert.match(await page.locator('#notice').textContent(), /途中にはHTMLルビ/);
+                assert.equal(await page.locator('#read-text').inputValue(), expected);
+                await paste(page, id, html, plain); await confirm(page, 'cancel');
+                await page.locator('#open-read').click();
+                const protectedSave = await saveUser(page);
+                assert.deepEqual(protectedSave.manuscripts.find(m => m.id === protectedSave.activeId).manuscript, manuscript);
+              }
             }
             assert.deepEqual(errors, []); assert.deepEqual(external, []);
           } finally { await context.close(); }
         }
       }
-      console.log(`PASS ${width}px: HTML ruby / flat plain / parentheses / non-ruby HTML; both inputs, replacement, reader, vertical and saved source`);
+      console.log(`PASS ${width}px: complete/partial HTML ruby, plain text, both inputs, protected replacement, horizontal/vertical and saved source`);
     }
   } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; }).finally(() => server.close());
