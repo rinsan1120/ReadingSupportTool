@@ -250,7 +250,7 @@ const modelTests = page => page.evaluate(() => {
           }
         }
       }
-      const sample = fs.readFileSync(path.join(__dirname, 'fixtures', 'vertical-paragraphs.txt'), 'utf8').trimEnd();
+      const sample = fs.readFileSync(path.join(__dirname, 'fixtures', 'vertical-paragraphs.txt'), 'utf8').replace(/\r\n/g, '\n').trimEnd();
       await page.evaluate(sample => {
         Reader.show(sample, null, { writingDirection: 'vertical' });
         Reader.configure({ columns: 20, height: 1.8, breaks: 5 });
