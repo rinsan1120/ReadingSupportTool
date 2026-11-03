@@ -1191,8 +1191,8 @@
     storageMode = session ? 'browser' : 'file'; browserSession = session; browserSaveError = ''; captureFailed = false;
     $('storage-guidance').textContent = session
       ? '全原稿・ルビ・書き込み・計測履歴は、このブラウザ内に自動保存します。サイトデータを削除すると失われます。別のブラウザ・端末へは自動で引き継がれません。必要に応じてバックアップを保存できます。'
-      : 'ユーザーデータ（全原稿・計測履歴）はJSONファイルで管理します。編集内容は自動保存されません。作業終了前に「保存」を押してください。';
-    $('storage-privacy').textContent = session ? 'データはこのブラウザ内に保存します。外部へ送信しません。' : 'データはこの画面内で編集し、JSONファイルに保存します。外部へ送信しません。';
+      : '全原稿・計測履歴をファイルで管理します。編集内容は自動保存されません。作業終了前に「保存」を押してください。';
+    $('storage-privacy').textContent = session ? 'データはこのブラウザ内に保存します。外部へ送信しません。' : 'データはこの画面内で編集し、ファイルに保存します。外部へ送信しません。';
     ['export-user', 'save-user-status'].forEach(id => { $(id).textContent = session ? 'バックアップを保存' : '保存'; });
     $('import-user').textContent = session ? 'バックアップから復元' : '保存したファイルを開く';
     $('library-load').textContent = session ? 'バックアップから復元' : '保存したデータから続きを始める（ファイルを開く）';
@@ -1229,7 +1229,7 @@
         if (!await ask(`表示名：${candidate.profile.name || '未設定'}\n原稿：${candidate.manuscripts.length}件／計測履歴：${candidate.history.length}件\n\n${restoringBrowserBackup ? '現在の原稿・書き込み・計測履歴を置き換えます。' : '現在のユーザーデータ全体を置き換えます。'}${userDirty ? '未保存の変更は失われます。必要ならキャンセルして先に保存してください。' : '自動統合はしません。'}${restoringBrowserBackup ? '\nファイル管理に切り替えます。ブラウザ内の自動保存データは残します。' : ''}`, '復元する', 'バックアップから復元しますか？')) return;
       }
       useUserData(candidate, file.name, true);
-      notify(restoringBrowserBackup ? 'バックアップから復元しました。ファイル管理に切り替えました。ブラウザ内の自動保存データは残っています。' : 'ユーザーデータJSONを読み込みました。');
+      notify(restoringBrowserBackup ? 'バックアップから復元しました。ファイルで保存する方式に切り替えました。ブラウザ内の自動保存データは残っています。' : '保存データを読み込みました。');
     } catch (error) {
       let chosenFormat = null;
       try { chosenFormat = JSON.parse(chosenText)?.format; } catch { /* Keep the original error. */ }
@@ -1244,7 +1244,7 @@
     try {
       const session = window.UserLibrary.openBrowser();
       useUserData(session.data, '', false, session);
-    } catch (error) { $('startup-error').textContent = `ブラウザ内のデータを開けません。既存データは上書きしません。${error.message} JSONファイルでの利用も選べます。`; }
+    } catch (error) { $('startup-error').textContent = `ブラウザ内のデータを開けません。既存データは上書きしません。${error.message} ファイルに保存して利用する方法も選べます。`; }
   };
   $('start-legacy').onclick = () => {
     try {
@@ -1265,7 +1265,7 @@
   };
   library = window.UserLibrary.empty();
   try { hasLegacyUserData = localStorage.getItem(window.UserLibrary.KEY) !== null; }
-  catch { $('startup-storage-note').textContent = 'ブラウザ保存データを確認できませんでした。JSONの読み込み・新規作成は利用できます。'; }
+  catch { $('startup-storage-note').textContent = 'このブラウザの保存データを確認できませんでした。ファイルに保存する方法は利用できます。'; }
   $('legacy-user-data').hidden = !hasLegacyUserData;
   $('startup-dialog').addEventListener('cancel', event => event.preventDefault());
   $('startup-dialog').showModal();
