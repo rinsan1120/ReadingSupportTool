@@ -212,7 +212,81 @@ const modelTests = page => page.evaluate(() => {
       await restored.goto(url); await loadUser(restored, saved);
       await restored.locator('[data-go=read-input]').click(); await restored.locator('#open-read').click();
       assert.equal(await restored.evaluate(() => Reader.direction), 'vertical'); assert.deepEqual(await items(restored), stored);
-      await fresh.close(); assert.deepEqual(errors, []); await context.close();
+      await fresh.close();
+      await page.evaluate(() => ManuscriptWriting.leave());
+      // Blank lines must consume columns, not start a viewport-height section.
+      // Exercise the original paragraph split, including whitespace-only gaps.
+      for (const separator of ['\n', '\r\n\r\n', '\r\r\r', '\n \t\u3000\n']) {
+        const paragraphs = ['第一段落。', '第二段落。', '第三段落。'];
+        const body = paragraphs.join(separator);
+        await page.evaluate(body => {
+          Reader.show(body, null, { writingDirection: 'vertical' });
+          Reader.configure({ columns: 100, height: 1.4, breaks: 0 });
+        }, body);
+        for (const viewport of [{ width, height: 900 }, { width, height: 650 }]) {
+          await page.setViewportSize(viewport);
+          await page.waitForTimeout(180);
+          const flow = await page.evaluate(({ body, paragraphs }) => {
+            const root = document.getElementById('reader'), geometry = Reader.getWritingGeometry();
+            return {
+              text: root.textContent, pages: root.querySelectorAll('.vertical-page').length,
+              pitch: parseFloat(getComputedStyle(root).lineHeight),
+              starts: paragraphs.map(p => geometry.byOffset.get(body.indexOf(p))),
+              print: Reader.printSnapshot().lines.flatMap(l => l.pieces.map(p => p.text)).join(''),
+              overflow: document.documentElement.scrollWidth > innerWidth
+            };
+          }, { body, paragraphs });
+          assert.equal(flow.text, body, 'retain every newline and space');
+          assert.equal(flow.pages, 1, 'short paragraphs share a section');
+          assert.equal(flow.overflow, false);
+          assert.equal(flow.print.replace(/\s/gu, ''), paragraphs.join(''), 'PDF column order matches source');
+          for (let i = 1; i < flow.starts.length; i++) {
+            assert.ok(flow.starts[i].x < flow.starts[i - 1].x, 'paragraphs continue left');
+            assert.ok(Math.abs(flow.starts[i].y - flow.starts[0].y) < 1, 'paragraphs share the column top');
+          }
+          if (/^[\r\n]+$/.test(separator)) {
+            const newlines = separator.match(/\r\n|\r|\n/g).length;
+            assert.ok(Math.abs(flow.starts[0].x - flow.starts[1].x - newlines * flow.pitch) < 1, 'empty lines retain their column spacing: ' + JSON.stringify({ separator, flow }));
+          }
+        }
+      }
+      const sample = fs.readFileSync(path.join(__dirname, 'fixtures', 'vertical-paragraphs.txt'), 'utf8').trimEnd();
+      await page.evaluate(sample => {
+        Reader.show(sample, null, { writingDirection: 'vertical' });
+        Reader.configure({ columns: 20, height: 1.8, breaks: 5 });
+      }, sample);
+      for (const height of [900, 650]) {
+        await page.setViewportSize({ width, height }); await page.waitForTimeout(180);
+        const flow = await page.evaluate(sample => {
+          const root = document.getElementById('reader'), g = Reader.getWritingGeometry();
+          const columns = [...root.querySelectorAll('.vertical-column')];
+          const pairs = [...sample.matchAll(/\n\n/g)].map(m => {
+            const before = g.byOffset.get(m.index - 1), after = g.byOffset.get(m.index + 2);
+            return { before, after };
+          });
+          return { text: root.textContent, blocks: root.querySelectorAll('.text-block').length,
+            print: Reader.printSnapshot().lines.flatMap(l => l.pieces.map(p => p.text)).join(''), pairs,
+            overflow: document.documentElement.scrollWidth > innerWidth,
+            outside: g.glyphs.some(p => p.x < -1 || p.x + p.width > root.clientWidth + 2),
+            count: columns.length, pages: root.querySelectorAll('.vertical-page').length };
+        }, sample);
+        assert.equal(flow.text, sample); assert.equal(flow.blocks, 1, 'all five paragraphs share one flow');
+        assert.equal(flow.print, sample.replace(/\n/g, ''), 'sample PDF has exact source order without omissions or duplicates');
+        assert.equal(flow.overflow, false); assert.equal(flow.outside, false);
+        assert.ok(flow.pairs.every(({ before, after }) => after.y > before.y || after.x < before.x), 'paragraph progression follows columns or viewport sections');
+        await page.screenshot({ path: path.join(output, `paragraphs-${width}-${height}.png`), fullPage: true });
+      }
+      const horizontal = await page.evaluate(() => {
+        Reader.configure({ direction: 'horizontal' });
+        const text = document.getElementById('reader').textContent;
+        ManuscriptPrint.prepare(Reader.printSnapshot());
+        const printed = [...document.querySelectorAll('.manuscript-line')].map(el => el.textContent).join('');
+        ManuscriptPrint.clear();
+        return { text, printed };
+      });
+      assert.equal(horizontal.text, sample, 'horizontal source and blank lines stay intact');
+      assert.equal(horizontal.printed.replace(/\s/gu, ''), sample.replace(/\s/gu, ''), 'horizontal PDF retains source order');
+      assert.deepEqual(errors, []); await context.close();
       console.log(`vertical writing ${width}px: layout, touch, independent pens/memos, Undo, PDF, storage, file, measurement passed`);
     }
   } finally { await browser.close(); server.close(); }

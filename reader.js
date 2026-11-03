@@ -212,6 +212,21 @@
       lines.push({ start: offsets[i], end: offsets[lo], y });
       i = lo;
     }
+    if (vertical()) {
+      // A Range on an empty line can share the preceding glyph's rectangle.
+      // Preserve explicit newline boundaries even when geometry cannot expose
+      // the empty column; otherwise freezing the layout collapses blank lines.
+      return lines.flatMap(line => {
+        const columns = [];
+        let start = line.start;
+        for (const match of block.text.slice(line.start, line.end).matchAll(/\r\n|\r|\n/g)) {
+          const end = line.start + match.index + match[0].length;
+          columns.push({ ...line, start, end }); start = end;
+        }
+        if (start < line.end) columns.push({ ...line, start, end: line.end });
+        return columns;
+      });
+    }
     return lines;
   }
   function layout(anchor = capture()) {
@@ -242,9 +257,11 @@
     root.classList.toggle('vertical-writing', vertical());
     root.dataset.direction = direction;
     root.replaceChildren(); blocks = [];
-    // Empty original lines are natural boundaries; retain all whitespace verbatim.
+    // Horizontal blocks use blank lines as boundaries. Vertical text must measure
+    // those same newlines as columns in one flow, rather than starting a fresh
+    // viewport-height section for every paragraph. Keep all whitespace verbatim.
     const visibleText = displayEnd === null ? source : source.slice(0, displayEnd);
-    const chunks = visibleText.split(/((?:\r\n|\n|\r)[\t \u3000]*(?:\r\n|\n|\r)(?:[\t \u3000]*(?:\r\n|\n|\r))*)/);
+    const chunks = vertical() ? [visibleText] : visibleText.split(/((?:\r\n|\n|\r)[\t \u3000]*(?:\r\n|\n|\r)(?:[\t \u3000]*(?:\r\n|\n|\r))*)/);
     let start = 0, pendingText = '', pendingStart = 0;
     const positions = [...(annotations?.entries || []), ...(draft ? [draft] : [])].map(a => a.offset);
     const flushText = () => {
