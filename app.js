@@ -952,7 +952,14 @@
   $('reader').addEventListener('reader-layout', revealToolbar);
   document.querySelectorAll('dialog').forEach(dialog => new MutationObserver(revealToolbar).observe(dialog, { attributes:true, attributeFilter:['open'] }));
   new MutationObserver(revealToolbar).observe($('reading'), { attributes:true, attributeFilter:['hidden'] });
-  function resetToolbarViewport() { toolbarIgnoreUntil = performance.now() + 250; revealToolbar(); }
+  const toolbarViewportKey = () => `${innerWidth}:${window.Reader.viewportHeight}`;
+  let lastToolbarViewport = toolbarViewportKey();
+  function resetToolbarViewport() {
+    const next = toolbarViewportKey();
+    if (next === lastToolbarViewport) return;
+    lastToolbarViewport = next;
+    toolbarIgnoreUntil = performance.now() + 250; revealToolbar();
+  }
   addEventListener('resize', resetToolbarViewport);
   addEventListener('orientationchange', resetToolbarViewport);
   window.visualViewport?.addEventListener('resize', resetToolbarViewport);

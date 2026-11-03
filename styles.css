@@ -836,3 +836,6 @@ html { scrollbar-gutter: stable; }
   .reader-toolbar { grid-template-columns:auto minmax(0,1fr) auto; grid-template-areas:"direction back wake" "actions actions actions"; }
   #reader-actions { width:100%; }
 }
+
+/* Small viewport measurement has no effect on document flow or scroll bounds. */
+.reader-viewport-probe { position:fixed; top:0; left:0; width:0; height:100svh; visibility:hidden; pointer-events:none; contain:strict; }

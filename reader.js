@@ -13,14 +13,13 @@
   const measurementBar = document.getElementById('measurement-bar');
   const controls = document.querySelector('.reader-controls');
   const columnHeight = () => {
-    const preferred = Math.max(180, Math.min(620, innerHeight * .62));
+    const preferred = Math.max(180, Math.min(620, (isMobileViewport() ? viewportHeight() : innerHeight) * .62));
     if (measurementBar.hidden) return preferred;
-    const viewportHeight = window.visualViewport?.height ?? innerHeight;
-    const available = viewportHeight - controls.getBoundingClientRect().height - measurementBar.getBoundingClientRect().height - 12 - settings.fontSize;
+    const available = viewportHeight() - controls.getBoundingClientRect().height - measurementBar.getBoundingClientRect().height - 12 - settings.fontSize;
     return Math.max(1, Math.min(preferred, available));
   };
   let lastColumnHeight = 0;
-  const readingEdge = () => document.querySelector('.reader-controls').getBoundingClientRect().bottom + 12;
+  const readingEdge = () => Math.max(window.visualViewport?.offsetTop || 0, controls.getBoundingClientRect().bottom) + 12;
   let annotations = null, annotationsEditable = true, rubyMode = false, draft = null, editAnchor = null;
   let readingChangeGuard = async () => true, readingChangePending = false, editorSuspended = false;
   const rubyHelp = document.getElementById('ruby-help');
@@ -32,6 +31,22 @@
   const widthInput = document.getElementById('reader-width');
   const widthOutput = document.getElementById('reader-width-value');
   const mobile = matchMedia('(max-width: 600px)');
+  const touchViewport = matchMedia('(any-pointer: coarse)');
+  const isMobileViewport = () => mobile.matches || touchViewport.matches;
+  const supportsSmallViewport = CSS.supports('height', '100svh');
+  const viewportProbe = document.createElement('div');
+  viewportProbe.className = 'reader-viewport-probe'; viewportProbe.setAttribute('aria-hidden', 'true');
+  document.body.append(viewportProbe);
+  let fallbackWidth = innerWidth, fallbackHeight = Math.min(innerHeight, window.visualViewport?.height ?? innerHeight);
+  const viewportHeight = () => {
+    if (!isMobileViewport()) return Math.min(innerHeight, window.visualViewport?.height ?? innerHeight);
+    // svh stays constant while browser chrome expands/collapses, including on
+    // landscape phones. Legacy engines freeze height until a real width change.
+    if (innerWidth !== fallbackWidth) {
+      fallbackWidth = innerWidth; fallbackHeight = Math.min(innerHeight, window.visualViewport?.height ?? innerHeight);
+    }
+    return supportsSmallViewport ? viewportProbe.getBoundingClientRect().height || fallbackHeight : fallbackHeight;
+  };
   const availableWidth = () => Math.max(1, root.parentElement.clientWidth - (mobile.matches ? 32 : 40));
   const range = document.createRange();
   const printMedia = matchMedia('print');
@@ -202,6 +217,7 @@
   function layout(anchor = capture()) {
     if (printing() || root.closest('[hidden]')) return;
     writingGeometry = null;
+    const layoutColumnHeight = columnHeight();
     const available = availableWidth();
     const maxWidth = Math.min(1400, available);
     const minWidth = Math.min(480, maxWidth);
@@ -234,7 +250,7 @@
     const flushText = () => {
       if (pendingText || (!visibleText && displayEnd === null && positions.includes(0))) {
         const el = document.createElement('div'); el.className = 'text-block';
-        if (vertical()) Object.assign(el.style, { writingMode: 'vertical-rl', height: `${columnHeight()}px`, width: 'max-content' });
+        if (vertical()) Object.assign(el.style, { writingMode: 'vertical-rl', height: `${layoutColumnHeight}px`, width: 'max-content' });
         const block = { el, ...compose(pendingText, pendingStart), start: pendingStart, sourceEnd: pendingStart + pendingText.length, parts: [], lines: [] };
         appendRuns(block, el);
         root.append(el); blocks.push(block);
@@ -283,7 +299,7 @@
           const gap = settings.breaks && count && count % settings.breaks === 0 ? gapSize : 0;
           if (!page || used + gap + pitch > pageWidth + .1) {
             page = document.createElement('div'); page.className = 'vertical-page';
-            page.style.height = `${columnHeight()}px`; b.el.append(page); used = 0;
+            page.style.height = `${layoutColumnHeight}px`; b.el.append(page); used = 0;
           } else used += gap;
           const span = document.createElement('span'); span.className = 'vertical-column';
           span.style.right = `${used}px`; span.style.width = `${pitch}px`;
@@ -333,10 +349,13 @@
       marker.textContent = 'ここまでが計測対象です。'; root.append(marker);
     }
     if (vertical()) getWritingGeometry(); // Build the position index during layout, not the first scroll.
-    lastColumnHeight = columnHeight();
+    lastColumnHeight = layoutColumnHeight;
     lastAvailable = available;
     lastMobile = mobile.matches;
-    restore(anchor);
+    // A real rebuild reveals the toolbar. Keep the restored character below
+    // its full height even if the previous scroll had translated it offscreen.
+    const visibleEdge = Math.max(readingEdge(), (window.visualViewport?.offsetTop || 0) + controls.getBoundingClientRect().height + 12);
+    restore(vertical() && anchor ? { ...anchor, y: Math.max(anchor.y, visibleEdge) } : anchor);
     root.dispatchEvent(new Event('reader-layout'));
   }
   // Keep original graphemes separate from manual reading boxes so pen anchors
@@ -663,14 +682,9 @@
   const viewportObserver = new ResizeObserver(refreshVisibleHeight);
   viewportObserver.observe(controls, { box: 'border-box' });
   viewportObserver.observe(measurementBar, { box: 'border-box' });
+  viewportObserver.observe(viewportProbe, { box: 'border-box' });
   window.visualViewport?.addEventListener('resize', refreshVisibleHeight);
-  let lastViewportHeight = innerHeight;
-  addEventListener('resize', () => {
-    const changed = lastViewportHeight !== innerHeight; lastViewportHeight = innerHeight;
-    if (vertical() && changed && !root.closest('[hidden]')) {
-      cancelAnimationFrame(scheduled); scheduled = requestAnimationFrame(() => layout(savedAnchor));
-    }
-  });
+  addEventListener('resize', refreshVisibleHeight);
   mobile.addEventListener('change', () => {
     if (!root.closest('[hidden]')) layout(savedAnchor);
   });
@@ -703,6 +717,7 @@
     },
     capture, restore, printSnapshot, getWritingGeometry,
     get direction() { return direction; },
+    get viewportHeight() { return viewportHeight(); },
     get hasPending() { return Boolean(draft); },
     focusPending() { if (editor.open) rubyInput.focus({ preventScroll: true }); },
     setEditModeGuard(guard) { editModeGuard = guard; },
