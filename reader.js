@@ -8,6 +8,9 @@
   let blocks = [], lastAvailable = 0, lastMobile = false, scheduled = 0;
   let savedAnchor = null;
   let writingGeometry = null;
+  let direction = 'horizontal', snapshotting = false;
+  const vertical = () => direction === 'vertical';
+  const columnHeight = () => Math.max(180, Math.min(620, innerHeight * .62));
   const readingEdge = () => document.querySelector('.reader-controls').getBoundingClientRect().bottom + 12;
   let annotations = null, annotationsEditable = true, rubyMode = false, draft = null, editAnchor = null;
   let readingChangeGuard = async () => true, readingChangePending = false, editorSuspended = false;
@@ -112,6 +115,17 @@
   function capture() {
     if (printing() || root.closest('[hidden]')) return savedAnchor;
     const edge = readingEdge();
+    if (vertical()) {
+      let best = null;
+      const origin = root.getBoundingClientRect();
+      for (const glyph of getWritingGeometry().glyphs) {
+        const y = origin.top + glyph.y;
+        if (y < edge || y > innerHeight) continue;
+        if (!best || y < best.y - 2 || (Math.abs(y - best.y) < 2 && glyph.x > best.right))
+          best = { offset: glyph.start, y, right: glyph.x };
+      }
+      return best || savedAnchor;
+    }
     let best = null;
     for (const block of blocks) {
       if (block.el.getBoundingClientRect().bottom < edge) continue;
@@ -155,7 +169,7 @@
       const rect = point(block, offsets[i]);
       // Font fallback (e.g. emoji) can have a different glyph box on the same
       // line. Compare vertical centers within half a line, not exact glyph tops.
-      return rect.top + rect.height / 2;
+      return vertical() ? rect.left + rect.width / 2 : rect.top + rect.height / 2;
     };
     const lines = [];
     let i = 0;
@@ -191,9 +205,12 @@
     columnsInput.min = minColumns;
     columnsInput.max = maxColumns;
     columnsInput.value = Math.min(maxColumns, Math.max(minColumns, Math.round(width / settings.fontSize)));
-    columnsOutput.textContent = `約${columnsInput.value}文字`;
+    columnsOutput.textContent = vertical() ? `${Math.round(settings.fontSize)}px` : `約${columnsInput.value}文字`;
+    columnsInput.setAttribute('aria-valuetext', vertical() ? `文字サイズ ${Math.round(settings.fontSize)}ピクセル` : `1行に約${columnsInput.value}文字`);
     root.style.fontSize = `${settings.fontSize}px`;
     root.style.lineHeight = settings.height;
+    root.classList.toggle('vertical-writing', vertical());
+    root.dataset.direction = direction;
     root.replaceChildren(); blocks = [];
     // Empty original lines are natural boundaries; retain all whitespace verbatim.
     const visibleText = displayEnd === null ? source : source.slice(0, displayEnd);
@@ -203,6 +220,7 @@
     const flushText = () => {
       if (pendingText || (!visibleText && displayEnd === null && positions.includes(0))) {
         const el = document.createElement('div'); el.className = 'text-block';
+        if (vertical()) Object.assign(el.style, { writingMode: 'vertical-rl', height: `${columnHeight()}px`, width: 'max-content' });
         const block = { el, ...compose(pendingText, pendingStart), start: pendingStart, sourceEnd: pendingStart + pendingText.length, parts: [], lines: [] };
         appendRuns(block, el);
         root.append(el); blocks.push(block);
@@ -238,6 +256,28 @@
     let unsupported = false;
     const gapSize = parseFloat(getComputedStyle(root).fontSize) * .85;
     blocks.forEach(b => {
+      if (vertical()) {
+        // Freeze natural columns into viewport-width sections. Each section
+        // retains native Japanese shaping/ruby and ordinary touch scrolling.
+        b.parts = [];
+        b.el.replaceChildren();
+        Object.assign(b.el.style, { writingMode: '', height: '', width: '' });
+        const pitch = settings.fontSize * settings.height;
+        const pageWidth = root.clientWidth;
+        let page = null, used = 0, count = 0;
+        for (const line of b.lines) {
+          const gap = settings.breaks && count && count % settings.breaks === 0 ? gapSize : 0;
+          if (!page || used + gap + pitch > pageWidth + .1) {
+            page = document.createElement('div'); page.className = 'vertical-page';
+            page.style.height = `${columnHeight()}px`; b.el.append(page); used = 0;
+          } else used += gap;
+          const span = document.createElement('span'); span.className = 'vertical-column';
+          span.style.right = `${used}px`; span.style.width = `${pitch}px`;
+          appendRuns(b, span, line.start, line.end); page.append(span);
+          used += pitch; count++;
+        }
+        return;
+      }
       b.parts = [];
       const fragment = document.createDocumentFragment();
       const size = settings.breaks || Math.max(1, b.lines.length);
@@ -255,6 +295,7 @@
     // Some shaping engines can change wrapping across span boundaries. Verify every
     // line start against natural layout; use the intact source on any mismatch.
     blocks.forEach(b => {
+      if (vertical()) return;
       if (!b.lines.length) return;
       const baseRect = point(b, 0);
       const base = baseRect.top + baseRect.height / 2;
@@ -276,7 +317,7 @@
     lastAvailable = available;
     lastMobile = mobile.matches;
     restore(anchor);
-    root.dispatchEvent(new Event('reader-layout'));
+    if (!snapshotting) root.dispatchEvent(new Event('reader-layout'));
   }
   // Keep original graphemes separate from manual reading boxes so pen anchors
   // and source hit testing stay unchanged. Coordinates stay relative to the
@@ -495,7 +536,7 @@
       range.setStart(a.node, first - a.start); range.setEnd(b.node, end - b.start);
       const rect = [...range.getClientRects()].find(r => r.width > 0 && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom);
       if (rect) {
-        const boundary = x < rect.left + rect.width / 2 ? first : end;
+        const boundary = (vertical() ? y < rect.top + rect.height / 2 : x < rect.left + rect.width / 2) ? first : end;
         // The next displayed run may be a manual note deferred from inside a
         // source ruby. Map this glyph's edge using its OWN base source run.
         beginEdit(a.run.sourceStart + boundary - a.run.start); return;
@@ -514,14 +555,22 @@
     scheduled = requestAnimationFrame(() => layout(savedAnchor));
   });
   observer.observe(root.parentElement);
+  let lastViewportHeight = innerHeight;
+  addEventListener('resize', () => {
+    const changed = lastViewportHeight !== innerHeight; lastViewportHeight = innerHeight;
+    if (vertical() && changed && !root.closest('[hidden]') && !snapshotting) {
+      cancelAnimationFrame(scheduled); scheduled = requestAnimationFrame(() => layout(savedAnchor));
+    }
+  });
   mobile.addEventListener('change', () => {
     if (!root.closest('[hidden]')) layout(savedAnchor);
   });
   addEventListener('scroll', () => { savedAnchor = capture(); }, { passive: true });
   document.fonts.ready.then(() => { if (source) layout(savedAnchor); });
   window.Reader = {
-    show(text, model = null, { editable = true, end = null } = {}) {
+    show(text, model = null, { editable = true, end = null, writingDirection = 'horizontal' } = {}) {
       finishEdit(); source = text; annotations = model;
+      direction = writingDirection === 'vertical' ? 'vertical' : 'horizontal';
       displayEnd = editable ? null : end;
       annotationsEditable = editable;
       updateMode(false);
@@ -534,6 +583,7 @@
     },
     configure(next) {
       const anchor = capture();
+      if (next.direction !== undefined) direction = next.direction === 'vertical' ? 'vertical' : 'horizontal';
       if (next.width !== undefined && !mobile.matches) settings.width = next.width;
       if (next.columns !== undefined) {
         settings.fontSize = Math.min(36, Math.max(18, root.getBoundingClientRect().width / next.columns));
@@ -543,6 +593,18 @@
       layout(anchor);
     },
     capture, restore, printSnapshot, getWritingGeometry,
+    get direction() { return direction; },
+    horizontalSnapshot(callback) {
+      if (!vertical()) return callback();
+      const previous = direction, anchor = capture(), scroll = { x: scrollX, y: scrollY };
+      snapshotting = true;
+      try { direction = 'horizontal'; layout(null); return callback(); }
+      finally {
+        direction = previous; layout(null); snapshotting = false;
+        scrollTo(scroll.x, scroll.y); savedAnchor = anchor;
+        root.dispatchEvent(new Event('reader-layout'));
+      }
+    },
     get hasPending() { return Boolean(draft); },
     focusPending() { if (editor.open) rubyInput.focus({ preventScroll: true }); },
     setEditModeGuard(guard) { editModeGuard = guard; },

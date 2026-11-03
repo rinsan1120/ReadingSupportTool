@@ -10,21 +10,24 @@
     static MAX_COORDINATE = 1000;
     static MARKER_COLORS = ['yellow', 'lightblue', 'pink'];
     static PEN_COLORS = ['red', 'blue', 'green'];
-    constructor(source = '') { this.source = source; this.items = []; this.history = []; this.nextId = 1; this.memoSettings = { fontSize: 16, opacity: .9 }; }
+    constructor(source = '') { this.source = source; this.items = []; this.history = []; this.nextId = 1; this.direction = 'horizontal'; this.memoSettings = { fontSize: 16, opacity: .9 }; }
     get hasMarks() { return this.items.length > 0; }
-    remember() { this.history.push(copy(this.items)); if (this.history.length > 40) this.history.shift(); changed(); }
+    remember() { this.history.push({ direction: this.direction, items: copy(this.items) }); if (this.history.length > 40) this.history.shift(); changed(); }
+    finishChange() { this.history.at(-1).after = copy(this.items); }
     add(item) {
       const used = new Set(this.items.map(mark => mark.id));
       while (used.has(this.nextId)) this.nextId = this.nextId === Number.MAX_SAFE_INTEGER ? 1 : this.nextId + 1;
       this.remember(); this.items.push({ ...copy(item), id: this.nextId });
       this.nextId = this.nextId === Number.MAX_SAFE_INTEGER ? 1 : this.nextId + 1;
+      this.finishChange();
     }
-    remove(id) { if (!this.items.some(item => item.id === id)) return; this.remember(); this.items = this.items.filter(item => item.id !== id); }
+    remove(id) { if (!this.items.some(item => item.id === id)) return; this.remember(); this.items = this.items.filter(item => item.id !== id); this.finishChange(); }
     editMemo(id, text) { this.updateMemo(id, { text }); }
     updateMemo(id, changes) {
       const item = this.items.find(item => item.id === id && item.type === 'memo');
       if (!item || Object.entries(changes).every(([key, value]) => item[key] === value)) return;
       this.remember(); Object.assign(item, copy(changes));
+      this.finishChange();
     }
     static settings(value = { fontSize: 16, opacity: .9 }) {
       if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !['fontSize', 'opacity'].includes(key)) ||
@@ -32,11 +35,46 @@
           !Number.isFinite(value.opacity) || value.opacity < .2 || value.opacity > 1) throw new Error('メモ設定は文字サイズ12〜28、不透明度0.2〜1で指定してください。');
       return { fontSize: value.fontSize, opacity: value.opacity };
     }
-    undo() { if (this.history.length) { this.items = this.history.pop(); changed(); } }
+    undo() {
+      const index = this.history.findLastIndex(entry => entry.direction === this.direction);
+      if (index < 0) return;
+      const entry = this.history.splice(index, 1)[0], before = entry.items;
+      const visible = item => item.type !== 'pen' || (item.direction ?? 'horizontal') === this.direction;
+      // Restore only this direction's pens. Shared edits are restored by ID,
+      // leaving unrelated later edits and the other direction's layout intact.
+      const after = entry.after;
+      const ids = new Set([...before, ...after].map(item => item.id));
+      for (const id of ids) {
+        const old = before.find(item => item.id === id), next = after.find(item => item.id === id);
+        if (JSON.stringify(old) === JSON.stringify(next) || !(visible(old || next))) continue;
+        const currentIndex = this.items.findIndex(item => item.id === id);
+        if (!old) { if (currentIndex >= 0) this.items.splice(currentIndex, 1); }
+        else {
+          let restored = copy(old);
+          const current = this.items[currentIndex];
+          if (restored.type === 'memo' && current) {
+            restored = copy(current);
+            for (const key of new Set([...Object.keys(old), ...Object.keys(next || {})])) {
+              if (JSON.stringify(old[key]) === JSON.stringify(next?.[key])) continue;
+              if (Object.hasOwn(old, key)) restored[key] = copy(old[key]);
+              else delete restored[key];
+            }
+          }
+          if (currentIndex >= 0) this.items[currentIndex] = restored;
+          else {
+            const following = before.slice(before.findIndex(item => item.id === id) + 1).find(item => this.items.some(current => current.id === item.id));
+            const insert = following ? this.items.findIndex(item => item.id === following.id) : this.items.length;
+            this.items.splice(insert, 0, restored);
+          }
+        }
+      }
+      changed();
+    }
     movePen(id, changes) {
       const index = this.items.findIndex(item => item.id === id && item.type === 'pen');
       if (index < 0) return;
       this.remember(); this.items[index] = copy(changes);
+      this.finishChange();
     }
     static fromItems(items, manuscript, settings) {
       if (!Array.isArray(items)) throw new Error('marksは配列である必要があります。');
@@ -63,8 +101,8 @@
       for (const [index, item] of items.entries()) {
         const label = `書き込み${index + 1}件目：`;
         const fields = {
-          pen: ['id', 'type', 'offset', 'layoutKey', 'points', 'witnesses', 'fontSize', 'color'],
-          marker: ['id', 'type', 'start', 'end', 'color'], memo: ['id', 'type', 'offset', 'dx', 'dy', 'tx', 'ty', 'color', 'text']
+          pen: ['id', 'type', 'offset', 'layoutKey', 'points', 'witnesses', 'fontSize', 'color', 'direction'],
+          marker: ['id', 'type', 'start', 'end', 'color'], memo: ['id', 'type', 'offset', 'dx', 'dy', 'tx', 'ty', 'color', 'text', 'verticalPosition']
         };
         if (!item || typeof item !== 'object' || Array.isArray(item) || typeof item.type !== 'string' || !Object.hasOwn(fields, item.type)) throw new Error(`${label}書き込み種類が不正です。`);
         object(item, fields[item.type], label);
@@ -84,7 +122,14 @@
             if (!this.MARKER_COLORS.includes(item.color)) throw new Error(`${label}メモの色が不正です。`);
             if (typeof item.text !== 'string' || !item.text.trim() || item.text.length > 200) throw new Error(`${label}メモは空白だけでない200文字以内の文字列にしてください。`);
             restored.items.push({ ...base, offset: item.offset, dx: item.dx, dy: item.dy, tx: item.tx, ty: item.ty, color: item.color, text: item.text });
+            if (item.verticalPosition !== undefined) {
+              object(item.verticalPosition, ['dx', 'dy', 'tx', 'ty'], label);
+              coordinates({ x: item.verticalPosition.dx, y: item.verticalPosition.dy }, ['x', 'y'], label);
+              coordinates({ x: item.verticalPosition.tx, y: item.verticalPosition.ty }, ['x', 'y'], label);
+              restored.items.at(-1).verticalPosition = copy(item.verticalPosition);
+            }
           } else {
+            if (item.direction !== undefined && !['horizontal', 'vertical'].includes(item.direction)) throw new Error(`${label}ペンの表示方向が不正です。`);
             if (Object.hasOwn(item, 'color') && !this.PEN_COLORS.includes(item.color)) throw new Error(`${label}ペンの色はred・blue・greenのいずれかにしてください。`);
             if (typeof item.layoutKey !== 'string' || item.layoutKey.length > 100 || !/^\d+(?:\.\d+)?:\d+(?:\.\d+)?:\d+:\d+$/.test(item.layoutKey)) throw new Error(`${label}赤ペンのlayoutKeyが不正です。`);
             const [columns, height, breaks, hash] = item.layoutKey.split(':').map(Number);
@@ -107,6 +152,7 @@
             const fontSize = Object.hasOwn(item, 'fontSize') ? item.fontSize : 22;
             if (!Number.isFinite(fontSize) || fontSize < 1 || fontSize > 1000) throw new Error(`${label}赤ペンのfontSizeが不正です。`);
             restored.items.push({ ...base, offset: item.offset, layoutKey: item.layoutKey, fontSize, points, witnesses, color: item.color ?? 'red' });
+            if (item.direction !== undefined) restored.items.at(-1).direction = item.direction;
           }
         }
       }
@@ -121,13 +167,16 @@
       const items = data.version >= 3 ? data.marks : [];
       const converted = data.version === 3 && Array.isArray(items) ? items.map(item => item?.type === 'memo' ? { ...item, tx: 0, ty: 0, color: 'yellow' } : item) : items;
       const markings = this.fromItems(converted, manuscript, data.version >= 4 ? data.memoSettings : undefined);
+      if (data.writingDirection !== undefined && !['horizontal', 'vertical'].includes(data.writingDirection)) throw new Error('原稿の表示方向が不正です。');
+      markings.direction = data.writingDirection ?? 'horizontal';
       return { manuscript, markings };
     }
     static serializeManuscript(manuscript, markings) {
+      if (!['horizontal', 'vertical'].includes(markings.direction)) throw new Error('原稿の表示方向が不正です。');
       if (manuscript.source !== markings.source) throw new Error('本文と書き込みの原文が一致しません。本文を確認してから保存してください。');
       const validated = window.ReadingAnnotations.fromData(manuscript.toJSON());
       const marks = this.fromItems(markings.items, validated, markings.memoSettings).items;
-      const json = JSON.stringify({ ...validated.toJSON(), version: 4, marks, memoSettings: this.settings(markings.memoSettings) }, null, 2);
+      const json = JSON.stringify({ ...validated.toJSON(), version: 5, marks, memoSettings: this.settings(markings.memoSettings), writingDirection: markings.direction }, null, 2);
       if (json.length > window.ReadingAnnotations.MAX_FILE_BYTES || new TextEncoder().encode(json).length > window.ReadingAnnotations.MAX_FILE_BYTES) throw new Error('原稿ファイルは10MiBまでです。');
       return json;
     }
@@ -139,6 +188,13 @@
   let model = null, editable = true, enabled = false, tool = 'pen', markerColor = 'yellow', gesture = null, draftMemo = null, rendering = false;
   let selectedMemo = null, selectedPen = null, penColor = 'red';
   let paintedPens = [], paintedMarkers = [];
+  const direction = () => window.Reader.direction;
+  const memoView = item => direction() === 'vertical' ? { ...item, ...(item.verticalPosition ?? { dx: -3, dy: 1, tx: 0, ty: 0 }) } : item;
+  function memoPlacement(item) {
+    if (direction() !== 'vertical') return item;
+    const { dx, dy, tx, ty, ...rest } = item;
+    return { ...rest, dx: .6, dy: 1, tx: 0, ty: 0, verticalPosition: { dx, dy, tx, ty } };
+  }
   const help = {
     pen: '色を選び、本文付近をドラッグして線を描画。スクロールするときは書込メニューを閉じてください。',
     move: 'ペンの線をタップして選択し、ドラッグして一筆全体を移動。線以外の場所ではスクロールできます。',
@@ -215,7 +271,7 @@
     $('memo-settings-open').hidden = !enabled || tool !== 'memo';
     document.querySelectorAll('[data-marker-color]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.markerColor === (tool === 'memo' ? selected?.color : markerColor))));
     if ($('writing-tool-help').textContent !== help[tool]) $('writing-tool-help').textContent = help[tool];
-    $('writing-undo').disabled = !editable || !model?.history.length;
+    $('writing-undo').disabled = !editable || !model?.history.some(entry => entry.direction === direction());
   }
   function setMode(on) {
     if (on && !editable) return;
@@ -262,7 +318,8 @@
         const ox = rect.left - outer.left, oy = rect.top - outer.top;
         const markerGroup = svg('g', { transform: `translate(${ox} ${oy})` }, markers);
         const penGroup = svg('g', { transform: `translate(${ox} ${oy})` }, pens);
-        const items = model.items.map(item => gesture?.memo?.id === item.id ? gesture.preview : item);
+        const items = model.items.filter(item => item.type !== 'pen' || (item.direction ?? 'horizontal') === direction())
+          .map(item => gesture?.memo?.id === item.id ? gesture.preview : item.type === 'memo' ? memoView(item) : item);
         if (gesture?.preview && !gesture.memo && !gesture.pen) items.push(gesture.preview);
         const noteItems = []; let bottom = 0;
         for (const item of items) {
@@ -349,10 +406,7 @@
       gesture.preview = { ...start, dx: (x - original.x) / font, dy: (y - original.y) / font };
     } else {
       const tip = { x: original.x + start.tx * font + dx, y: original.y + start.ty * font + dy };
-      const glyph = nearest(tip, g, Infinity), origin = glyph ? center(glyph) : original;
-      gesture.preview = { ...start, offset: glyph?.start ?? start.offset,
-        tx: (tip.x - origin.x) / font, ty: (tip.y - origin.y) / font,
-        dx: (original.x + start.dx * font - origin.x) / font, dy: (original.y + start.dy * font - origin.y) / font };
+      gesture.preview = { ...start, tx: (tip.x - original.x) / font, ty: (tip.y - original.y) / font };
     }
     for (const key of ['dx', 'dy', 'tx', 'ty']) gesture.preview[key] = Math.max(-1000, Math.min(1000, gesture.preview[key]));
   }
@@ -391,7 +445,7 @@
     const note = e.target.closest('.writing-memo');
     if (note) {
       if (tool !== 'memo') return;
-      const item = model.items.find(item => item.id === Number(note.dataset.markId));
+      const item = memoView(model.items.find(item => item.id === Number(note.dataset.markId)));
       if (e.target.closest('.memo-remove')) {
         e.preventDefault();
         if (confirm('このメモを削除しますか？')) { model.remove(item.id); selectedMemo = null; render(); }
@@ -422,7 +476,7 @@
     stage.setPointerCapture(e.pointerId);
     if (tool === 'pen') {
       gesture.origin = center(glyph);
-      gesture.preview = { type: 'pen', offset: glyph.start, layoutKey: geometry.layoutKey, fontSize: geometry.fontSize, color: penColor, points: [{ x: (point.x - gesture.origin.x) / geometry.fontSize, y: (point.y - gesture.origin.y) / geometry.fontSize }], witnesses: [{ offset: glyph.start, x: 0, y: 0 }] };
+      gesture.preview = { type: 'pen', direction: direction(), offset: glyph.start, layoutKey: geometry.layoutKey, fontSize: geometry.fontSize, color: penColor, points: [{ x: (point.x - gesture.origin.x) / geometry.fontSize, y: (point.y - gesture.origin.y) / geometry.fontSize }], witnesses: [{ offset: glyph.start, x: 0, y: 0 }] };
     }
     if (tool === 'marker') gesture.preview = { type: 'marker', start: glyph.start, end: glyph.end, color: markerColor };
     render();
@@ -459,7 +513,10 @@
     if (gesture.memo) {
       if (gesture.moved) updateMemoDrag(point);
       const completed = gesture; releaseGesture();
-      if (completed.moved) model.updateMemo(completed.memo.id, completed.preview);
+      if (completed.moved) {
+        const { dx, dy, tx, ty } = completed.preview;
+        model.updateMemo(completed.memo.id, direction() === 'vertical' ? { verticalPosition: { dx, dy, tx, ty } } : { dx, dy, tx, ty });
+      }
       else if (completed.wasSelected && completed.part === 'body') openMemo(completed.memo);
       render(); return;
     }
@@ -524,7 +581,7 @@
     e.preventDefault(); const text = input.value.trim();
     if (!editable || !enabled || !draftMemo || !text || text.length > 200) return;
     if (tool !== 'memo') return;
-    if (draftMemo.id) model.editMemo(draftMemo.id, text); else model.add({ ...draftMemo, text });
+    if (draftMemo.id) model.editMemo(draftMemo.id, text); else model.add(memoPlacement({ ...draftMemo, text }));
     cancelPending();
   });
   $('writing-memo-delete').onclick = () => { if (!editable) return; if (enabled && tool === 'memo' && draftMemo?.id && confirm('このメモを削除しますか？')) model.remove(draftMemo.id); cancelPending(); };
@@ -544,17 +601,17 @@
   matchMedia('print').addEventListener('change', e => { if (!e.matches) requestAnimationFrame(render); });
   window.ManuscriptWriting = {
     bubble,
-    printSnapshot() {
+    printSnapshot({ horizontalOnly = false } = {}) {
       if (!model) return { source: '', items: [], pens: [] };
       const geometry = window.Reader.getWritingGeometry(), pens = [];
       // Reuse exactly the live stroke anchor rules; pending gestures
       // and memo edits live outside items and are deliberately not exported.
-      for (const item of model.items) if (item.type === 'pen') {
+      for (const item of model.items) if (item.type === 'pen' && (item.direction ?? 'horizontal') === 'horizontal') {
         const points = strokePoints(item, geometry);
         if (!points) throw new Error('赤ペンの基準文字を確認できません。本文全体の朗読画面を開き直してから出力してください。');
         pens.push({ id: item.id, points, color: item.color ?? 'red' });
       }
-      return { source: model.source, items: copy(model.items), memoSettings: copy(model.memoSettings), pens };
+      return { source: model.source, items: copy(model.items.filter(item => !horizontalOnly || item.type !== 'pen' || (item.direction ?? 'horizontal') === 'horizontal')), memoSettings: copy(model.memoSettings), pens };
     },
     show(next, options = {}) { cancelPending(); model = next; editable = options.editable !== false; enabled = false; controls(); render(); },
     leave() { cancelPending(); enabled = false; model = null; controls(); render(); },

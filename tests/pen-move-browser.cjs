@@ -135,7 +135,7 @@ const length = points => points.slice(1).reduce((sum, p, i) => sum + Math.hypot(
 
       // Real manual save + load, legacy v1-v4 imports, schema rejection.
       const saved = (await saveUser(page)).manuscripts[0].manuscript;
-      assert.equal(saved.version, 4); assert.deepEqual(saved.marks, final.items);
+      assert.equal(saved.version, 5); assert.deepEqual(saved.marks, final.items);
       const restored = await page.evaluate(saved => {
         const { manuscript, markings } = ManuscriptMarks.restoreManuscript(JSON.stringify(saved));
         const roundtrip = JSON.parse(ManuscriptMarks.serializeManuscript(manuscript, markings));
@@ -185,6 +185,7 @@ const length = points => points.slice(1).reduce((sum, p, i) => sum + Math.hypot(
       await page.evaluate(() => ManuscriptPrint.clear());
       await page.reload(); await startNew(page); await page.locator('[data-go=read-input]').click();
       await page.locator('#manuscript-file').setInputFiles({ name: 'moved.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(saved)) });
+      await page.locator('#confirm-ok').click();
       await page.waitForFunction(() => !document.getElementById('reading').hidden);
       assert.deepEqual((await state()).items, saved.marks);
       (await state()).pens.forEach((pen, i) => sameShape(pen.points, final.pens[i].points));

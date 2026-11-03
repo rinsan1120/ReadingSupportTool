@@ -395,7 +395,9 @@
     $('preparation-partial').hidden = mode !== 'time' || sourceType !== 'custom';
     updatePreparationInfo();
     const model = mode === 'read' ? readAnnotations : sourceType === 'custom' ? timeAnnotations : null;
-    window.Reader.show(text, model, { editable: mode === 'read', end: measuredPartial ? timingRange?.end ?? 0 : null });
+    const writingDirection = (mode === 'read' ? readMarks : timeMarks)?.direction ?? 'horizontal';
+    syncWritingDirection(writingDirection);
+    window.Reader.show(text, model, { editable: mode === 'read', end: measuredPartial ? timingRange?.end ?? 0 : null, writingDirection });
     window.ManuscriptWriting.show(mode === 'read' ? readMarks : sourceType === 'custom' && timeMarks?.source === text ? timeMarks : null, { editable: mode === 'read' });
     if (mode === 'read' && readerReturnState) {
       Object.entries(readerReturnState.settings).forEach(([id, value]) => { $(id).value = value; applySetting(id, Number(value)); });
@@ -415,9 +417,8 @@
       // before freezing glyphs and resolving source-anchored strokes.
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       if (view !== 'reading' || mode !== 'read') return;
-      const snapshot = window.Reader.printSnapshot();
       pdfAnchor = window.Reader.capture();
-      const writing = window.ManuscriptWriting.printSnapshot();
+      const { snapshot, writing } = window.Reader.horizontalSnapshot(() => ({ snapshot: window.Reader.printSnapshot(), writing: window.ManuscriptWriting.printSnapshot({ horizontalOnly: true }) }));
       const result = window.ManuscriptPrint.prepare(snapshot, writing);
       $('pdf-small-warning').hidden = result.points >= 9;
       $('pdf-small-warning').textContent = '文字が小さくなるため、キャンセルして本文幅を狭くするか文字サイズを大きくしてから出力することをおすすめします。長い読み仮名がある場合は、内容の短縮もご検討ください。';
@@ -464,6 +465,7 @@
       copied.sourceRubies = readAnnotations.sourceRubies.map(({ start, end, reading }) => ({ start, end, reading }));
       if (readMarks.source !== text) throw new Error('本文と書き込みの原文が一致しません。');
       const copiedMarks = window.ManuscriptMarks.fromItems(readMarks.items, copied, readMarks.memoSettings);
+      copiedMarks.direction = readMarks.direction;
       timeAnnotations = copied; timeMarks = copiedMarks;
       timingPaper.custom = { text, on: readPaper };
       $('time-text').value = text; timeInputSnapshot = $('time-text').value;
@@ -645,10 +647,31 @@
       $('line-height-value').textContent = value.toFixed(1); window.Reader.configure({ height: value });
     }
     if (id === 'break-lines') {
-      $('break-lines-value').textContent = value ? `${value}表示行ごと` : 'なし'; window.Reader.configure({ breaks: value });
+      $('break-lines-value').textContent = value ? `${value}表示${window.Reader.direction === 'vertical' ? '列' : '行'}ごと` : 'なし'; window.Reader.configure({ breaks: value });
     }
     rememberSettings();
   }
+  function syncWritingDirection(value) {
+    $('writing-direction').value = value;
+    $('vertical-help').hidden = value !== 'vertical';
+    $('columns-label').textContent = value === 'vertical' ? '文字サイズの目安（小さい値ほど大きい文字）' : '1行の文字数目安';
+    $('tab-columns').textContent = value === 'vertical' ? '文字サイズ' : '文字数';
+    $('tab-line-height').textContent = value === 'vertical' ? '列間隔' : '行間';
+    $('line-height-label').textContent = value === 'vertical' ? '列間隔' : '行間';
+    const breaks = Number($('break-lines').value);
+    $('break-lines-value').textContent = breaks ? `${breaks}表示${value === 'vertical' ? '列' : '行'}ごと` : 'なし';
+    $('settings-help').textContent = value === 'vertical' ? '表示幅は区画の幅、文字サイズと列間隔は文字の大きさと列の間隔を調整します。' : '表示幅は行の長さ、文字数は文字の大きさを調整します。';
+  }
+  $('writing-direction').onchange = () => {
+    if (view !== 'reading' || phase !== 'idle') return;
+    const value = $('writing-direction').value;
+    window.ManuscriptWriting.cancelPending();
+    const marks = mode === 'read' ? readMarks : timeMarks;
+    if (marks) marks.direction = value;
+    window.Reader.configure({ direction: value });
+    syncWritingDirection(value);
+    if (mode === 'read') document.dispatchEvent(new Event('manuscript-change'));
+  };
   async function commitSetting() {
     if (!pendingSetting || confirmingSetting || pointerAdjusting || keyboardAdjusting) return;
     const change = pendingSetting, session = settingsSession;

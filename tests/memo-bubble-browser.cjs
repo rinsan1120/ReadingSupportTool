@@ -67,7 +67,7 @@ const server = http.createServer((req,res) => {
       const saved=await page.evaluate(()=>{
         const w=window.ManuscriptWriting.printSnapshot(),m=window.ReadingAnnotations.fromData({format:'reading-support-manuscript',version:2,text:w.source,annotations:[{offset:2,text:'たそがれ'}],sourceRubies:[{start:0,end:2,reading:'たそがれ'}]});
         const marks=window.ManuscriptMarks.fromItems(w.items,m,w.memoSettings);return JSON.parse(window.ManuscriptMarks.serializeManuscript(m,marks));
-      });assert.equal(saved.version,4);assert.deepEqual(saved.memoSettings,{fontSize:22,opacity:.6});
+      });assert.equal(saved.version,5);assert.deepEqual(saved.memoSettings,{fontSize:22,opacity:.6});
       const roundtrip=await page.evaluate(saved=>{const r=window.ManuscriptMarks.restoreManuscript(JSON.stringify(saved));return {items:r.markings.items,settings:r.markings.memoSettings};},saved);assert.deepEqual(roundtrip.items,saved.marks);assert.deepEqual(roundtrip.settings,saved.memoSettings);
       await page.locator('#writing-off').click();const frozen=await state();await body.click({force:true});assert.equal(await page.locator('#writing-memo-dialog').evaluate(el=>el.open),false);assert.deepEqual(await state(),frozen);
       const print=await page.evaluate(()=>{
