@@ -316,18 +316,33 @@
   }));
   // Confirm an explicit replacement/deletion while leaving normal typing and
   // navigation uninterrupted. Native undo remains available for text edits.
-  ['read-text', 'time-text'].forEach(id => $(id).addEventListener('beforeinput', async e => {
+  ['read-text', 'time-text'].forEach(id => {
     const el = $(id);
-    const deleting = e.inputType.startsWith('delete');
-    const replacing = ['insertText', 'insertReplacementText'].includes(e.inputType);
-    if (el.value && el.selectionStart === 0 && el.selectionEnd === el.value.length && (deleting || replacing)) {
+    let composing = false, confirming = false;
+    el.addEventListener('compositionstart', () => { composing = true; });
+    el.addEventListener('compositionend', () => { composing = false; });
+    el.addEventListener('beforeinput', async e => {
+      // IMEs can temporarily select the entire composing text. Never interrupt
+      // composition or replay a non-cancelable edit after the browser applied it.
+      if (composing || e.isComposing || !e.cancelable) return;
+      // Do not treat deleteByComposition/deleteCompositionText as user deletion,
+      // or insertReplacementText (prediction/autocorrect) as explicit replacement.
+      const deleting = /^(deleteContent(?:Backward|Forward)?|deleteWord(?:Backward|Forward)|deleteSoftLine(?:Backward|Forward)|deleteHardLine(?:Backward|Forward)|deleteEntireSoftLine|deleteByCut|deleteByDrag)$/.test(e.inputType);
+      const replacing = e.inputType === 'insertText' && typeof e.data === 'string';
+      if (!el.value || el.selectionStart !== 0 || el.selectionEnd !== el.value.length || !(deleting || replacing)) return;
       e.preventDefault();
-      const next = deleting ? '' : (e.data || '');
-      if (await ask('入力済みの本文全体を削除・置換しますか？' + (id === 'read-text' ? replacementLoss() : ''), deleting ? '削除する' : '置き換える')) {
-        el.setRangeText(next, 0, el.value.length, 'end'); el.dispatchEvent(new Event('input'));
-      }
-    }
-  }));
+      if (confirming) return;
+      confirming = true;
+      const next = deleting ? '' : e.data, previous = el.value, previousView = view;
+      // A matching draft in another manuscript is still a different target.
+      const previousBook = library?.activeId;
+      try {
+        if (!await ask('入力済みの本文全体を削除・置換しますか？' + (id === 'read-text' ? replacementLoss() : ''), deleting ? '削除する' : '置き換える')) return;
+        if (view !== previousView || el.value !== previous || library?.activeId !== previousBook) return;
+        el.setRangeText(next, 0, previous.length, 'end'); el.dispatchEvent(new Event('input'));
+      } finally { confirming = false; }
+    });
+  });
   $('clear-read').onclick = async () => { if ($('read-text').value && await ask('入力した本文を削除しますか？' + replacementLoss())) { $('read-text').value = ''; $('read-text').dispatchEvent(new Event('input')); } };
   ['result-target', 'estimate-target'].forEach(id => $(id).addEventListener('input', () => {
     setTarget($(id).value, true); recordChanges(); renderResults();
