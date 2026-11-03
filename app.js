@@ -2,9 +2,9 @@
   'use strict';
   const $ = id => document.getElementById(id);
   let library = null, changeTimer = 0, libraryReady = false;
-  let savedUserSnapshot = null, captureFailed = false, userDirty = false, savingUser = false, userFilename = '', hasUserFile = false;
-  let storageMode = 'file', browserSession = null, browserSaveError = '';
-  let hasLegacyUserData = false, pendingDownloadSnapshot = null;
+  let savedUserSnapshot = null, captureFailed = false, userDirty = false, savingUser = false, userFilename = '';
+  let browserSession = null, browserSaveError = '';
+  let pendingDownloadSnapshot = null;
   let view = 'home', mode = 'read', sourceType = 'sample', sample = null;
   let history = [], target = '', targetManual = false, plannedMinutes = '20';
   let readMeasurementReturn = null;
@@ -493,7 +493,7 @@
       let chosenFormat = null;
       try { chosenFormat = JSON.parse(json)?.format; } catch { /* The restore step below reports invalid files. */ }
       if (chosenFormat === 'yomijitaku-user') {
-        notify('これはユーザーデータ全体のファイルです。移行用の取り込みではありません。ホームの「保存したファイルを開く」から読み込んでください。');
+        notify('これはユーザーデータ全体のファイルです。移行用の取り込みではありません。ホームの「保存したデータを開く」から読み込んでください。');
         return;
       }
       const { manuscript: restored, markings } = window.ManuscriptMarks.restoreManuscript(json);
@@ -931,13 +931,10 @@
       ? Object.fromEntries(Object.keys(value).sort().map(name => [name, value[name]])) : value);
   }
   function renderSaveState(message = '') {
-    // Distinguish "no file yet" from "unsaved changes": only real edits warn.
-    const fallback = userDirty ? '未保存の変更があります。「保存」でファイルに保存してください。'
-      : hasUserFile ? `保存済み · ${userFilename}` : '保存先ファイルはまだありません。「保存」でファイルを作ってください。';
     const browserStatus = browserSaveError ? `自動保存できません：${browserSaveError} 変更は画面内に保持しています。バックアップを保存できます。`
       : userDirty ? '自動保存中…' : '自動保存済み';
-    saveStatus(message || (storageMode === 'browser' ? browserStatus : fallback), captureFailed || !!browserSaveError);
-    $('retry-browser-save').hidden = storageMode !== 'browser' || !browserSaveError;
+    saveStatus(message || browserStatus, captureFailed || !!browserSaveError);
+    $('retry-browser-save').hidden = !browserSaveError;
     const readerState = $('reader-save-state');
     if (readerState) readerState.hidden = !userDirty;
   }
@@ -973,12 +970,10 @@
     try {
       captureLibrary(); captureFailed = false;
       userDirty = snapshotKey(library) !== savedUserSnapshot;
-      if (storageMode === 'browser') {
-        try {
-          browserSession.save(library);
-          savedUserSnapshot = snapshotKey(library); userDirty = false; browserSaveError = '';
-        } catch (error) { browserSaveError = error.message; userDirty = true; }
-      }
+      try {
+        browserSession.save(library);
+        savedUserSnapshot = snapshotKey(library); userDirty = false; browserSaveError = '';
+      } catch (error) { browserSaveError = error.message; userDirty = true; }
       renderSaveState(); renderLibrary(); return true;
     } catch (error) {
       captureFailed = true; userDirty = true;
@@ -1083,8 +1078,7 @@
           library = candidate;
           if (!library.activeId) restoreBook(null);
           syncLibrary();
-          notify(storageMode === 'browser' ? browserSaveError ? '原稿を削除しましたが、自動保存に失敗しています。保存状態を確認してください。' : '原稿を削除し、ブラウザ内に保存しました。'
-            : hasUserFile ? '原稿を削除しました。ファイルに反映するには「保存」を押してください。' : '原稿を削除しました。');
+          notify(browserSaveError ? '原稿を削除しましたが、自動保存に失敗しています。保存状態を確認してください。' : '原稿を削除し、ブラウザ内に保存しました。');
         } catch (error) { saveStatus(`削除できません：${error.message}`, true); }
       };
       const actions = document.createElement('div'); actions.className = 'book-actions';
@@ -1125,12 +1119,12 @@
   document.addEventListener('visibilitychange', () => { if (document.hidden && libraryReady) syncLibrary(); });
   addEventListener('pagehide', () => { if (libraryReady) syncLibrary(); });
   addEventListener('storage', event => {
-    if (libraryReady && storageMode === 'browser' && (event.key === window.UserLibrary.KEY || event.key === null)) syncLibrary();
+    if (libraryReady && (event.key === window.UserLibrary.KEY || event.key === null)) syncLibrary();
   });
   $('retry-browser-save').onclick = syncLibrary;
 
   function setFileControlsBusy(busy) {
-    ['export-manuscript', 'export-user', 'save-user-status', 'import-user', 'start-load', 'start-new', 'start-browser', 'start-legacy'].forEach(id => { $(id).disabled = busy; });
+    ['export-manuscript', 'export-user', 'save-user-status', 'import-user', 'start-load', 'start-browser'].forEach(id => { $(id).disabled = busy; });
   }
   function downloadJSON(json, filename) {
     const url = URL.createObjectURL(new Blob([json], { type: 'application/json;charset=utf-8' }));
@@ -1138,8 +1132,8 @@
     try { a.href = url; a.download = filename; document.body.append(a); a.click(); }
     finally { a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); }
   }
-  function markFileSaved(key, filename) {
-    if (storageMode === 'file') { savedUserSnapshot = key; userFilename = filename; hasUserFile = true; }
+  function markFileSaved(filename) {
+    userFilename = filename;
     syncLibrary();
   }
   async function saveUserData() {
@@ -1149,20 +1143,18 @@
     try {
       const validated = window.UserLibrary.validate(library);
       const json = JSON.stringify(validated, null, 2); window.UserLibrary.parse(json);
-      const key = snapshotKey(validated);
       const filename = userFilename || `yomijitaku-user-${new Date().toLocaleDateString('sv-SE')}.json`;
       if (typeof window.showSaveFilePicker === 'function' && window.isSecureContext) {
         // Keep the picker in the initiating user gesture. Never fall back on cancel/error.
         const handle = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: 'よみじたく ユーザーデータJSON', accept: { 'application/json': ['.json'] } }] });
         writable = await handle.createWritable();
         await writable.write(json); await writable.close(); writable = null;
-        markFileSaved(key, handle.name || filename);
-        notify(storageMode === 'browser' ? 'バックアップを保存しました。ブラウザ内の自動保存を続けます。'
-          : userDirty ? 'ファイルを保存しました。保存中に加わった変更は未保存です。' : 'ユーザーデータをファイルに保存しました。');
+        markFileSaved(handle.name || filename);
+        notify('バックアップを保存しました。ブラウザ内の自動保存を続けます。');
       } else {
         downloadJSON(json, filename);
         // A download click does not prove that the browser actually saved a file.
-        pendingDownloadSnapshot = { key, filename };
+        pendingDownloadSnapshot = { filename };
         $('download-filename').textContent = filename;
         $('download-confirm-dialog').showModal(); $('download-not-saved').focus();
         renderSaveState(`「${filename}」のダウンロードを開始しました。端末への保存が未確認です。`);
@@ -1171,8 +1163,7 @@
       if (writable) { try { await writable.abort(); } catch { /* Keep the original failure. */ } }
       syncLibrary();
       const outcome = error.name === 'AbortError' ? '保存をキャンセルしました。' : `ファイルを保存できません：${error.message}`;
-      if (storageMode === 'browser') renderSaveState(`${outcome} ${browserSaveError ? '自動保存にも失敗しています。バックアップを保存してください。' : userDirty ? '自動保存されていない変更があります。' : '自動保存データは保持しています。'}`);
-      else saveStatus(`${outcome} ${userDirty ? '未保存の変更があります。' : '元の保存状態を維持しています。'}`, error.name !== 'AbortError');
+      renderSaveState(`${outcome} ${browserSaveError ? '自動保存にも失敗しています。バックアップを保存してください。' : userDirty ? '自動保存されていない変更があります。' : '自動保存データは保持しています。'}`);
     } finally { savingUser = false; setFileControlsBusy(false); }
   }
   $('export-user').onclick = saveUserData;
@@ -1180,31 +1171,37 @@
   $('download-saved').onclick = () => {
     if (!pendingDownloadSnapshot) return;
     const saved = pendingDownloadSnapshot; pendingDownloadSnapshot = null;
-    markFileSaved(saved.key, saved.filename); $('download-confirm-dialog').close();
+    markFileSaved(saved.filename); $('download-confirm-dialog').close();
   };
   $('download-not-saved').onclick = () => $('download-confirm-dialog').close();
   $('download-confirm-dialog').addEventListener('close', () => { pendingDownloadSnapshot = null; syncLibrary(); });
 
-  function useUserData(candidate, filename = '', saved = false, session = null) {
+  function openBrowserSession(replacement = false) {
+    let storage;
+    try { storage = window.localStorage; storage.getItem(window.UserLibrary.KEY); }
+    catch (error) {
+      // Keep editing and backup available without ever overwriting unreadable data.
+      return { data: window.UserLibrary.empty(), hasData: true, save() { throw error; } };
+    }
+    return window.UserLibrary.openBrowser(storage, { replacement });
+  }
+  function useUserData(candidate, filename = '', session = openBrowserSession()) {
     clearTimeout(changeTimer);
     libraryReady = false;
-    storageMode = session ? 'browser' : 'file'; browserSession = session; browserSaveError = ''; captureFailed = false;
-    $('storage-guidance').textContent = session
-      ? '全原稿・ルビ・書き込み・計測履歴は、このブラウザ内に自動保存します。サイトデータを削除すると失われます。別のブラウザ・端末へは自動で引き継がれません。必要に応じてバックアップを保存できます。'
-      : '全原稿・計測履歴をファイルで管理します。編集内容は自動保存されません。作業終了前に「保存」を押してください。';
-    $('storage-privacy').textContent = session ? 'データはこのブラウザ内に保存します。外部へ送信しません。' : 'データはこの画面内で編集し、ファイルに保存します。外部へ送信しません。';
-    ['export-user', 'save-user-status'].forEach(id => { $(id).textContent = session ? 'バックアップを保存' : '保存'; });
-    $('import-user').textContent = session ? 'バックアップから復元' : '保存したファイルを開く';
-    $('library-load').textContent = session ? 'バックアップから復元' : '保存したデータから続きを始める（ファイルを開く）';
-    $('export-manuscript').querySelector('span').textContent = session ? 'バックアップを保存' : '保存';
-    $('export-manuscript').setAttribute('aria-label', session ? 'バックアップを保存' : '保存');
+    browserSession = session; browserSaveError = ''; captureFailed = false;
+    $('storage-guidance').textContent = '全原稿・ルビ・書き込み・計測履歴は、このブラウザ内に自動保存します。必要に応じてバックアップをファイルに保存できます。';
+    $('storage-privacy').textContent = 'データはこのブラウザ内に保存します。外部へ送信しません。';
+    ['export-user', 'save-user-status'].forEach(id => { $(id).textContent = 'バックアップを保存'; });
+    ['import-user', 'library-load'].forEach(id => { $(id).textContent = '保存したデータを開く'; });
+    $('export-manuscript').querySelector('span').textContent = 'バックアップを保存';
+    $('export-manuscript').setAttribute('aria-label', 'バックアップを保存');
     library = candidate; history = library.history; target = library.target; plannedMinutes = library.plannedMinutes;
     $('profile-name').value = library.profile.name; restoreBook(activeBook());
     timeAnnotations = null; timeMarks = null; timeInputSnapshot = null; $('time-text').value = ''; lastMeasuredCustomText = null;
     $('time-count').textContent = '計測する本文：0文字';
     setTarget(target); targetManual = !!target;
     $('planned-minutes').value = plannedMinutes; $('estimate-minutes').value = plannedMinutes;
-    userFilename = filename; hasUserFile = saved; savedUserSnapshot = snapshotKey(library);
+    userFilename = filename; savedUserSnapshot = snapshotKey(library);
     libraryReady = true; document.querySelector('main').inert = false;
     syncLibrary(); renderResults(); show('home');
   }
@@ -1222,14 +1219,15 @@
       if (file.size > window.UserLibrary.MAX_BYTES) throw new Error('ファイルが大きすぎます（上限は約30MBです）。');
       chosenText = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
       const candidate = window.UserLibrary.parse(chosenText);
-      const restoringBrowserBackup = storageMode === 'browser';
       if (libraryReady) {
-        if (!readyForDirectAction()) return;
-        syncLibrary();
-        if (!await ask(`表示名：${candidate.profile.name || '未設定'}\n原稿：${candidate.manuscripts.length}件／計測履歴：${candidate.history.length}件\n\n${restoringBrowserBackup ? '現在の原稿・書き込み・計測履歴を置き換えます。' : '現在のユーザーデータ全体を置き換えます。'}${userDirty ? '未保存の変更は失われます。必要ならキャンセルして先に保存してください。' : '自動統合はしません。'}${restoringBrowserBackup ? '\nファイル管理に切り替えます。ブラウザ内の自動保存データは残します。' : ''}`, '復元する', 'バックアップから復元しますか？')) return;
+        if (!readyForDirectAction() || !syncLibrary()) return;
       }
-      useUserData(candidate, file.name, true);
-      notify(restoringBrowserBackup ? 'バックアップから復元しました。ファイルで保存する方式に切り替えました。ブラウザ内の自動保存データは残っています。' : '保存データを読み込みました。');
+      const session = libraryReady ? browserSession : openBrowserSession(true);
+      if (libraryReady || session.hasData) {
+        if (!await ask(`表示名：${candidate.profile.name || '未設定'}\n原稿：${candidate.manuscripts.length}件／計測履歴：${candidate.history.length}件\n\n現在の原稿・書き込み・計測履歴とブラウザ内の保存データを置き換えます。自動統合はしません。${userDirty ? '未保存の変更は失われます。必要ならキャンセルして先にバックアップを保存してください。' : ''}`, '置き換える', '保存したデータを開きますか？')) return;
+      }
+      useUserData(candidate, file.name, session);
+      notify(browserSaveError ? 'データを読み込みましたが、自動保存に失敗しています。画面上部の保存状態を確認し、バックアップを保存してください。' : '保存データを読み込みました。ブラウザ内に自動保存します。');
     } catch (error) {
       let chosenFormat = null;
       try { chosenFormat = JSON.parse(chosenText)?.format; } catch { /* Keep the original error. */ }
@@ -1239,34 +1237,13 @@
       if (!libraryReady) $('startup-error').textContent = message; else notify(message);
     } finally { restoringUser = false; setFileControlsBusy(false); }
   };
-  $('start-new').onclick = () => useUserData(window.UserLibrary.empty());
   $('start-browser').onclick = () => {
     try {
-      const session = window.UserLibrary.openBrowser();
-      useUserData(session.data, '', false, session);
-    } catch (error) { $('startup-error').textContent = `ブラウザ内のデータを開けません。既存データは上書きしません。${error.message} ファイルに保存して利用する方法も選べます。`; }
-  };
-  $('start-legacy').onclick = () => {
-    try {
-      // Read again on explicit selection. Migration never removes or overwrites the source.
-      const raw = localStorage.getItem(window.UserLibrary.KEY);
-      if (raw === null) throw new Error('ブラウザ保存データが見つかりません。');
-      useUserData(window.UserLibrary.parse(raw));
-      notify('ブラウザの自動保存データを引き継ぎました。「保存」でファイルに保存してください。');
-    } catch (error) { $('startup-error').textContent = `引き継げません。元データは保持しています。${error.message}`; }
-  };
-  $('export-legacy').onclick = () => {
-    try {
-      const raw = localStorage.getItem(window.UserLibrary.KEY);
-      if (raw === null) throw new Error('データが見つかりません。');
-      downloadJSON(raw, 'yomijitaku-browser-data.json');
-      $('startup-error').textContent = '旧データのダウンロードを開始しました。端末への保存をご確認ください。元データはブラウザに残しています。';
-    } catch (error) { $('startup-error').textContent = `取り出せません：${error.message}`; }
+      const session = openBrowserSession();
+      useUserData(session.data, '', session);
+    } catch (error) { $('startup-error').textContent = `ブラウザ内のデータを開けません。既存データは上書きしません。${error.message}`; }
   };
   library = window.UserLibrary.empty();
-  try { hasLegacyUserData = localStorage.getItem(window.UserLibrary.KEY) !== null; }
-  catch { $('startup-storage-note').textContent = 'このブラウザの保存データを確認できませんでした。ファイルに保存する方法は利用できます。'; }
-  $('legacy-user-data').hidden = !hasLegacyUserData;
   $('startup-dialog').addEventListener('cancel', event => event.preventDefault());
   $('startup-dialog').showModal();
 })();

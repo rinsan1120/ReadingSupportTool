@@ -39,13 +39,14 @@
     if (new TextEncoder().encode(json).length > MAX_BYTES) throw new Error('ファイルが大きすぎます（上限は約30MBです）。');
     return validate(JSON.parse(json));
   }
-  function openBrowser(storage = localStorage) {
+  function openBrowser(storage = localStorage, { replacement = false } = {}) {
     let stored = storage.getItem(KEY), blocked = false;
-    // Parse before exposing a writable session. Invalid older data stays intact.
-    const data = stored === null ? empty() : parse(stored);
+    // Normal startup validates existing data. Explicit file replacement keeps the raw
+    // value for conflict detection and does not write until the owner confirms.
+    const data = stored === null || replacement ? empty() : parse(stored);
     let saved = JSON.stringify(data);
     return {
-      data,
+      data, hasData: stored !== null,
       save(candidate) {
         if (blocked || storage.getItem(KEY) !== stored) {
           blocked = true;
@@ -53,10 +54,10 @@
         }
         const json = JSON.stringify(candidate);
         if (new TextEncoder().encode(json).length > MAX_BYTES) throw new Error('保存データが大きすぎます（上限は約30MBです）。');
-        if (stored !== null && json === saved) return;
+        if (!replacement && stored !== null && json === saved) return;
         // Atomic setItem preserves the previous data if quota/access fails.
         storage.setItem(KEY, json);
-        stored = json; saved = json;
+        stored = json; saved = json; replacement = false;
       }
     };
   }

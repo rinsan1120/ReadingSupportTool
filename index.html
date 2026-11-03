@@ -37,15 +37,15 @@
       </div>
       <details class="user-settings"><summary>プロフィール・ファイルの保存と読み込み</summary>
         <label for="profile-name">表示名</label><input id="profile-name" maxlength="80" autocomplete="nickname" placeholder="お名前（任意）">
-        <p id="storage-guidance" class="muted">全原稿と計測履歴をファイルで管理します。編集内容は自動保存されません。作業終了前に「保存」を押してください。</p>
-        <div class="inline"><button id="export-user">保存</button><button id="import-user">保存したファイルを開く</button></div>
+        <p id="storage-guidance" class="muted">全原稿と計測履歴をこのブラウザ内に自動保存します。バックアップをファイルに保存できます。</p>
+        <div class="inline"><button id="export-user">保存</button><button id="import-user">保存したデータを開く</button></div>
         <p class="muted">ここでは全原稿と計測履歴を含む保存データを開きます。旧形式の原稿1件のファイルは、本文入力から取り込めます。</p>
       </details>
       <section id="home-results" class="home-results" hidden aria-labelledby="home-results-title">
         <div><h2 id="home-results-title">これまでの計測結果</h2><p>平均朗読速度：<strong id="home-average-speed"></strong></p></div>
         <button data-go="results">結果を見る →</button>
       </section>
-      <p id="storage-privacy" class="privacy">データはこの画面内で編集し、JSONファイルに保存します。外部へ送信しません。</p>
+      <p id="storage-privacy" class="privacy">データはこのブラウザ内に保存します。外部へ送信しません。</p>
     </section>
     <section id="read-input" class="view narrow" hidden aria-labelledby="read-title">
       <button class="back" data-go="home">← ホーム</button><p class="eyebrow">READ</p><h1 id="read-title" tabindex="-1">原稿を準備する</h1>
@@ -58,7 +58,7 @@
       <p id="writing-retention" class="muted" hidden>原稿の書き込みを保持しています。保存状況は画面上部に表示します。</p>
       <div class="inline"><button id="import-manuscript">旧形式の原稿ファイルを取り込む</button><input id="manuscript-file" data-field-id="FLD-READ-MANUSCRIPT-FILE" type="file" accept=".json,application/json" hidden>
       <button id="open-read" class="primary">表示を確認して読む →</button></div>
-      <p class="muted">旧バージョンの「原稿を保存」で作った原稿JSONを取り込むためのものです（移行用）。保存した続きのデータは、ホームの「保存したファイルを開く」から読み込んでください。</p>
+      <p class="muted">旧バージョンの「原稿を保存」で作った原稿JSONを取り込むためのものです（移行用）。保存した続きのデータは、ホームの「保存したデータを開く」から読み込んでください。</p>
     </section>
     <section id="time-input" class="view narrow" hidden aria-labelledby="time-title">
       <button class="back" data-go="home">← ホーム</button><p class="eyebrow">MEASURE</p><h1 id="time-title" tabindex="-1">朗読速度を測る</h1>
@@ -172,20 +172,18 @@
   <input id="user-file" type="file" accept=".json,application/json" hidden>
   <dialog id="startup-dialog" aria-labelledby="startup-title">
     <p class="eyebrow">よみじたく</p><h2 id="startup-title">よみじたくを始める</h2>
-    <p>保存方法を選んでください。</p>
-    <div class="startup-options">
-      <button id="start-load" class="startup-choice primary" aria-describedby="start-load-help"><span>保存したデータから始める</span><small id="start-load-help">保存済みのファイルを開く</small></button>
-      <button id="start-new" class="startup-choice" aria-describedby="start-new-help"><span>新しく始める</span><small id="start-new-help">データをファイルに保存して使う</small></button>
-      <button id="start-browser" class="startup-choice" aria-describedby="start-browser-help start-browser-note"><span>ブラウザに自動保存して始める</span><small id="start-browser-help">編集内容を自動保存し、次回も続きから再開できます。</small><small id="start-browser-note" class="startup-caution">サイトデータを削除すると保存内容が失われます。別の端末に引き継ぐ場合は、画面上部からデータを保存してください。</small></button>
-    </div>
-    <p class="muted">ファイル保存は手動です。編集後は作業終了前に「保存」を押してください。</p>
-    <section id="legacy-user-data" hidden><p>このブラウザに保存データがあります。3つ目の方法で続きから使えます。</p>
-      <details><summary>以前のデータを引き継ぐ・取り出す</summary>
-        <p>ファイルで保存する場合は引き継いでから「保存」を押してください。このブラウザの保存データは残ります。</p>
-        <div class="inline"><button id="start-legacy">ファイルで保存する</button><button id="export-legacy">保存データを取り出す</button></div>
-      </details>
+    <p>原稿や書き込み、朗読速度の記録は、このブラウザに自動保存されます。次回も続きから利用できます。</p>
+    <section class="startup-backup" aria-labelledby="startup-backup-title">
+      <h3 id="startup-backup-title">大切なデータの保存について</h3>
+      <p>ブラウザに自動保存されたデータは、ブラウザ上のデータ削除などにより、予期せず消える場合があります。</p>
+      <p>定期的にデータをファイルに保存することをおすすめします。</p>
+      <p>保存したデータは別の端末でよみじたくを利用する際にも利用可能です。</p>
     </section>
-    <p id="startup-storage-note" class="muted"></p><p id="startup-error" role="alert"></p>
+    <div class="startup-options">
+      <button id="start-browser" class="startup-choice primary" aria-describedby="start-browser-help"><span>はじめる</span><small id="start-browser-help">初めての方も、続きから利用する方もこちら</small></button>
+      <button id="start-load" class="startup-choice" aria-describedby="start-load-help"><span>保存したデータを開く</span><small id="start-load-help">端末に保存したデータファイルを読み込む</small></button>
+    </div>
+    <p id="startup-error" role="alert"></p>
   </dialog>
   <dialog id="download-confirm-dialog" aria-labelledby="download-confirm-title">
     <h2 id="download-confirm-title">端末への保存をご確認ください</h2>

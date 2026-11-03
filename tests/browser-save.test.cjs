@@ -118,33 +118,26 @@ function appSetup(s) {
   const node = () => ({ value: '', textContent: '', hidden: false, dataset: {}, classList: { toggle() {} }, setAttribute() {},
     querySelector() { return this.label ||= node(); } });
   const $ = id => { if (!fields.has(id)) fields.set(id, node()); return fields.get(id); };
+  s.context.window.localStorage = s.storage;
   Object.assign(s.context, { $, document: { querySelector: () => ({ inert: true }), dispatchEvent() {} },
     clearTimeout, setTimeout, renderLibrary() {}, renderResults() {}, show() {},
     validTarget: value => Number(value) > 0, validMinutes: value => Number(value) > 0,
     countText: value => value.length, setTarget(value) { s.context.target = value; }, libraryReady: false, library: s.api.empty(),
-    savedUserSnapshot: null, captureFailed: false, userDirty: false, storageMode: 'file',
-    browserSession: null, browserSaveError: '', changeTimer: 0, userFilename: '', hasUserFile: false,
+    savedUserSnapshot: null, captureFailed: false, userDirty: false,
+    browserSession: null, browserSaveError: '', changeTimer: 0, userFilename: '',
     pendingReadPaste: null, readPaper: false, readMeasurementReturn: null });
   const functions = app.slice(app.indexOf('  function activeBook()'), app.indexOf('  let libraryRenderKey'));
-  const use = app.slice(app.indexOf('  function useUserData('), app.indexOf('  let restoringUser'));
+  const use = app.slice(app.indexOf('  function openBrowserSession('), app.indexOf('  let restoringUser'));
   const mark = app.slice(app.indexOf('  function markFileSaved('), app.indexOf('  async function saveUserData'));
   vm.runInContext(functions + use + mark, s.context);
   return { c: s.context, $ };
 }
 
-test('file sessions never overwrite browser data; browser export does not mark autosave failures as saved', () => {
+test('backup and restored files keep autosave active, including after failures', () => {
   const s = setup(), { c, $ } = appSetup(s);
-  const browserData = fixture(s);
-  s.storage.raw = JSON.stringify(browserData);
-  const original = s.storage.raw;
-  c.useUserData(s.api.empty());
-  $('read-text').value = 'ファイル側だけの原稿';
-  c.syncLibrary(); c.markFileSaved('file-key', 'file.json');
-  assert.equal(s.storage.raw, original);
-  assert.equal(s.storage.writes, 0);
-
+  s.storage.raw = JSON.stringify(fixture(s));
   const session = s.api.openBrowser();
-  c.useUserData(session.data, '', false, session);
+  c.useUserData(session.data, '', session);
   assert.equal($('read-text').value, '黄昏の空。');
   assert.match($('storage-guidance').textContent, /自動保存/);
   $('read-text').value += '編集';
@@ -157,26 +150,23 @@ test('file sessions never overwrite browser data; browser export does not mark a
   assert.equal(c.userDirty, true);
   assert.match($('user-save-status').textContent, /容量不足/);
   assert.equal($('retry-browser-save').hidden, false);
-  c.markFileSaved('backup-key', 'backup.json');
+  c.markFileSaved('backup.json');
   assert.equal(c.userDirty, true);
-  assert.equal(c.storageMode, 'browser');
   s.storage.fail = false;
   c.syncLibrary();
   assert.equal(c.userDirty, false);
   assert.equal(s.api.openBrowser().data.profile.name, '容量不足中の編集');
 
-  const saved = s.storage.raw;
-  c.useUserData(s.api.empty(), 'import.json', true);
+  c.useUserData(s.api.empty(), 'import.json', s.api.openBrowser(s.storage, { replacement: true }));
   $('profile-name').value = '読み込んだJSONの編集';
   c.syncLibrary();
-  assert.equal(c.storageMode, 'file');
-  assert.equal(s.storage.raw, saved);
-  assert.match($('storage-guidance').textContent, /自動保存されません/);
+  assert.equal(s.api.openBrowser().data.profile.name, '読み込んだJSONの編集');
+  assert.match($('storage-guidance').textContent, /自動保存/);
 });
 
 test('debounced edits persist and JSON backup remains usable during browser storage failure', async () => {
   const s = setup(), { c, $ } = appSetup(s), session = s.api.openBrowser();
-  c.useUserData(session.data, '', false, session);
+  c.useUserData(session.data, '', session);
   $('profile-name').value = '入力後に自動保存';
   c.scheduleLibraryChange();
   assert.equal(c.userDirty, true);
@@ -196,18 +186,21 @@ test('debounced edits persist and JSON backup remains usable during browser stor
   $('profile-name').value = 'ブラウザ未保存・JSONに退避';
   await c.saveUserData();
   assert.equal(s.api.parse(output).profile.name, 'ブラウザ未保存・JSONに退避');
-  assert.equal(c.storageMode, 'browser');
   assert.equal(c.userDirty, true);
   assert.match($('user-save-status').textContent, /容量不足/);
   assert.equal(s.api.openBrowser().data.profile.name, '入力後に自動保存');
+});
 
-  // The same save path still clears the dirty flag in file mode.
-  c.useUserData(s.api.empty());
-  $('profile-name').value = 'JSON管理';
-  const previous = s.storage.raw;
-  await c.saveUserData();
-  assert.equal(c.userDirty, false);
-  assert.equal(c.hasUserFile, true);
-  assert.equal(s.api.parse(output).profile.name, 'JSON管理');
-  assert.equal(s.storage.raw, previous);
+
+test('explicit replacement preserves unreadable data until save and detects concurrent edits', () => {
+  const s = setup('{broken'), session = s.api.openBrowser(s.storage, { replacement: true });
+  assert.equal(session.hasData, true);
+  assert.equal(s.storage.raw, '{broken');
+  const candidate = fixture(s);
+  session.save(candidate);
+  assert.equal(s.api.openBrowser().data.history.length, 1);
+  const next = s.api.openBrowser(s.storage, { replacement: true });
+  s.storage.raw = 'another tab';
+  assert.throws(() => next.save(candidate), /別のタブ/);
+  assert.equal(s.storage.raw, 'another tab');
 });

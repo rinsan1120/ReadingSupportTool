@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 exports.startNew = async page => {
   await page.evaluate(() => { window.showSaveFilePicker = undefined; });
-  await page.locator('#start-new').click();
+  await page.locator('#start-browser').click();
 };
 exports.saveUser = async (page, button = 'export-manuscript') => {
   const pending = page.waitForEvent('download');

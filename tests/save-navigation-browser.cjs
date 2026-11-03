@@ -1,4 +1,4 @@
-// Focused browser checks for manual manuscript saving and replacement guards.
+// Focused browser checks for manuscript backup, autosave and replacement guards.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -65,8 +65,10 @@ const original = { format: 'reading-support-manuscript', version: 3, text: '黄�
     assert.equal(await page.locator('.writing-memo').count(), 1);
     await invoke('reader-back'); await draftText('新しい本文'); await click('open-read'); await click('confirm-ok');
     await visible('reading'); assert.equal(await page.locator('.writing-memo').count(), 0);
-    assert.deepEqual(await page.evaluate(() => ({ ...localStorage })), {});
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('yomijitaku-user-v1')));
+    assert.equal(stored.manuscripts[0].draft, '新しい本文');
+    assert.equal(stored.manuscripts[0].manuscript.marks.length, 0);
     assert.deepEqual(errors, []);
-    console.log('PASS: file saves, in-memory navigation, pending memo warning and deferred replacement guards');
+    console.log('PASS: backups, autosaved navigation, pending memo warning and deferred replacement guards');
   } finally { await browser.close(); server.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; server.close(); });
