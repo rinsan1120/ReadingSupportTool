@@ -7,7 +7,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="description" content="文章を読みやすく整え、自分の朗読速度から作品の朗読時間を調べるツール。">
   <title>よみじたく | 朗読支援サイト</title>
-  <link rel="stylesheet" href="styles.css?v=stable-mobile-scroll">
+  <link rel="stylesheet" href="styles.css?v=reader-action-grid">
   <script src="samples.js" defer></script>
   <script src="reading-annotations.js?v=vertical-writing" defer></script>
   <script src="html-ruby.js?v=clipboard-fragments" defer></script>
@@ -84,8 +84,8 @@
           </div>
           <div id="reader-actions" role="group" aria-label="原稿画面の操作">
             <div id="writing-direction" role="group" aria-label="原稿の表示方向">
-              <button type="button" data-direction="horizontal" aria-pressed="true">横書き</button>
-              <button type="button" data-direction="vertical" aria-pressed="false">縦書き</button>
+              <button type="button" data-direction="horizontal" aria-pressed="true"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 5h16M4 10h16M4 15h16M4 20h10"/></svg><span>横書き</span></button>
+              <button type="button" data-direction="vertical" aria-pressed="false"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M19 4v16M14 4v16M9 4v16M4 4v10"/></svg><span>縦書き</span></button>
             </div>
             <button id="paper-mode" type="button" aria-pressed="false" aria-label="白背景：OFF"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h7v18H5Z" fill="currentColor" stroke="none"/><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M12 3v18m3-13h2m-2 4h2m-2 4h2"/></svg><span>白背景</span><span class="button-state">OFF</span></button>
             <button id="toolbar-settings" type="button" aria-label="表示設定"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="12" r="2" fill="currentColor"/><circle cx="8" cy="18" r="2" fill="currentColor"/></svg><span>表示設定</span></button>

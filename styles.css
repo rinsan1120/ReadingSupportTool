@@ -823,13 +823,10 @@ html { scrollbar-gutter: stable; }
 
 /* Direction belongs to the manuscript action group, after the navigation action. */
 .reader-toolbar { grid-template-columns:auto minmax(0,1fr) auto; grid-template-areas:"back actions wake"; }
-#writing-direction { display:flex; flex:0 0 auto; gap:4px; }
-#writing-direction button { min-width:56px; }
+#writing-direction { display:contents; }
 #direction-notice { margin:0; padding:8px 16px; border-top:1px solid var(--border); color:var(--text); font-size:13px; line-height:1.6; }
 @media(max-width:600px) {
   .reader-toolbar { grid-template-columns:minmax(0,1fr); grid-template-areas:"top" "actions"; }
-  #writing-direction { flex:2 1 0; min-width:0; }
-  #writing-direction button { flex:1 1 0; min-width:0; padding:3px 1px; font-size:10px; }
   #reader-actions button > span { white-space:normal; overflow-wrap:anywhere; }
   #direction-notice { padding:6px 12px; font-size:12px; }
 }
@@ -840,3 +837,46 @@ html { scrollbar-gutter: stable; }
 
 /* Small viewport measurement has no effect on document flow or scroll bounds. */
 .reader-viewport-probe { position:fixed; top:0; left:0; width:0; height:100svh; visibility:hidden; pointer-events:none; contain:strict; }
+
+/* Equal action cells preserve DOM/tab order, including the direction group.
+   Reserve the same label and status space even when a button has no badge. */
+#reader-actions {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,5.25rem),1fr));
+  grid-auto-rows:1fr;
+  align-items:stretch;
+  gap:6px;
+  min-width:0;
+}
+#reader-actions button {
+  display:grid;
+  grid-template-rows:20px minmax(2.5em,auto) 12px;
+  justify-items:center;
+  align-items:center;
+  align-content:center;
+  gap:2px;
+  min-width:0;
+  min-height:76px;
+  padding:5px 4px;
+  font-size:12px;
+  line-height:1.25;
+  white-space:normal;
+}
+#reader-actions .tool-icon { grid-row:1; width:20px; height:20px; }
+#reader-actions button > span:not(.button-state) {
+  grid-row:2;
+  min-width:0;
+  max-width:100%;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  text-align:center;
+  text-wrap:balance;
+}
+#reader-actions .button-state {
+  grid-row:3;
+  position:static;
+  margin:0;
+  padding:0 3px;
+  font-size:9px;
+  line-height:1.2;
+}
