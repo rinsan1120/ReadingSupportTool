@@ -117,7 +117,7 @@ const server = http.createServer((req, res) => {
         console.log(`PASS ${width}px ${scenario}: ${result.prepared.pages} pages, ${result.notes} memo bodies, ${result.notePages} note pages`);
         await page.evaluate(() => ManuscriptPrint.clear());
       }
-      assert.deepEqual((await saveUser(page)).manuscripts[0].manuscript, manuscript, 'manuscript JSON unchanged inside user file');
+      assert.deepEqual((await saveUser(page)).manuscripts[0].manuscript, { ...manuscript, version: 5, writingDirection: 'horizontal' }, 'manuscript JSON unchanged inside user file');
       assert.deepEqual(errors, []); await page.close();
     }
     if (output) fs.writeFileSync(path.join(output, 'memo-layout-manifest.json'), JSON.stringify(manifest, null, 2));

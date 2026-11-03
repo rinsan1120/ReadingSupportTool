@@ -8,7 +8,7 @@
   let blocks = [], lastAvailable = 0, lastMobile = false, scheduled = 0;
   let savedAnchor = null;
   let writingGeometry = null;
-  let direction = 'horizontal', snapshotting = false;
+  let direction = 'horizontal';
   const vertical = () => direction === 'vertical';
   const columnHeight = () => Math.max(180, Math.min(620, innerHeight * .62));
   const readingEdge = () => document.querySelector('.reader-controls').getBoundingClientRect().bottom + 12;
@@ -317,7 +317,7 @@
     lastAvailable = available;
     lastMobile = mobile.matches;
     restore(anchor);
-    if (!snapshotting) root.dispatchEvent(new Event('reader-layout'));
+    root.dispatchEvent(new Event('reader-layout'));
   }
   // Keep original graphemes separate from manual reading boxes so pen anchors
   // and source hit testing stay unchanged. Coordinates stay relative to the
@@ -358,6 +358,7 @@
     const origin = root.getBoundingClientRect(), computed = getComputedStyle(root);
     const font = {};
     for (const name of ['fontFamily', 'fontSize', 'lineHeight', 'fontWeight', 'fontStyle', 'fontStretch', 'fontKerning', 'fontFeatureSettings', 'fontVariantLigatures', 'fontVariantEastAsian', 'letterSpacing', 'wordSpacing', 'tabSize', 'direction']) font[name] = computed[name];
+    if (vertical()) return verticalPrintSnapshot(origin, font);
     const lines = [];
     for (const block of blocks) {
       let previousShift = 0;
@@ -413,6 +414,85 @@
     };
     return { width: origin.width, font, lines, glyphs: geometry.glyphs.map(withLine),
       annotationRects: geometry.annotationRects.map(withLine) };
+  }
+  function verticalPrintSnapshot(origin, font) {
+    // Unfold viewport sections into a continuous right-to-left column table.
+    // Logical x is distance down a column; logical y is reading progress left.
+    // Only coordinates are normalized: print still uses native vertical text.
+    const lines = [], sections = [], columns = [];
+    const pitch = parseFloat(font.lineHeight);
+    let base = 0, previousEnd = 0, inlineSize = 0;
+    for (const block of blocks) {
+      const blank = source.slice(previousEnd, block.start).match(/\r\n|\r|\n/g) || [];
+      base += Math.max(0, blank.length - (previousEnd ? 1 : 0)) * pitch;
+      let section = null;
+      for (const line of block.lines) {
+        const part = block.parts.find(p => line.start >= p.start && line.start < p.end);
+        const column = part?.node.parentElement.closest('.vertical-column');
+        if (!column) throw new Error('縦書きの列を確認できません。原稿画面を開き直してください。');
+        if (section?.element !== column.parentElement) {
+          const el = column.parentElement, r = el.getBoundingClientRect();
+          section = { element: el, top: r.top - origin.top, bottom: r.bottom - origin.top, right: r.right - origin.left, base, first: lines.length, last: lines.length };
+          sections.push(section); inlineSize = Math.max(inlineSize, r.height);
+        }
+        const map = r => ({ left: r.top - origin.top - section.top, top: section.base + section.right - (r.right - origin.left), width: r.height, height: r.width });
+        const first = point(block, line.start), center = map(first).top + first.width / 2;
+        const pieces = [], rects = [], ranges = [];
+        for (const p of block.parts) {
+          const begin = Math.max(line.start, p.start), end = Math.min(line.end, p.end);
+          if (begin >= end) continue;
+          range.setStart(p.node, begin - p.start); range.setEnd(p.node, end - p.start);
+          rects.push(...[...range.getClientRects()].filter(r => r.width && r.height).map(map));
+          if (!p.run.annotation) ranges.push({ start: p.run.sourceStart + begin - p.run.start, end: p.run.sourceStart + end - p.run.start });
+          if (p.run.sourceRuby) {
+            const r = range.getBoundingClientRect(), unit = p.node.parentElement.closest('.source-ruby-unit');
+            const readingRange = document.createRange(); readingRange.selectNodeContents(unit.querySelector('rt'));
+            const bounds = map(unit.getBoundingClientRect()), readingBounds = map(readingRange.getBoundingClientRect());
+            rects.push(bounds, readingBounds);
+            pieces.push({ text: p.node.data, ...map(r), annotation: null,
+              sourceRuby: { ...p.run.sourceRuby, base: p.node.data, bounds, readingBounds } });
+          } else for (const match of block.text.slice(begin, end).matchAll(/[^\r\n\t\u2028\u2029]+/gu)) {
+            range.setStart(p.node, begin - p.start + match.index); range.setEnd(p.node, begin - p.start + match.index + match[0].length);
+            pieces.push({ text: match[0], ...map(range.getBoundingClientRect()), annotation: p.run.annotation ? p.run.sourceStart : null });
+          }
+        }
+        const box = column.getBoundingClientRect();
+        const top = Math.min(center - pitch / 2, ...rects.map(r => r.top));
+        const bottom = Math.max(center + pitch / 2, ...rects.map(r => r.top + r.height));
+        columns.push({ section, center: box.left + box.width / 2 - origin.left, ranges });
+        lines.push({ top, bottom, center, autoBefore: 0, pieces });
+        section.last = lines.length - 1;
+        base = section.base + section.right - (box.left - origin.left);
+      }
+      previousEnd = block.sourceEnd;
+    }
+    const geometry = getWritingGeometry();
+    const sourceRanges = columns.flatMap((c, line) => c.ranges.map(r => ({ ...r, line }))).sort((a, b) => a.start - b.start);
+    const convert = (g, annotation = false) => {
+      let index = -1;
+      if (!annotation) {
+        let lo = 0, hi = sourceRanges.length;
+        while (lo < hi) { const mid = (lo + hi) >>> 1; if (sourceRanges[mid].start <= g.start) lo = mid + 1; else hi = mid; }
+        const r = sourceRanges[lo - 1];
+        if (r && g.start < r.end) index = r.line;
+      }
+      if (index < 0) {
+        let lo = 0, hi = sections.length;
+        while (lo < hi) { const mid = (lo + hi) >>> 1; if (sections[mid].bottom < g.y + g.height / 2) lo = mid + 1; else hi = mid; }
+        const s = sections[Math.min(lo, sections.length - 1)];
+        let distance = Infinity;
+        if (s) for (let i = s.first; i <= s.last; i++) {
+          const d = Math.abs(columns[i].center - g.x - g.width / 2);
+          if (d < distance) { distance = d; index = i; }
+        }
+      }
+      if (index < 0) throw new Error('書き込みと縦書き本文の対応を確認できません。');
+      const s = columns[index].section;
+      return { ...g, x: g.y - s.top, y: s.base + s.right - g.x - g.width, width: g.height, height: g.width, line: index };
+    };
+    return { direction: 'vertical', width: inlineSize, font, lines,
+      glyphs: geometry.glyphs.map(g => convert(g)), annotationRects: geometry.annotationRects.map(g => convert(g, true)),
+      sections: sections.map(({ element, ...s }) => s) };
   }
   function updateMode(on) {
     rubyMode = Boolean(annotations && annotationsEditable && on);
@@ -558,7 +638,7 @@
   let lastViewportHeight = innerHeight;
   addEventListener('resize', () => {
     const changed = lastViewportHeight !== innerHeight; lastViewportHeight = innerHeight;
-    if (vertical() && changed && !root.closest('[hidden]') && !snapshotting) {
+    if (vertical() && changed && !root.closest('[hidden]')) {
       cancelAnimationFrame(scheduled); scheduled = requestAnimationFrame(() => layout(savedAnchor));
     }
   });
@@ -594,17 +674,6 @@
     },
     capture, restore, printSnapshot, getWritingGeometry,
     get direction() { return direction; },
-    horizontalSnapshot(callback) {
-      if (!vertical()) return callback();
-      const previous = direction, anchor = capture(), scroll = { x: scrollX, y: scrollY };
-      snapshotting = true;
-      try { direction = 'horizontal'; layout(null); return callback(); }
-      finally {
-        direction = previous; layout(null); snapshotting = false;
-        scrollTo(scroll.x, scroll.y); savedAnchor = anchor;
-        root.dispatchEvent(new Event('reader-layout'));
-      }
-    },
     get hasPending() { return Boolean(draft); },
     focusPending() { if (editor.open) rubyInput.focus({ preventScroll: true }); },
     setEditModeGuard(guard) { editModeGuard = guard; },

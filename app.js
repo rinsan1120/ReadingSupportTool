@@ -418,10 +418,12 @@
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       if (view !== 'reading' || mode !== 'read') return;
       pdfAnchor = window.Reader.capture();
-      const { snapshot, writing } = window.Reader.horizontalSnapshot(() => ({ snapshot: window.Reader.printSnapshot(), writing: window.ManuscriptWriting.printSnapshot({ horizontalOnly: true }) }));
+      const snapshot = window.Reader.printSnapshot(), writing = window.ManuscriptWriting.printSnapshot({ forPrint: true });
       const result = window.ManuscriptPrint.prepare(snapshot, writing);
       $('pdf-small-warning').hidden = result.points >= 9;
-      $('pdf-small-warning').textContent = '文字が小さくなるため、キャンセルして本文幅を狭くするか文字サイズを大きくしてから出力することをおすすめします。長い読み仮名がある場合は、内容の短縮もご検討ください。';
+      $('pdf-small-warning').textContent = window.Reader.direction === 'vertical'
+        ? '文字が小さくなるため、キャンセルして文字サイズを調整するか、長い読み仮名やペンの広がりを見直してから出力することをおすすめします。'
+        : '文字が小さくなるため、キャンセルして本文幅を狭くするか文字サイズを大きくしてから出力することをおすすめします。長い読み仮名がある場合は、内容の短縮もご検討ください。';
       $('pdf-dialog').showModal();
     } catch (error) { window.ManuscriptPrint.clear(); notify(error.message); }
     finally { preparingPDF = false; }

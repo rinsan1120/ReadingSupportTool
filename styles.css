@@ -242,6 +242,8 @@ input[type=number] {
 .manuscript-source-ruby ruby { ruby-position:over; ruby-align:center; }
 .manuscript-source-ruby rt { font-size:.5em; line-height:1; font-weight:normal; color:#000; }
 .manuscript-ruby-reading { position:relative; }
+.manuscript-vertical .manuscript-piece { writing-mode:vertical-rl; text-orientation:mixed; width:max-content; height:max-content; }
+.manuscript-vertical .manuscript-source-ruby { padding-top:0; padding-right:.6em; }
 .manuscript-markers, .manuscript-pens { position:absolute; inset:0; overflow:visible; pointer-events:none; }
 .manuscript-markers { z-index:0; }
 .manuscript-markers rect { fill:#ffe588; }

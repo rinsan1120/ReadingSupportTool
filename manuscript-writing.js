@@ -601,17 +601,19 @@
   matchMedia('print').addEventListener('change', e => { if (!e.matches) requestAnimationFrame(render); });
   window.ManuscriptWriting = {
     bubble,
-    printSnapshot({ horizontalOnly = false } = {}) {
+    printSnapshot({ forPrint = false } = {}) {
       if (!model) return { source: '', items: [], pens: [] };
       const geometry = window.Reader.getWritingGeometry(), pens = [];
       // Reuse exactly the live stroke anchor rules; pending gestures
       // and memo edits live outside items and are deliberately not exported.
-      for (const item of model.items) if (item.type === 'pen' && (item.direction ?? 'horizontal') === 'horizontal') {
+      const printDirection = direction();
+      const selected = model.items.filter(item => item.type !== 'pen' || (item.direction ?? 'horizontal') === printDirection);
+      for (const item of selected) if (item.type === 'pen') {
         const points = strokePoints(item, geometry);
         if (!points) throw new Error('赤ペンの基準文字を確認できません。本文全体の朗読画面を開き直してから出力してください。');
         pens.push({ id: item.id, points, color: item.color ?? 'red' });
       }
-      return { source: model.source, items: copy(model.items.filter(item => !horizontalOnly || item.type !== 'pen' || (item.direction ?? 'horizontal') === 'horizontal')), memoSettings: copy(model.memoSettings), pens };
+      return { source: model.source, items: copy((forPrint ? selected : model.items).map(item => forPrint && item.type === 'memo' ? memoView(item) : item)), memoSettings: copy(model.memoSettings), pens };
     },
     show(next, options = {}) { cancelPending(); model = next; editable = options.editable !== false; enabled = false; controls(); render(); },
     leave() { cancelPending(); enabled = false; model = null; controls(); render(); },

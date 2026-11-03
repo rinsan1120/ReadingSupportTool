@@ -172,7 +172,7 @@ const modelTests = page => page.evaluate(() => {
       const pdf = await page.evaluate(() => ({ pages: document.querySelectorAll('.manuscript-page').length,
         blue: document.querySelectorAll('.manuscript-pens path[data-color=blue]').length,
         red: document.querySelectorAll('.manuscript-pens path[data-color=red]').length }));
-      assert.ok(pdf.pages > 0 && pdf.blue > 0, JSON.stringify(pdf)); assert.equal(pdf.red, 0);
+      assert.ok(pdf.pages > 0 && pdf.red > 0, JSON.stringify(pdf)); assert.equal(pdf.blue, 0);
       await page.locator('#pdf-cancel').click();
       const saved = await saveUser(page);
       const manuscript = saved.manuscripts.find(m => m.id === saved.activeId).manuscript;

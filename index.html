@@ -7,15 +7,15 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="description" content="文章を読みやすく整え、自分の朗読速度から作品の朗読時間を調べるツール。">
   <title>よみじたく | 朗読支援サイト</title>
-  <link rel="stylesheet" href="styles.css?v=vertical-writing">
+  <link rel="stylesheet" href="styles.css?v=vertical-pdf">
   <script src="samples.js" defer></script>
   <script src="reading-annotations.js?v=vertical-writing" defer></script>
   <script src="html-ruby.js" defer></script>
-  <script src="reader.js?v=vertical-writing" defer></script>
-  <script src="manuscript-writing.js?v=vertical-writing" defer></script>
-  <script src="manuscript-print.js?v=memo-layout" defer></script>
+  <script src="reader.js?v=vertical-pdf" defer></script>
+  <script src="manuscript-writing.js?v=vertical-pdf" defer></script>
+  <script src="manuscript-print.js?v=vertical-pdf" defer></script>
   <script src="user-library.js?v=browser-save" defer></script>
-  <script src="app.js?v=vertical-writing" defer></script>
+  <script src="app.js?v=vertical-pdf" defer></script>
 </head>
 <body>
   <header class="site-header"><button class="brand" data-go="home"><span aria-hidden="true">☾</span> よみじたく <small>朗読支援サイト</small></button></header>
@@ -156,7 +156,7 @@
   <div id="manuscript-print"></div>
   <dialog id="pdf-dialog" data-dialog-id="DLG-PDF" aria-labelledby="pdf-title">
     <h2 id="pdf-title">PDF出力</h2>
-    <p>PDFは横書きで出力します。ペンと文字メモの配置は横書き用を使用します。</p>
+    <p>原稿画面と同じ表示方向で出力します。ペンと文字メモの配置も、その表示方向のものを使用します。</p>
     <p>次の印刷画面で「PDFとして保存」を選んでください。端末によっては共有・プリントからPDFを保存します。</p>
     <p class="muted">A4・縦向き・倍率100%を基本とし、ヘッダーとフッターはOFFにしてください。保存が完了したかは印刷画面でご確認ください。</p>
     <p id="pdf-small-warning" hidden></p>
