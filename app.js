@@ -934,8 +934,8 @@
     // Distinguish "no file yet" from "unsaved changes": only real edits warn.
     const fallback = userDirty ? '未保存の変更があります。「保存」でファイルに保存してください。'
       : hasUserFile ? `保存済み · ${userFilename}` : '保存先ファイルはまだありません。「保存」でファイルを作ってください。';
-    const browserStatus = browserSaveError ? `ブラウザ内に保存できません：${browserSaveError} 変更は画面内に保持しています。JSONへのバックアップも利用できます。`
-      : userDirty ? 'ブラウザ内に自動保存中…' : 'このブラウザに自動保存済み';
+    const browserStatus = browserSaveError ? `自動保存できません：${browserSaveError} 変更は画面内に保持しています。バックアップを保存できます。`
+      : userDirty ? '自動保存中…' : '自動保存済み';
     saveStatus(message || (storageMode === 'browser' ? browserStatus : fallback), captureFailed || !!browserSaveError);
     $('retry-browser-save').hidden = storageMode !== 'browser' || !browserSaveError;
     const readerState = $('reader-save-state');
@@ -1157,7 +1157,7 @@
         writable = await handle.createWritable();
         await writable.write(json); await writable.close(); writable = null;
         markFileSaved(key, handle.name || filename);
-        notify(storageMode === 'browser' ? 'JSONのバックアップを保存しました。ブラウザ内自動保存を継続します。'
+        notify(storageMode === 'browser' ? 'バックアップを保存しました。ブラウザ内の自動保存を続けます。'
           : userDirty ? 'ファイルを保存しました。保存中に加わった変更は未保存です。' : 'ユーザーデータをファイルに保存しました。');
       } else {
         downloadJSON(json, filename);
@@ -1171,7 +1171,7 @@
       if (writable) { try { await writable.abort(); } catch { /* Keep the original failure. */ } }
       syncLibrary();
       const outcome = error.name === 'AbortError' ? '保存をキャンセルしました。' : `ファイルを保存できません：${error.message}`;
-      if (storageMode === 'browser') renderSaveState(`${outcome} ${browserSaveError ? 'ブラウザ内の保存にも失敗しています。JSONへのバックアップを再試行してください。' : userDirty ? 'ブラウザ内に未保存の変更があります。' : 'ブラウザ内の自動保存データは保持しています。'}`);
+      if (storageMode === 'browser') renderSaveState(`${outcome} ${browserSaveError ? '自動保存にも失敗しています。バックアップを保存してください。' : userDirty ? '自動保存されていない変更があります。' : '自動保存データは保持しています。'}`);
       else saveStatus(`${outcome} ${userDirty ? '未保存の変更があります。' : '元の保存状態を維持しています。'}`, error.name !== 'AbortError');
     } finally { savingUser = false; setFileControlsBusy(false); }
   }
@@ -1190,12 +1190,14 @@
     libraryReady = false;
     storageMode = session ? 'browser' : 'file'; browserSession = session; browserSaveError = ''; captureFailed = false;
     $('storage-guidance').textContent = session
-      ? '全原稿・ルビ・書き込み・計測履歴は、このブラウザ内に自動保存します。サイトデータを削除すると失われます。別のブラウザ・端末へは自動で引き継がれません。必要に応じてJSONにバックアップできます。'
+      ? '全原稿・ルビ・書き込み・計測履歴は、このブラウザ内に自動保存します。サイトデータを削除すると失われます。別のブラウザ・端末へは自動で引き継がれません。必要に応じてバックアップを保存できます。'
       : 'ユーザーデータ（全原稿・計測履歴）はJSONファイルで管理します。編集内容は自動保存されません。作業終了前に「保存」を押してください。';
     $('storage-privacy').textContent = session ? 'データはこのブラウザ内に保存します。外部へ送信しません。' : 'データはこの画面内で編集し、JSONファイルに保存します。外部へ送信しません。';
-    ['export-user', 'save-user-status'].forEach(id => { $(id).textContent = session ? 'JSONにバックアップ' : '保存'; });
-    $('export-manuscript').querySelector('span').textContent = session ? 'バックアップ' : '保存';
-    $('export-manuscript').setAttribute('aria-label', session ? 'JSONにバックアップ' : '保存');
+    ['export-user', 'save-user-status'].forEach(id => { $(id).textContent = session ? 'バックアップを保存' : '保存'; });
+    $('import-user').textContent = session ? 'バックアップから復元' : '保存したファイルを開く';
+    $('library-load').textContent = session ? 'バックアップから復元' : '保存したデータから続きを始める（ファイルを開く）';
+    $('export-manuscript').querySelector('span').textContent = session ? 'バックアップを保存' : '保存';
+    $('export-manuscript').setAttribute('aria-label', session ? 'バックアップを保存' : '保存');
     library = candidate; history = library.history; target = library.target; plannedMinutes = library.plannedMinutes;
     $('profile-name').value = library.profile.name; restoreBook(activeBook());
     timeAnnotations = null; timeMarks = null; timeInputSnapshot = null; $('time-text').value = ''; lastMeasuredCustomText = null;
@@ -1220,13 +1222,14 @@
       if (file.size > window.UserLibrary.MAX_BYTES) throw new Error('ファイルが大きすぎます（上限は約30MBです）。');
       chosenText = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
       const candidate = window.UserLibrary.parse(chosenText);
+      const restoringBrowserBackup = storageMode === 'browser';
       if (libraryReady) {
         if (!readyForDirectAction()) return;
         syncLibrary();
-        if (!await ask(`表示名：${candidate.profile.name || '未設定'}\n原稿：${candidate.manuscripts.length}件／計測履歴：${candidate.history.length}件\n\n現在のユーザーデータ全体を置き換えます。${userDirty ? '未保存の変更は失われます。必要ならキャンセルして先に保存してください。' : '自動統合はしません。'}${storageMode === 'browser' ? '\nJSONファイル管理に切り替えます。ブラウザ内の保存データは残します。' : ''}`, '読み込む', 'ユーザーデータを読み込みますか？')) return;
+        if (!await ask(`表示名：${candidate.profile.name || '未設定'}\n原稿：${candidate.manuscripts.length}件／計測履歴：${candidate.history.length}件\n\n${restoringBrowserBackup ? '現在の原稿・書き込み・計測履歴を置き換えます。' : '現在のユーザーデータ全体を置き換えます。'}${userDirty ? '未保存の変更は失われます。必要ならキャンセルして先に保存してください。' : '自動統合はしません。'}${restoringBrowserBackup ? '\nファイル管理に切り替えます。ブラウザ内の自動保存データは残します。' : ''}`, '復元する', 'バックアップから復元しますか？')) return;
       }
       useUserData(candidate, file.name, true);
-      notify('ユーザーデータJSONを読み込みました。');
+      notify(restoringBrowserBackup ? 'バックアップから復元しました。ファイル管理に切り替えました。ブラウザ内の自動保存データは残っています。' : 'ユーザーデータJSONを読み込みました。');
     } catch (error) {
       let chosenFormat = null;
       try { chosenFormat = JSON.parse(chosenText)?.format; } catch { /* Keep the original error. */ }
@@ -1249,7 +1252,7 @@
       const raw = localStorage.getItem(window.UserLibrary.KEY);
       if (raw === null) throw new Error('ブラウザ保存データが見つかりません。');
       useUserData(window.UserLibrary.parse(raw));
-      notify('ブラウザ保存データを引き継ぎました。「保存」でJSONファイルに保存してください。');
+      notify('ブラウザの自動保存データを引き継ぎました。「保存」でファイルに保存してください。');
     } catch (error) { $('startup-error').textContent = `引き継げません。元データは保持しています。${error.message}`; }
   };
   $('export-legacy').onclick = () => {
