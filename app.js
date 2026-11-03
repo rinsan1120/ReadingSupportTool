@@ -407,7 +407,19 @@
     syncPartialInputs();
   }
   $('open-read').onclick = () => openReader('read'); $('prepare-time').onclick = () => openReader('time');
-  let preparingPDF = false, pdfAnchor = null;
+  let preparingPDF = false, pdfAnchor = null, pdfSnapshot = null, pdfWriting = null;
+  const preparePDF = () => {
+    const layout = $('pdf-layout').value;
+    $('pdf-spread-help').hidden = layout !== 'spread';
+    $('pdf-paper-help').textContent = layout === 'spread'
+      ? 'A4・横向き・倍率100%を基本とし、ヘッダーとフッターはOFFにしてください。ブラウザの「1枚あたりのページ数」は1に設定してください。保存が完了したかは印刷画面でご確認ください。'
+      : 'A4・縦向き・倍率100%を基本とし、ヘッダーとフッターはOFFにしてください。保存が完了したかは印刷画面でご確認ください。';
+    const result = window.ManuscriptPrint.prepare(pdfSnapshot, pdfWriting, { layout });
+    $('pdf-small-warning').hidden = result.points >= 9;
+    $('pdf-small-warning').textContent = window.Reader.direction === 'vertical'
+      ? '文字が小さくなるため、キャンセルして文字サイズを調整するか、長い読み仮名やペンの広がりを見直してから出力することをおすすめします。'
+      : '文字が小さくなるため、キャンセルして本文幅を狭くするか文字サイズを大きくしてから出力することをおすすめします。長い読み仮名がある場合は、内容の短縮もご検討ください。';
+  };
   $('export-pdf').onclick = async () => {
     if (!readyForDirectAction()) return;
     if (view !== 'reading' || mode !== 'read' || preparingPDF) return;
@@ -419,19 +431,23 @@
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       if (view !== 'reading' || mode !== 'read') return;
       pdfAnchor = window.Reader.capture();
-      const snapshot = window.Reader.printSnapshot(), writing = window.ManuscriptWriting.printSnapshot({ forPrint: true });
-      const result = window.ManuscriptPrint.prepare(snapshot, writing);
-      $('pdf-small-warning').hidden = result.points >= 9;
-      $('pdf-small-warning').textContent = window.Reader.direction === 'vertical'
-        ? '文字が小さくなるため、キャンセルして文字サイズを調整するか、長い読み仮名やペンの広がりを見直してから出力することをおすすめします。'
-        : '文字が小さくなるため、キャンセルして本文幅を狭くするか文字サイズを大きくしてから出力することをおすすめします。長い読み仮名がある場合は、内容の短縮もご検討ください。';
+      pdfSnapshot = window.Reader.printSnapshot();
+      pdfWriting = window.ManuscriptWriting.printSnapshot({ forPrint: true });
+      preparePDF();
       $('pdf-dialog').showModal();
-    } catch (error) { window.ManuscriptPrint.clear(); notify(error.message); }
+    } catch (error) { pdfSnapshot = pdfWriting = null; window.ManuscriptPrint.clear(); notify(error.message); }
     finally { preparingPDF = false; }
   };
+  $('pdf-layout').addEventListener('change', () => {
+    if (!$('pdf-dialog').open || !pdfSnapshot || !pdfWriting) return;
+    try { preparePDF(); }
+    catch (error) { window.ManuscriptPrint.clear(); notify(error.message); }
+  });
   $('pdf-cancel').onclick = () => $('pdf-dialog').close();
   $('pdf-dialog').addEventListener('close', () => {
-    if (!document.body.classList.contains('manuscript-printing')) window.ManuscriptPrint.clear();
+    if (!document.body.classList.contains('manuscript-printing')) {
+      window.ManuscriptPrint.clear(); pdfSnapshot = pdfWriting = null;
+    }
   });
   $('pdf-print').onclick = () => {
     // Set printing state before closing: the asynchronous close event must not
@@ -444,6 +460,7 @@
     if (!document.body.classList.contains('manuscript-printing')) return;
     window.ManuscriptPrint.clear();
     const anchor = pdfAnchor; pdfAnchor = null;
+    pdfSnapshot = pdfWriting = null;
     requestAnimationFrame(() => { if (view === 'reading') window.Reader.restore(anchor); });
   };
   addEventListener('afterprint', finishPDF);

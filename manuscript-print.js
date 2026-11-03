@@ -7,6 +7,7 @@
     ready = false;
     document.body.classList.remove('manuscript-printing');
     root.classList.remove('print-measuring');
+    root.classList.remove('print-two-up');
     root.replaceChildren();
   }
   const svg = (name, attrs, parent) => {
@@ -79,9 +80,11 @@
     }
     return fragments;
   }
-  function prepare(snapshot, writing = { items: [], pens: [] }) {
+  function prepare(snapshot, writing = { items: [], pens: [] }, options = {}) {
     clear();
+    const spread = options.layout === 'spread';
     const vertical = snapshot.direction === 'vertical';
+    if (spread) root.classList.add('print-two-up');
     if (vertical) {
       // Split at viewport-section boundaries before unfolding. Every fragment
       // remains a rigid vector stroke; only its translation changes in print.
@@ -276,7 +279,7 @@
     readingPositions.forEach(({ reading, left, top }) => { reading.style.left = `${left}px`; reading.style.top = `${top}px`; });
     // Only now are the final base/ruby ink boxes known. Keep bubble bodies clear
     // of them, vector marks and already placed bubbles, without moving the text.
-    for (const { sheet, canvas, pageLines, placedLines, memos, left, place } of memoPages) {
+    for (const [pageIndex, { sheet, canvas, pageLines, placedLines, memos, left, place }] of memoPages.entries()) {
       if (!memos.length) continue;
       const paper = sheet.getBoundingClientRect(), gap = Math.max(3, 4 * scale);
       const obstacles = [...sheet.querySelectorAll('.manuscript-piece,.manuscript-ruby-reading,.manuscript-pens path,.manuscript-markers rect')].map(el => {
@@ -302,7 +305,7 @@
       // If this page has no free body-sized region, append referenced note pages
       // immediately after it. Source-page/line/quotation retain the association;
       // neither the frozen manuscript nor any saved coordinates are changed.
-      const sourcePage = [...root.children].indexOf(sheet) + 1;
+      const sourcePage = spread ? pageIndex + 1 : [...root.children].indexOf(sheet) + 1;
       let notePage = null, after = sheet, cursor = 0, pageStart = 0;
       const inset = 12, bodyGap = 16 * scale + 4;
       const newNotePage = () => {
@@ -349,6 +352,24 @@
           units = units.slice(count);
           if (units.length) newNotePage();
         }
+      }
+    }
+    if (spread) {
+      const bodyPages = [...root.querySelectorAll(':scope > .manuscript-page:not(.manuscript-memo-page)')];
+      const notePages = [...root.querySelectorAll(':scope > .manuscript-page.manuscript-memo-page')];
+      root.replaceChildren();
+      const direction = vertical ? 'vertical' : 'horizontal';
+      for (let i = 0; i < bodyPages.length; i += 2) {
+        const spreadSheet = document.createElement('section');
+        spreadSheet.className = 'manuscript-spread'; spreadSheet.dataset.direction = direction;
+        spreadSheet.append(bodyPages[i]);
+        if (bodyPages[i + 1]) spreadSheet.append(bodyPages[i + 1]);
+        root.append(spreadSheet);
+      }
+      for (const notePage of notePages) {
+        const noteSheet = document.createElement('section');
+        noteSheet.className = 'manuscript-spread manuscript-note-spread';
+        noteSheet.dataset.direction = direction; noteSheet.append(notePage); root.append(noteSheet);
       }
     }
     root.classList.remove('print-measuring'); ready = true;

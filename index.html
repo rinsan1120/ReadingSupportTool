@@ -161,8 +161,14 @@
   <dialog id="pdf-dialog" data-dialog-id="DLG-PDF" aria-labelledby="pdf-title">
     <h2 id="pdf-title">PDF出力</h2>
     <p>原稿画面と同じ表示方向で出力します。ペンと文字メモの配置も、その表示方向のものを使用します。</p>
+    <label for="pdf-layout">ページ配置</label>
+    <select id="pdf-layout" data-field-id="FLD-PDF-LAYOUT">
+      <option value="single">1枚に1ページ</option>
+      <option value="spread">1枚に2ページ（見開き）</option>
+    </select>
+    <p id="pdf-spread-help" class="muted" hidden>見開き配置はアプリ側で行います。次のブラウザ印刷画面では「1枚あたりのページ数」を1にしてください。</p>
     <p>次の印刷画面で「PDFとして保存」を選んでください。端末によっては共有・プリントからPDFを保存します。</p>
-    <p class="muted">A4・縦向き・倍率100%を基本とし、ヘッダーとフッターはOFFにしてください。保存が完了したかは印刷画面でご確認ください。</p>
+    <p id="pdf-paper-help" class="muted">A4・縦向き・倍率100%を基本とし、ヘッダーとフッターはOFFにしてください。保存が完了したかは印刷画面でご確認ください。</p>
     <p id="pdf-small-warning" hidden></p>
     <div class="inline"><button id="pdf-cancel">キャンセル</button><button id="pdf-print" class="primary">印刷画面へ</button></div>
   </dialog>
