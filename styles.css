@@ -465,7 +465,7 @@ footer {
   position:relative
 }
 .vertical-page { position:relative; margin-bottom:2em; border-bottom:1px solid var(--border); }
-.vertical-column { position:absolute; top:0; height:100%; writing-mode:vertical-rl; text-orientation:mixed; white-space:pre-wrap; }
+.vertical-column { position:absolute; top:0; height:100%; writing-mode:vertical-rl; text-orientation:mixed; white-space:pre; overflow-wrap:normal; }
 .vertical-writing .source-ruby-unit { padding-top:0; padding-right:.6em; }
 .vertical-writing .reading-annotation { box-decoration-break:clone; -webkit-box-decoration-break:clone; }
 .natural-gap {

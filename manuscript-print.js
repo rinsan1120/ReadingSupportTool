@@ -291,7 +291,6 @@
         const preferred = { x: left + gx + memo.item.dx * font, y: gy + memo.item.dy * font };
         const position = memoPosition(memo.width, memo.height, preferred, obstacles, paper, memoInset, gap);
         if (!position) {
-          if (vertical) throw new Error('文字メモを指し先と同じページに配置できません。メモを短くするか、メモの文字サイズを小さくしてからPDF出力してください。');
           overflow.push({ ...memo, line }); continue;
         }
         const tx = clamp(left + gx + memo.item.tx * font, tipInset, paper.width - tipInset) - left;
@@ -326,7 +325,8 @@
           if (!notePage) newNotePage();
           const reference = document.createElement('p'); reference.className = 'manuscript-note-reference';
           reference.dataset.sourceLine = memo.line.index;
-          reference.textContent = `メモ${memo.number}${part ? '（続き）' : ''} · 本文${sourcePage}ページ ${lineNumber}行目「${quote}」`;
+          reference.textContent = `メモ${memo.number}${part ? '（続き）' : ''} · 本文${sourcePage}ページ ${lineNumber}${vertical ? '列目（右から）' : '行目'}「${quote}」`;
+          reference.dataset.offset = memo.item.offset;
           reference.style.top = `${cursor}px`; notePage.append(reference);
           const y = cursor + reference.offsetHeight + bodyGap, available = paper.height - inset - y;
           if (measure(memo, units[0]) > available) { reference.remove(); newNotePage(); continue; }

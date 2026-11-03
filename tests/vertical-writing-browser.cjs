@@ -51,7 +51,7 @@ const modelTests = page => page.evaluate(() => {
   m.direction = 'horizontal'; m.updateMemo(3, { dx: 4 });
   m.direction = 'vertical'; m.updateMemo(3, { verticalPosition: { dx: -2, dy: 3, tx: 0, ty: 0 } });
   m.direction = 'horizontal'; m.undo();
-  if (m.items[0].dx !== 1 || m.items[0].verticalPosition.dx !== -2) throw Error('Memo undo mixed placements');
+  if (m.items[0].dx !== 4 || m.items[0].verticalPosition !== undefined) throw Error('Shared memo undo order');
 });
 (async () => {
   fs.mkdirSync(output, { recursive: true });
@@ -134,6 +134,12 @@ const modelTests = page => page.evaluate(() => {
       await drag({ x: box.x + 40, y: box.y + 15 }, { x: box.x + 30, y: box.y + 55 });
       const positioned = (await items(page)).find(i => i.id === 3);
       assert.ok(positioned.verticalPosition); assert.equal(positioned.dx, initial.find(i => i.id === 3).dx);
+      const target = await glyph(page, 0);
+      const tipBox = await page.locator('.writing-memo .memo-tip').first().boundingBox();
+      await drag({ x: tipBox.x + tipBox.width / 2, y: tipBox.y + tipBox.height / 2 }, target);
+      assert.equal((await items(page)).find(i => i.id === 3).offset, 0, 'tip drag changes shared target');
+      await page.locator('#writing-undo').click();
+      assert.equal((await items(page)).find(i => i.id === 3).offset, 6);
       await page.locator('[data-writing-tool=marker]').click();
       await page.locator('[data-marker-color=pink]').click();
       const a = await glyph(page, 0), b = await glyph(page, 5); await drag(a, b);

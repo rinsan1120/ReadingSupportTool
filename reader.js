@@ -118,7 +118,12 @@
     if (vertical()) {
       let best = null;
       const origin = root.getBoundingClientRect();
-      for (const glyph of getWritingGeometry().glyphs) {
+      const ordered = getWritingGeometry().readingOrder;
+      let lo = 0, hi = ordered.length;
+      while (lo < hi) { const mid = (lo + hi) >>> 1; if (ordered[mid].y < edge - origin.top) lo = mid + 1; else hi = mid; }
+      for (let i = lo; i < ordered.length; i++) {
+        const glyph = ordered[i];
+        if (best && origin.top + glyph.y > best.y + 2) break;
         const y = origin.top + glyph.y;
         if (y < edge || y > innerHeight) continue;
         if (!best || y < best.y - 2 || (Math.abs(y - best.y) < 2 && glyph.x > best.right))
@@ -275,6 +280,10 @@
           span.style.right = `${used}px`; span.style.width = `${pitch}px`;
           appendRuns(b, span, line.start, line.end); page.append(span);
           used += pitch; count++;
+          // A frozen column may be taller with another engine's font metrics.
+          // Expand its section instead of clipping ink or wrapping into a neighbour.
+          const extent = span.scrollHeight;
+          if (extent > page.clientHeight + 2) { page.style.height = `${extent}px`; unsupported = true; }
         }
         return;
       }
@@ -309,11 +318,12 @@
         b.parts = []; appendRuns(b, b.el);
       }
     });
-    status.textContent = unsupported ? 'この文章の一部では折り返しを優先し、自動区切りを適用していません。' : '';
+    status.textContent = unsupported ? (vertical() ? '列の再折り返しを避けるため、区画の高さを調整しています。' : 'この文章の一部では折り返しを優先し、自動区切りを適用していません。') : '';
     if (displayEnd !== null && visibleText) {
       const marker = document.createElement('p'); marker.className = 'reading-end-marker';
       marker.textContent = 'ここまでが計測対象です。'; root.append(marker);
     }
+    if (vertical()) getWritingGeometry(); // Build the position index during layout, not the first scroll.
     lastAvailable = available;
     lastMobile = mobile.matches;
     restore(anchor);
@@ -348,7 +358,7 @@
     const fontSize = parseFloat(getComputedStyle(root).fontSize);
     let flowHash = 2166136261;
     for (const char of JSON.stringify([annotations?.entries, annotations?.sourceRubies, draft])) flowHash = Math.imul(flowHash ^ char.charCodeAt(0), 16777619);
-    writingGeometry = { glyphs, annotationRects, byOffset: new Map(glyphs.map(g => [g.start, g])), fontSize, width: origin.width,
+    writingGeometry = { glyphs, readingOrder: vertical() ? [...glyphs].sort((a, b) => a.y - b.y || b.x - a.x) : [], annotationRects, byOffset: new Map(glyphs.map(g => [g.start, g])), fontSize, width: origin.width,
       layoutKey: `${(origin.width / fontSize).toFixed(2)}:${settings.height}:${settings.breaks}:${flowHash >>> 0}` };
     return writingGeometry;
   }

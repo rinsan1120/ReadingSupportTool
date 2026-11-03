@@ -13,7 +13,15 @@
     constructor(source = '') { this.source = source; this.items = []; this.history = []; this.nextId = 1; this.direction = 'horizontal'; this.memoSettings = { fontSize: 16, opacity: .9 }; }
     get hasMarks() { return this.items.length > 0; }
     remember() { this.history.push({ direction: this.direction, items: copy(this.items) }); if (this.history.length > 40) this.history.shift(); changed(); }
-    finishChange() { this.history.at(-1).after = copy(this.items); }
+    finishChange() {
+      const entry = this.history.at(-1); entry.after = copy(this.items);
+      const ids = new Set([...entry.items, ...entry.after].map(item => item.id));
+      entry.shared = [...ids].some(id => {
+        const before = entry.items.find(item => item.id === id), after = entry.after.find(item => item.id === id);
+        return (before || after).type !== 'pen' && JSON.stringify(before) !== JSON.stringify(after);
+      });
+    }
+    get canUndo() { return this.history.some(entry => entry.shared || entry.direction === this.direction); }
     add(item) {
       const used = new Set(this.items.map(mark => mark.id));
       while (used.has(this.nextId)) this.nextId = this.nextId === Number.MAX_SAFE_INTEGER ? 1 : this.nextId + 1;
@@ -36,12 +44,12 @@
       return { fontSize: value.fontSize, opacity: value.opacity };
     }
     undo() {
-      const index = this.history.findLastIndex(entry => entry.direction === this.direction);
+      const index = this.history.findLastIndex(entry => entry.shared || entry.direction === this.direction);
       if (index < 0) return;
       const entry = this.history.splice(index, 1)[0], before = entry.items;
       const visible = item => item.type !== 'pen' || (item.direction ?? 'horizontal') === this.direction;
-      // Restore only this direction's pens. Shared edits are restored by ID,
-      // leaving unrelated later edits and the other direction's layout intact.
+      // Shared operations use one chronological stack in both views. Only
+      // opposite-direction pen operations may be skipped; their IDs stay intact.
       const after = entry.after;
       const ids = new Set([...before, ...after].map(item => item.id));
       for (const id of ids) {
@@ -271,7 +279,7 @@
     $('memo-settings-open').hidden = !enabled || tool !== 'memo';
     document.querySelectorAll('[data-marker-color]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.markerColor === (tool === 'memo' ? selected?.color : markerColor))));
     if ($('writing-tool-help').textContent !== help[tool]) $('writing-tool-help').textContent = help[tool];
-    $('writing-undo').disabled = !editable || !model?.history.some(entry => entry.direction === direction());
+    $('writing-undo').disabled = !editable || !model?.canUndo;
   }
   function setMode(on) {
     if (on && !editable) return;
@@ -406,7 +414,10 @@
       gesture.preview = { ...start, dx: (x - original.x) / font, dy: (y - original.y) / font };
     } else {
       const tip = { x: original.x + start.tx * font + dx, y: original.y + start.ty * font + dy };
-      gesture.preview = { ...start, tx: (tip.x - original.x) / font, ty: (tip.y - original.y) / font };
+      const glyph = nearest(tip, g, Infinity), origin = glyph ? center(glyph) : original;
+      gesture.preview = { ...start, offset: glyph?.start ?? start.offset,
+        dx: (original.x + start.dx * font - origin.x) / font, dy: (original.y + start.dy * font - origin.y) / font,
+        tx: (tip.x - origin.x) / font, ty: (tip.y - origin.y) / font };
     }
     for (const key of ['dx', 'dy', 'tx', 'ty']) gesture.preview[key] = Math.max(-1000, Math.min(1000, gesture.preview[key]));
   }
@@ -515,7 +526,15 @@
       const completed = gesture; releaseGesture();
       if (completed.moved) {
         const { dx, dy, tx, ty } = completed.preview;
-        model.updateMemo(completed.memo.id, direction() === 'vertical' ? { verticalPosition: { dx, dy, tx, ty } } : { dx, dy, tx, ty });
+        const changes = direction() === 'vertical' ? { verticalPosition: { dx, dy, tx, ty } } : { dx, dy, tx, ty };
+        if (completed.preview.offset !== completed.memo.offset) {
+          changes.offset = completed.preview.offset;
+          // The shared target changes in both views. Keep the other view's
+          // body displacement and attach its tip to the new target character.
+          if (direction() === 'vertical') Object.assign(changes, { tx: 0, ty: 0 });
+          else if (completed.memo.verticalPosition) changes.verticalPosition = { ...completed.memo.verticalPosition, tx: 0, ty: 0 };
+        }
+        model.updateMemo(completed.memo.id, changes);
       }
       else if (completed.wasSelected && completed.part === 'body') openMemo(completed.memo);
       render(); return;

@@ -32,21 +32,20 @@ test('v1-v4 remain readable; legacy pens and memo coordinates belong to horizont
     if (version >= 3) { assert.equal(restored.markings.items[0].direction, undefined); assert.equal(restored.markings.items[1].dx, 1); }
   }
 });
-test('direction-specific Undo leaves the other pen set and memo placement unchanged', () => {
-  const m = new Marks('本文。'); m.add(pen('horizontal')); m.add(memo);
-  m.direction = 'vertical'; m.add(pen('vertical')); m.updateMemo(2, { verticalPosition: { dx: -4, dy: 2, tx: 0, ty: 1 } });
-  const other = plain(m.items.find(i => i.id === 3));
-  m.direction = 'horizontal'; m.updateMemo(2, { dx: 5 }); m.undo();
-  assert.equal(m.items.find(i => i.id === 2).dx, 1); assert.equal(m.items.find(i => i.id === 2).verticalPosition.dx, -4);
-  m.undo(); assert.ok(!m.items.some(i => i.id === 2)); m.undo();
-  assert.deepEqual(plain(m.items), [other]);
-  m.direction = 'vertical'; m.undo(); m.undo(); assert.ok(!m.items.some(i => i.type === 'pen'));
-});
-test('Undo of a memo placement preserves subsequent shared text/color edits', () => {
-  const m = new Marks('本文。'); m.add(memo); m.updateMemo(1, { dx: 5 });
-  m.direction = 'vertical'; m.updateMemo(1, { text: '新しいメモ', color: 'lightblue' });
+test('shared Undo follows latest edits across directions while pens stay independent', () => {
+  const m = new Marks('本文。'); m.add(memo);
+  m.direction = 'vertical'; m.updateMemo(1, { text: 'C' });
+  m.updateMemo(1, { verticalPosition: { dx: -4, dy: 2, tx: 0, ty: 1 } });
   m.direction = 'horizontal'; m.undo();
-  assert.equal(m.items[0].dx, 1); assert.equal(m.items[0].text, '新しいメモ'); assert.equal(m.items[0].color, 'lightblue');
+  assert.equal(m.items[0].text, 'C'); assert.equal(m.items[0].verticalPosition, undefined);
+  m.undo(); assert.equal(m.items[0].text, memo.text);
+  m.updateMemo(1, { text: 'B' }); m.direction = 'vertical'; m.updateMemo(1, { text: 'C' });
+  m.direction = 'horizontal'; m.undo(); assert.equal(m.items[0].text, 'B');
+  m.direction = 'vertical'; m.add({ type: 'marker', start: 0, end: 2 });
+  m.direction = 'horizontal'; assert.ok(m.canUndo); m.undo(); assert.equal(m.items.length, 1);
+  m.add(pen('horizontal')); m.direction = 'vertical'; m.add(pen('vertical'));
+  m.direction = 'horizontal'; m.undo(); assert.equal(m.items.filter(i => i.type === 'pen').length, 1);
+  assert.equal(m.items.find(i => i.type === 'pen').direction, 'vertical');
 });
 test('malformed extended data is rejected without changing the current models', () => {
   const r = new Readings('本文。'), m = new Marks(r.source); m.add(pen('vertical')); m.add(memo);

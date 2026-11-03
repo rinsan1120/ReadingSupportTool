@@ -116,7 +116,7 @@ const compact = text => text.replace(/\s/gu, '');
       const after = await page.evaluate(() => ({ html: document.getElementById('reader').innerHTML, style: document.getElementById('reader').getAttribute('style'),
         memo: document.getElementById('writing-memos').innerHTML, json: ManuscriptMarks.serializeManuscript(pdfTestModel.manuscript, pdfTestModel.markings), storage: JSON.stringify({ ...localStorage }), anchor: Reader.capture() }));
       assert.deepEqual(after, before, 'export must not change reader, stored marks, memo layout or browser data');
-      for (const scenario of ['missing-pen', 'invalid-pen', 'missing-memo-target', 'oversize-memo']) {
+      for (const scenario of ['missing-pen', 'invalid-pen', 'missing-memo-target']) {
         await page.evaluate(scenario => {
           const originalReader = Reader.printSnapshot, originalWriting = ManuscriptWriting.printSnapshot;
           window.restorePDFTest = () => { Reader.printSnapshot = originalReader; ManuscriptWriting.printSnapshot = originalWriting; };
@@ -142,6 +142,18 @@ const compact = text => text.replace(/\s/gu, '');
       }
       await page.locator('#export-pdf').click(); await page.waitForFunction(() => document.getElementById('pdf-dialog').open);
       await page.locator('#pdf-cancel').click();
+      await page.evaluate(() => {
+        const original = ManuscriptWriting.printSnapshot;
+        window.restorePDFTest = () => { ManuscriptWriting.printSnapshot = original; };
+        ManuscriptWriting.printSnapshot = options => {
+          const w = original(options); w.memoSettings.fontSize = 28;
+          w.items.find(i => i.type === 'memo').text = 'あ' + '\n'.repeat(198) + 'あ'; return w;
+        };
+      });
+      await page.locator('#export-pdf').click(); await page.waitForFunction(() => document.getElementById('pdf-dialog').open);
+      assert.ok(await page.locator('.manuscript-memo-page').count() > 0);
+      assert.match(await page.locator('.manuscript-note-reference').first().textContent(), /列目/);
+      await page.locator('#pdf-cancel').click(); await page.evaluate(() => restorePDFTest());
       manifest.push({ filename, ...result });
       assert.deepEqual(errors, []); await context.close();
       console.log(`${width}px: ${result.pages} vertical pages; all columns, ruby, markers, split vectors and same-page memos preserved`);
@@ -155,10 +167,10 @@ const compact = text => text.replace(/\s/gu, '');
       Reader.show(text, model, { writingDirection: 'vertical' }); ManuscriptWriting.show(marks);
       const snapshot = Reader.printSnapshot(), result = ManuscriptPrint.prepare(snapshot, ManuscriptWriting.printSnapshot({ forPrint: true }));
       const actual = [...document.querySelectorAll('.manuscript-line')].map(el => el.textContent).join('');
-      ManuscriptPrint.clear(); return { text, actual, pages: result.pages };
+      ManuscriptPrint.clear(); const started = performance.now(); for (let i = 0; i < 200; i++) Reader.capture(); const captureMs = (performance.now() - started) / 200; return { text, actual, pages: result.pages, captureMs };
     });
     assert.equal(compact(long.actual), compact(long.text)); assert.ok(long.pages > 20);
-    await stress.close(); console.log(`Long manuscript: ${long.text.length} UTF-16 units, ${long.pages} pages, no missing or duplicate text`);
+    await stress.close(); console.log(`Long manuscript: ${long.text.length} UTF-16 units, ${long.pages} pages, capture ${long.captureMs.toFixed(3)}ms/call, no missing or duplicate text`);
     fs.writeFileSync(path.join(output, 'vertical-manifest.json'), JSON.stringify(manifest, null, 2));
   } finally { await browser.close(); server.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
