@@ -430,7 +430,7 @@
     for (const unit of units) {
       const last = pages.at(-1);
       const gutter = vertical() ? 8 : 0;
-      if (!last || unit.bottom - last.top > height - 8 || vertical())
+      if (!last || unit.bottom - last.top > height - 32 || vertical())
         pages.push({ top: Math.max(0, Math.floor(unit.top - gutter)), bottom: unit.bottom + gutter, anchor: unit.anchor });
       else last.bottom = Math.max(last.bottom, unit.bottom + gutter);
     }
@@ -453,8 +453,8 @@
     if (!pages.length) return;
     stage.style.top = `${-pages[pageIndex].top}px`;
     // A short vertical section (or the last page) must not reveal the next page.
-    viewport.style.height = `${Math.min(lastPageHeight, Math.ceil(pages[pageIndex].bottom - pages[pageIndex].top))}px`;
-    document.getElementById('reading').style.setProperty('--page-bottom-space', `${Math.max(52, pageControls.getBoundingClientRect().height) + (measurementBar.hidden ? 0 : measurementBar.getBoundingClientRect().height) + 24 + Math.max(0, lastPageHeight - viewport.clientHeight)}px`);
+    viewport.style.height = `${lastPageHeight}px`;
+    document.getElementById('reading').style.setProperty('--page-bottom-space', `${Math.max(52, pageControls.getBoundingClientRect().height) + (measurementBar.hidden ? 0 : measurementBar.getBoundingClientRect().height) + 24}px`);
     document.getElementById('page-position').textContent = `${pageIndex + 1} / ${pages.length} ページ`;
     document.getElementById('page-previous').disabled = pageIndex === 0;
     document.getElementById('page-next').disabled = pageIndex === pages.length - 1;
