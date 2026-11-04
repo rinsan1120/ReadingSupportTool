@@ -512,7 +512,11 @@
   };
   $('export-manuscript').onclick = saveUserData;
   let importing = false;
-  $('import-manuscript').onclick = () => $('manuscript-file').click();
+  $('import-manuscript').onclick = async () => {
+    if (importing || view !== 'read-input') return;
+    const confirmed = await ask('以前のバージョンで保存した原稿を取り込みます。現在の原稿に本文や書き込みがある場合、取り込み後に置き換わります。保存した続きのデータはホームの「保存したデータを開く」から読み込んでください。', 'ファイルを選ぶ');
+    if (confirmed && view === 'read-input') $('manuscript-file').click();
+  };
   $('manuscript-file').addEventListener('change', async () => {
     const file = $('manuscript-file').files[0];
     $('manuscript-file').value = ''; // Allow retrying the same file after cancel/error.

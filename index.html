@@ -56,9 +56,11 @@
       <div class="inline spread"><p id="read-count" class="muted">0文字</p><button id="clear-read" class="quiet">本文を削除</button></div>
       <p id="annotation-retention" class="muted" hidden>読み仮名・書き込みを保持しています。本文を変更して原稿画面を開く場合は、これらの削除を確認します。</p>
       <p id="writing-retention" class="muted" hidden>原稿の書き込みを保持しています。保存状況は画面上部に表示します。</p>
-      <div class="inline"><button id="import-manuscript">旧形式の原稿ファイルを取り込む</button><input id="manuscript-file" data-field-id="FLD-READ-MANUSCRIPT-FILE" type="file" accept=".json,application/json" hidden>
-      <button id="open-read" class="primary">表示を確認して読む →</button></div>
-      <p class="muted">旧バージョンの「原稿を保存」で作った原稿JSONを取り込むためのものです（移行用）。保存した続きのデータは、ホームの「保存したデータを開く」から読み込んでください。</p>
+      <div class="read-input-actions">
+        <button id="open-read" class="primary">表示を確認して読む →</button>
+        <button id="import-manuscript" class="text-link" type="button">以前の原稿を取り込む</button>
+        <input id="manuscript-file" data-field-id="FLD-READ-MANUSCRIPT-FILE" type="file" accept=".json,application/json" hidden>
+      </div>
     </section>
     <section id="time-input" class="view narrow" hidden aria-labelledby="time-title">
       <button class="back" data-go="home">← ホーム</button><p class="eyebrow">MEASURE</p><h1 id="time-title" tabindex="-1">朗読速度を測る</h1>

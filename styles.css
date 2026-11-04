@@ -87,6 +87,10 @@ button[aria-pressed=true],button[aria-expanded=true],button[aria-selected=true] 
 button:where(:not(.entry):not(.startup-choice):not(.back):not(.brand)) { white-space:normal; }
 .inline { align-items:center; gap:var(--control-gap); }
 .inline > button { min-width:0; }
+.read-input-actions { display:flex; flex-direction:column; align-items:stretch; gap:8px; margin-top:16px; }
+.read-input-actions #open-read { width:100%; }
+.text-link { align-self:center; min-height:44px; padding:8px 14px; color:var(--muted); background:transparent; border:0; border-radius:6px; font-size:.88rem; text-decoration:underline; text-underline-offset:3px; }
+.text-link:hover { color:var(--blue); background:transparent; }
 .library-status button,.book-actions button,.writing-options button,#marker-colors button,#pen-options button,.settings-tabs button,#settings-dialog .dialog-heading button,#memo-settings-open,#writing-off { min-height:var(--control-height-compact); }
 .book-actions { align-items:stretch; flex-wrap:wrap; }
 .book-actions button { flex:1 1 84px; }
