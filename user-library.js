@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const KEY = 'yomijitaku-user-v1', MAX_BYTES = 30 * 1024 * 1024;
-  const empty = () => ({ format: 'yomijitaku-user', version: 1, profile: { name: '' }, manuscripts: [], activeId: null, history: [], target: '', plannedMinutes: '20' });
+  const empty = () => ({ format: 'yomijitaku-user', version: 1, profile: { name: '' }, displaySettings: { mode: 'scroll' }, manuscripts: [], activeId: null, history: [], target: '', plannedMinutes: '20' });
   function validate(data) {
     const fail = () => { throw new Error('ファイルの形式・内容が正しくありません。よみじたくのユーザーデータJSONかどうかを確認してください。'); };
     const string = (v, max) => typeof v === 'string' && v.length <= max;
@@ -12,6 +12,8 @@
         !string(data.target, 20) || !string(data.plannedMinutes, 30) ||
         (data.target !== '' && (!Number.isSafeInteger(Number(data.target)) || Number(data.target) <= 0 || Number(data.target) > 1e9)) ||
         !data.plannedMinutes.trim() || !Number.isFinite(Number(data.plannedMinutes)) || Number(data.plannedMinutes) <= 0) fail();
+    if (data.displaySettings !== undefined && (!data.displaySettings || !['scroll', 'pages'].includes(data.displaySettings.mode))) fail();
+    const displaySettings = { mode: data.displaySettings?.mode ?? 'scroll' };
     const ids = new Set();
     const manuscripts = data.manuscripts.map(item => {
       if (!item || !string(item.id, 100) || !item.id || ids.has(item.id) || !string(item.title, 120) || !item.title.trim() ||
@@ -33,7 +35,7 @@
           !['sample', 'custom'].includes(r.type) || (r.measuredAt !== null && !date(r.measuredAt)) || !string(r.title, 120)) fail();
       return { characters: r.characters, seconds: r.seconds, type: r.type, measuredAt: r.measuredAt, title: r.title };
     });
-    return { ...empty(), profile: { name: data.profile.name }, manuscripts, activeId: data.activeId, history, target: data.target, plannedMinutes: data.plannedMinutes };
+    return { ...empty(), profile: { name: data.profile.name }, displaySettings, manuscripts, activeId: data.activeId, history, target: data.target, plannedMinutes: data.plannedMinutes };
   }
   function parse(json) {
     if (new TextEncoder().encode(json).length > MAX_BYTES) throw new Error('ファイルが大きすぎます（上限は約30MBです）。');

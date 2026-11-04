@@ -119,6 +119,7 @@ function appSetup(s) {
     querySelector() { return this.label ||= node(); } });
   const $ = id => { if (!fields.has(id)) fields.set(id, node()); return fields.get(id); };
   s.context.window.localStorage = s.storage;
+  s.context.window.Reader = { displayMode: 'scroll', setDisplayMode(mode) { this.displayMode = mode; } };
   Object.assign(s.context, { $, document: { querySelector: () => ({ inert: true }), dispatchEvent() {} },
     clearTimeout, setTimeout, renderLibrary() {}, renderResults() {}, show() {},
     validTarget: value => Number(value) > 0, validMinutes: value => Number(value) > 0,
@@ -203,4 +204,18 @@ test('explicit replacement preserves unreadable data until save and detects conc
   s.storage.raw = 'another tab';
   assert.throws(() => next.save(candidate), /別のタブ/);
   assert.equal(s.storage.raw, 'another tab');
+});
+
+
+test('global display mode survives browser/file storage; older files default to scroll', () => {
+  const s = setup(), data = fixture(s);
+  delete data.displaySettings;
+  assert.equal(s.api.parse(JSON.stringify(data)).displaySettings.mode, 'scroll');
+  data.displaySettings = { mode: 'pages' };
+  const session = s.api.openBrowser(); session.save(data);
+  assert.equal(s.api.openBrowser().data.displaySettings.mode, 'pages');
+  assert.equal(s.api.parse(JSON.stringify(data)).displaySettings.mode, 'pages');
+  for (const invalid of [null, {}, { mode: 'other' }, { mode: 1 }]) {
+    assert.throws(() => s.api.parse(JSON.stringify({ ...data, displaySettings: invalid })));
+  }
 });

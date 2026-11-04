@@ -9,11 +9,19 @@
   let savedAnchor = null;
   let writingGeometry = null;
   let direction = 'horizontal';
+  let displayMode = 'scroll', printLayout = false, pages = [], pageIndex = 0, lastPageHeight = 0, scrollModeAnchor = null, pageReadingAnchor = null;
+  const viewport = document.getElementById('reader-viewport'), stage = document.getElementById('reader-stage');
+  const pageControls = document.getElementById('page-controls');
+  const paged = () => displayMode === 'pages' && !printLayout;
+  const pageHeight = () => Math.max(60, Math.floor(Math.min(innerHeight, window.visualViewport?.height ?? innerHeight)
+    - controls.getBoundingClientRect().height - (measurementBar.hidden ? 0 : measurementBar.getBoundingClientRect().height)
+    - Math.max(52, pageControls.getBoundingClientRect().height) - 32));
   const vertical = () => direction === 'vertical';
   const measurementBar = document.getElementById('measurement-bar');
   const controls = document.querySelector('.reader-controls');
   const columnHeight = () => {
     const preferred = Math.max(180, Math.min(620, (isMobileViewport() ? viewportHeight() : innerHeight) * .62));
+    if (paged()) return Math.max(36, Math.min(preferred, pageHeight() - 24));
     if (measurementBar.hidden) return preferred;
     const available = viewportHeight() - controls.getBoundingClientRect().height - measurementBar.getBoundingClientRect().height - 12 - settings.fontSize;
     return Math.max(1, Math.min(preferred, available));
@@ -138,6 +146,7 @@
   }
   function capture() {
     if (printing() || root.closest('[hidden]')) return savedAnchor;
+    if (paged() && pages.length) return { ...(pageReadingAnchor || pages[pageIndex].anchor), y: viewport.getBoundingClientRect().top + 8 };
     const edge = readingEdge();
     if (vertical()) {
       let best = null;
@@ -180,6 +189,13 @@
     if (!block) return;
     const rect = point(block, displayOffset(block, anchor.offset, anchor.annotationIndex));
     if (rect) {
+      if (paged() && pages.length) {
+        const top = rect.top - stage.getBoundingClientRect().top, y = top + rect.height / 2;
+        const index = pages.findIndex(p => top >= p.top - .5 && top + rect.height <= Math.min(p.bottom, p.top + lastPageHeight) + .5);
+        showPage(index < 0 ? pages.reduce((best, p, i) => Math.abs(p.top - y) < Math.abs(pages[best].top - y) ? i : best, 0) : index);
+        pageReadingAnchor = { ...anchor };
+        return;
+      }
       const panel = document.getElementById('settings-dialog');
       const panelTop = mobile.matches && panel.open ? panel.getBoundingClientRect().top : Infinity;
       const edge = readingEdge();
@@ -231,6 +247,10 @@
   }
   function layout(anchor = capture()) {
     if (printing() || root.closest('[hidden]')) return;
+    viewport.classList.toggle('is-paged', paged());
+    document.getElementById('reading').classList.toggle('has-paged-reader', paged());
+    pageControls.hidden = !paged();
+    if (!paged()) { stage.style.top = ''; viewport.style.height = ''; }
     writingGeometry = null;
     const layoutColumnHeight = columnHeight();
     const available = availableWidth();
@@ -372,9 +392,152 @@
     // A real rebuild reveals the toolbar. Keep the restored character below
     // its full height even if the previous scroll had translated it offscreen.
     const visibleEdge = Math.max(readingEdge(), (window.visualViewport?.offsetTop || 0) + controls.getBoundingClientRect().height + 12);
-    restore(vertical() && anchor ? { ...anchor, y: Math.max(anchor.y, visibleEdge) } : anchor);
+    if (paged()) rebuildPages(anchor);
+    else restore(vertical() && anchor ? { ...anchor, y: Math.max(anchor.y, visibleEdge) } : anchor);
     root.dispatchEvent(new Event('reader-layout'));
   }
+  // Pages are windows onto the same source-mapped document and writing stage.
+  // Moving the whole stage keeps text, pen, markers and memo coordinates together.
+  function rebuildPages(anchor) {
+    const height = pageHeight(), origin = root.getBoundingClientRect(), outer = stage.getBoundingClientRect();
+    const offset = origin.top - outer.top;
+    const units = [];
+    if (vertical()) {
+      const starts = new Map();
+      for (const b of blocks) for (const p of b.parts) {
+        const section = p.node.parentElement.closest('.vertical-page');
+        if (section && !starts.has(section)) starts.set(section, { b, p });
+      }
+      for (const el of root.querySelectorAll('.vertical-page')) {
+        const r = el.getBoundingClientRect();
+        const part = starts.get(el);
+        if (part) units.push({ top: r.top - outer.top, bottom: r.bottom - outer.top,
+          anchor: { offset: sourceOffset(part.b, part.p.start), ...(part.p.run.annotation ? { annotationIndex: part.p.start - part.p.run.start } : {}) } });
+      }
+    } else {
+      const lines = printSnapshot({ allowDraft: true }).lines;
+      let i = 0;
+      for (const block of blocks) for (const line of block.lines) {
+        const measured = lines[i++], run = block.runs.find(r => line.start >= r.start && line.start < r.end);
+        units.push({ top: offset + measured.top, bottom: offset + measured.bottom,
+          anchor: { offset: sourceOffset(block, line.start), ...(run?.annotation ? { annotationIndex: line.start - run.start } : {}) } });
+      }
+    }
+    const end = root.querySelector('.reading-end-marker');
+    if (end) { const r = end.getBoundingClientRect(); units.push({ top: r.top - outer.top, bottom: r.bottom - outer.top, anchor: { offset: displayEnd ?? source.length } }); }
+    pages = [];
+    for (const unit of units) {
+      const last = pages.at(-1);
+      const gutter = vertical() ? 8 : 0;
+      if (!last || unit.bottom - last.top > height - 8 || vertical())
+        pages.push({ top: Math.max(0, Math.floor(unit.top - gutter)), bottom: unit.bottom + gutter, anchor: unit.anchor });
+      else last.bottom = Math.max(last.bottom, unit.bottom + gutter);
+    }
+    if (!pages.length) pages.push({ top: 0, bottom: height, anchor: { offset: 0 } });
+    lastPageHeight = height;
+    viewport.style.height = `${height}px`;
+    pageControls.style.bottom = `${measurementBar.hidden ? 0 : measurementBar.getBoundingClientRect().height}px`;
+    document.getElementById('reading').style.setProperty('--page-bottom-space', `${Math.max(52, pageControls.getBoundingClientRect().height) + (measurementBar.hidden ? 0 : measurementBar.getBoundingClientRect().height) + 24}px`);
+    showPage(Math.min(pageIndex, pages.length - 1));
+    if (anchor) restore(anchor); else showPage(0);
+    alignPage();
+  }
+  function alignPage() {
+    if (!paged() || root.closest('[hidden]')) return;
+    const target = viewport.getBoundingClientRect().top + scrollY - controls.getBoundingClientRect().height - 12;
+    window.scrollTo(0, Math.max(0, target));
+  }
+  function showPage(index) {
+    pageIndex = Math.max(0, Math.min(index, pages.length - 1));
+    if (!pages.length) return;
+    stage.style.top = `${-pages[pageIndex].top}px`;
+    // A short vertical section (or the last page) must not reveal the next page.
+    viewport.style.height = `${Math.min(lastPageHeight, Math.ceil(pages[pageIndex].bottom - pages[pageIndex].top))}px`;
+    document.getElementById('reading').style.setProperty('--page-bottom-space', `${Math.max(52, pageControls.getBoundingClientRect().height) + (measurementBar.hidden ? 0 : measurementBar.getBoundingClientRect().height) + 24 + Math.max(0, lastPageHeight - viewport.clientHeight)}px`);
+    document.getElementById('page-position').textContent = `${pageIndex + 1} / ${pages.length} ページ`;
+    document.getElementById('page-previous').disabled = pageIndex === 0;
+    document.getElementById('page-next').disabled = pageIndex === pages.length - 1;
+    pageControls.dataset.direction = direction;
+    pageReadingAnchor = { ...pages[pageIndex].anchor };
+    savedAnchor = { ...pages[pageIndex].anchor, y: viewport.getBoundingClientRect().top + 8 };
+  }
+  function pageBusy(implicit) {
+    const selection = window.getSelection();
+    const selectingText = selection && !selection.isCollapsed && (viewport.contains(selection.anchorNode) || viewport.contains(selection.focusNode));
+    return Boolean(root.closest('[hidden]') || document.querySelector('dialog[open]') || draft || window.ManuscriptWriting?.hasPending
+      || (implicit && (rubyMode || window.ManuscriptWriting?.enabled || selectingText)));
+  }
+  function turnPage(delta, implicit = false) {
+    if (!paged() || pageBusy(implicit)) return false;
+    const next = Math.max(0, Math.min(pages.length - 1, pageIndex + delta));
+    if (next === pageIndex) return false;
+    showPage(next); alignPage();
+    root.dispatchEvent(new Event('reader-page'));
+    return true;
+  }
+  document.getElementById('page-previous').onclick = () => turnPage(-1);
+  document.getElementById('page-next').onclick = () => turnPage(1);
+  const pageStart = document.getElementById('page-start'), startButton = document.getElementById('start');
+  pageStart.onclick = () => startButton.click();
+  const syncPageStart = () => {
+    pageStart.hidden = document.getElementById('preparation').hidden;
+    pageStart.disabled = startButton.disabled;
+  };
+  new MutationObserver(syncPageStart).observe(document.getElementById('preparation'), { attributes: true, attributeFilter: ['hidden'] });
+  new MutationObserver(syncPageStart).observe(startButton, { attributes: true, attributeFilter: ['disabled'] });
+  syncPageStart();
+  let wheelAt = -Infinity, wheelTurnAt = -Infinity, wheelSum = 0, wheelUsed = false;
+  viewport.addEventListener('wheel', event => {
+    if (!paged()) { scrollModeAnchor = null; return; }
+    if (event.ctrlKey) return;
+    event.preventDefault();
+    const now = performance.now();
+    if (now - wheelAt > 220) { wheelUsed = false; wheelSum = 0; }
+    wheelAt = now;
+    if (pageBusy(true) || wheelUsed) return;
+    wheelSum += event.deltaY * (event.deltaMode === 1 ? 20 : event.deltaMode === 2 ? pageHeight() : 1);
+    if (Math.abs(wheelSum) >= 24 && now - wheelTurnAt >= 450) {
+      turnPage(Math.sign(wheelSum), true); wheelUsed = true; wheelTurnAt = now;
+    }
+  }, { passive: false });
+  document.addEventListener('keydown', event => {
+    if (!paged() && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) scrollModeAnchor = null;
+    if (!paged() || event.repeat || event.isComposing || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey
+        || event.target.closest('input,textarea,select,[contenteditable=true],dialog') || pageBusy(true)) return;
+    const forward = vertical() ? ['ArrowLeft', 'ArrowDown'] : ['ArrowRight', 'ArrowDown'];
+    const backward = vertical() ? ['ArrowRight', 'ArrowUp'] : ['ArrowLeft', 'ArrowUp'];
+    const delta = forward.includes(event.key) ? 1 : backward.includes(event.key) ? -1 : 0;
+    if (delta) { event.preventDefault(); turnPage(delta, true); }
+  });
+  let touch = null;
+  const touchPointers = new Set();
+  viewport.addEventListener('pointerdown', event => {
+    if (!paged()) scrollModeAnchor = null;
+    if (event.pointerType !== 'touch') return;
+    touchPointers.add(event.pointerId);
+    if (!paged() || pageBusy(true) || touchPointers.size > 1 || event.target.closest('button,input,textarea,select,a,.writing-memo')) { touch = null; return; }
+    touch = { id: event.pointerId, x: event.clientX, y: event.clientY, at: performance.now() };
+  }, true);
+  viewport.addEventListener('pointerup', event => {
+    touchPointers.delete(event.pointerId);
+    const start = touch; touch = null;
+    if (!start || start.id !== event.pointerId || pageBusy(true) || performance.now() - start.at > 700) return;
+    const dx = event.clientX - start.x, dy = event.clientY - start.y;
+    if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.3) turnPage((vertical() ? dx : -dx) > 0 ? 1 : -1, true);
+    else if (Math.hypot(dx, dy) < 10 && performance.now() - start.at < 400) {
+      const r = viewport.getBoundingClientRect(), fraction = (event.clientX - r.left) / r.width;
+      if (fraction < .22 || fraction > .78) turnPage((vertical() ? fraction < .22 : fraction > .78) ? 1 : -1, true);
+    }
+  }, true);
+  viewport.addEventListener('pointercancel', event => { touchPointers.delete(event.pointerId); touch = null; }, true);
+  viewport.addEventListener('focusin', event => {
+    const note = event.target.closest('.reading-annotation');
+    if (!paged() || !note) return;
+    const r = note.getBoundingClientRect(), v = viewport.getBoundingClientRect();
+    if (r.bottom >= v.top && r.top <= v.bottom) return;
+    // Tab navigation to another ruby must reveal its page, not scroll a hidden flow.
+    restore({ offset: Number(note.dataset.offset), y: readingEdge() + 8 }); alignPage();
+  });
   // Keep original graphemes separate from manual reading boxes so pen anchors
   // and source hit testing stay unchanged. Coordinates stay relative to the
   // reader so scrolling never invalidates them or changes annotation offsets.
@@ -408,8 +571,9 @@
       layoutKey: `${(origin.width / fontSize).toFixed(2)}:${settings.height}:${settings.breaks}:${flowHash >>> 0}` };
     return writingGeometry;
   }
-  function printSnapshot() {
-    if (draft) throw new Error('読み仮名を登録またはキャンセルしてからPDF出力してください。');
+  function printSnapshot({ allowDraft = false } = {}) {
+    // Pagination needs the live ruby preview; PDF export still rejects drafts.
+    if (draft && !allowDraft) throw new Error('読み仮名を登録またはキャンセルしてからPDF出力してください。');
     if (printing() || root.closest('[hidden]')) throw new Error('朗読画面でPDF出力してください。');
     const origin = root.getBoundingClientRect(), computed = getComputedStyle(root);
     const font = {};
@@ -692,13 +856,15 @@
   });
   observer.observe(root.parentElement);
   const refreshVisibleHeight = () => {
-    if (!vertical() || printing() || root.closest('[hidden]') || Math.abs(columnHeight() - lastColumnHeight) < .5) return;
+    if (printing() || root.closest('[hidden]')) return;
+    if (paged() ? Math.abs(pageHeight() - lastPageHeight) < .5 : !vertical() || Math.abs(columnHeight() - lastColumnHeight) < .5) return;
     cancelAnimationFrame(scheduled);
     scheduled = requestAnimationFrame(() => layout(savedAnchor));
   };
   const viewportObserver = new ResizeObserver(refreshVisibleHeight);
   viewportObserver.observe(controls, { box: 'border-box' });
   viewportObserver.observe(measurementBar, { box: 'border-box' });
+  viewportObserver.observe(pageControls, { box: 'border-box' });
   viewportObserver.observe(viewportProbe, { box: 'border-box' });
   window.visualViewport?.addEventListener('resize', refreshVisibleHeight);
   addEventListener('resize', refreshVisibleHeight);
@@ -714,7 +880,7 @@
       displayEnd = editable ? null : end;
       annotationsEditable = editable;
       updateMode(false);
-      savedAnchor = null; layout(null);
+      savedAnchor = null; scrollModeAnchor = null; pageReadingAnchor = null; pages = []; pageIndex = 0; layout(null);
     },
     leave() { finishEdit(); updateMode(false); },
     setDisplayEnd(end) {
@@ -731,6 +897,34 @@
       if (next.height !== undefined) settings.height = next.height;
       if (next.breaks !== undefined) settings.breaks = next.breaks;
       layout(anchor);
+    },
+    setDisplayMode(value) {
+      const next = value === 'pages' ? 'pages' : 'scroll';
+      let anchor = capture();
+      // A vertical section can leave the tail of its preceding section visible.
+      // Keep the deliberate page anchor when toggling back without reading on.
+      if (next === 'pages' && displayMode === 'scroll' && scrollModeAnchor) {
+        const block = blocks.find(b => scrollModeAnchor.offset >= b.start && scrollModeAnchor.offset <= b.sourceEnd);
+        const rect = block && point(block, displayOffset(block, scrollModeAnchor.offset, scrollModeAnchor.annotationIndex));
+        if (rect && rect.bottom >= readingEdge() && rect.top < innerHeight) anchor = scrollModeAnchor;
+      }
+      const fromPages = displayMode === 'pages';
+      displayMode = next;
+      document.getElementById('display-mode-state').textContent = displayMode === 'pages' ? 'ページめくり' : 'スクロール';
+      document.getElementById('page-turn-help').hidden = displayMode !== 'pages';
+      layout(anchor);
+      scrollModeAnchor = fromPages && next === 'scroll' ? anchor : null;
+    },
+    get displayMode() { return displayMode; },
+    get pageState() { return { current: pageIndex + 1, total: pages.length, height: lastPageHeight, pages: pages.map(p => ({ ...p, anchor: { ...p.anchor } })) }; },
+    turnPage,
+    withPrintLayout(action) {
+      if (!paged()) return action();
+      const anchor = capture();
+      // Snapshot callbacks are synchronous; restore the screen before the next paint.
+      printLayout = true;
+      try { layout(null); return action(); }
+      finally { printLayout = false; layout(anchor); }
     },
     capture, restore, printSnapshot, getWritingGeometry,
     get direction() { return direction; },
