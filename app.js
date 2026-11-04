@@ -1140,12 +1140,7 @@
       open.append(detail);
       const preview = book.draft.replace(/\s+/g, ' ').trim().slice(0, 50);
       if (preview) { const p = document.createElement('small'); p.className = 'book-preview'; p.textContent = preview; open.append(p); }
-      if (book.id === library.activeId) {
-        const active = document.createElement('small'); active.className = 'book-active-label'; active.textContent = '開いている原稿';
-        open.append(active); open.setAttribute('aria-current', 'true');
-      }
-      const openLabel = document.createElement('small'); openLabel.className = 'book-open-label'; openLabel.textContent = 'この原稿を開く';
-      open.append(openLabel);
+      if (book.id === library.activeId) open.setAttribute('aria-current', 'true');
       open.onclick = () => {
         if (!syncLibrary()) { notify('入力内容を確認してから原稿を切り替えてください。'); return; }
         library.activeId = book.id; restoreBook(book); syncLibrary();
