@@ -252,7 +252,7 @@
     viewport.classList.toggle('is-paged', paged());
     document.getElementById('reading').classList.toggle('has-paged-reader', paged());
     pageControls.hidden = !paged();
-    if (!paged()) { stage.style.top = ''; viewport.style.height = ''; }
+    if (!paged()) { stage.style.top = ''; stage.style.clipPath = ''; viewport.style.height = ''; }
     writingGeometry = null; annotationGeometry = null;
     const layoutColumnHeight = columnHeight();
     const available = availableWidth();
@@ -453,7 +453,11 @@
     pageIndex = Math.max(0, Math.min(index, pages.length - 1));
     if (!pages.length) return;
     stage.style.top = `${-pages[pageIndex].top}px`;
-    // A short vertical section (or the last page) must not reveal the next page.
+    // Clip the shared text and writing stage between adjacent page contents.
+    const page = pages[pageIndex], previous = pages[pageIndex - 1], next = pages[pageIndex + 1];
+    const clipTop = previous ? (previous.bottom + page.top) / 2 : 0;
+    const clipBottom = next ? `calc(100% - ${(page.bottom + next.top) / 2}px)` : '0px';
+    stage.style.clipPath = `inset(${clipTop}px 0 ${clipBottom} 0)`;
     viewport.style.height = `${lastPageHeight}px`;
     document.getElementById('reading').style.setProperty('--page-bottom-space', `${Math.max(52, pageControls.getBoundingClientRect().height) + (measurementBar.hidden ? 0 : measurementBar.getBoundingClientRect().height) + 24}px`);
     document.getElementById('page-position').textContent = `${pageIndex + 1} / ${pages.length} ページ`;

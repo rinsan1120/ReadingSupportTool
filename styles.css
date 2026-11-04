@@ -424,6 +424,7 @@ footer {
 /* Autosave status must not change the reading area's height after a page turn. */
 .has-paged-reader #reader-save-state[hidden] { display:inline-block!important; visibility:hidden; }
 #reader-viewport.is-paged { position:relative; overflow:hidden; overflow:clip; padding-block:16px; box-sizing:border-box; background:var(--panel); touch-action:pinch-zoom; overscroll-behavior:contain; }
+#reader-viewport.is-paged:has(#reader-stage.paper-mode) { background:#fff; }
 #page-controls { position:fixed; bottom:0; left:0; right:0; z-index:9; min-height:52px; padding:4px 12px calc(4px + env(safe-area-inset-bottom)); background:var(--bg); border-top:1px solid var(--border); display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:center; }
 #page-controls[data-direction=vertical] { flex-direction:row-reverse; }
 #page-controls button { min-width:70px; min-height:44px; padding:8px 14px; }
