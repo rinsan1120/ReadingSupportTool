@@ -7,9 +7,9 @@
   let displayEnd = null;
   let blocks = [], lastAvailable = 0, lastMobile = false, scheduled = 0;
   let savedAnchor = null;
-  let writingGeometry = null;
+  let writingGeometry = null, annotationGeometry = null;
   let direction = 'horizontal';
-  let displayMode = 'scroll', printLayout = false, pages = [], pageIndex = 0, lastPageHeight = 0, scrollModeAnchor = null, pageReadingAnchor = null;
+  let displayMode = 'scroll', printLayout = false, printConstraints = null, pages = [], pageIndex = 0, lastPageHeight = 0, scrollModeAnchor = null, pageReadingAnchor = null;
   const viewport = document.getElementById('reader-viewport'), stage = document.getElementById('reader-stage');
   const pageControls = document.getElementById('page-controls');
   const paged = () => displayMode === 'pages' && !printLayout;
@@ -20,6 +20,7 @@
   const measurementBar = document.getElementById('measurement-bar');
   const controls = document.querySelector('.reader-controls');
   const columnHeight = () => {
+    if (printConstraints?.inlineSize && vertical()) return printConstraints.inlineSize;
     const preferred = Math.max(180, Math.min(620, (isMobileViewport() ? viewportHeight() : innerHeight) * .62));
     if (paged()) return Math.max(36, Math.min(preferred, pageHeight() - 24));
     if (measurementBar.hidden) return preferred;
@@ -251,14 +252,14 @@
     document.getElementById('reading').classList.toggle('has-paged-reader', paged());
     pageControls.hidden = !paged();
     if (!paged()) { stage.style.top = ''; viewport.style.height = ''; }
-    writingGeometry = null;
+    writingGeometry = null; annotationGeometry = null;
     const layoutColumnHeight = columnHeight();
     const available = availableWidth();
     const maxWidth = Math.min(1400, available);
     const minWidth = Math.min(480, maxWidth);
     // Keep the preferred desktop width and font size as independent state.
     // A window resize can constrain width without changing the chosen type size.
-    root.style.width = `${mobile.matches ? available : Math.min(maxWidth, Math.max(minWidth, settings.width))}px`;
+    root.style.width = `${printConstraints?.inlineSize && !vertical() ? printConstraints.inlineSize : mobile.matches ? available : Math.min(maxWidth, Math.max(minWidth, settings.width))}px`;
     const width = root.getBoundingClientRect().width;
     widthInput.min = minWidth;
     widthInput.max = maxWidth;
@@ -571,6 +572,19 @@
       layoutKey: `${(origin.width / fontSize).toFixed(2)}:${settings.height}:${settings.breaks}:${flowHash >>> 0}` };
     return writingGeometry;
   }
+  function getAnnotationGlyphs() {
+    if (annotationGeometry) return annotationGeometry;
+    const origin = root.getBoundingClientRect(), result = [];
+    for (const block of blocks) for (const part of block.parts) if (part.run.annotation && !part.run.pending) {
+      for (const s of segmenter.segment(part.node.data)) {
+        range.setStart(part.node, s.index); range.setEnd(part.node, s.index + s.segment.length);
+        const r = range.getBoundingClientRect();
+        if (r.width && r.height) result.push({ offset: part.run.sourceStart, readingIndex: part.start - part.run.start + s.index,
+          x: r.left - origin.left, y: r.top - origin.top, width: r.width, height: r.height });
+      }
+    }
+    annotationGeometry = result; return result;
+  }
   function printSnapshot({ allowDraft = false } = {}) {
     // Pagination needs the live ruby preview; PDF export still rejects drafts.
     if (draft && !allowDraft) throw new Error('読み仮名を登録またはキャンセルしてからPDF出力してください。');
@@ -633,7 +647,7 @@
       return { ...glyph, line };
     };
     return { width: origin.width, font, lines, glyphs: geometry.glyphs.map(withLine),
-      annotationRects: geometry.annotationRects.map(withLine) };
+      annotationRects: geometry.annotationRects.map(withLine), annotationGlyphs: (allowDraft ? [] : getAnnotationGlyphs()).map(withLine) };
   }
   function verticalPrintSnapshot(origin, font) {
     // Unfold viewport sections into a continuous right-to-left column table.
@@ -712,6 +726,7 @@
     };
     return { direction: 'vertical', width: inlineSize, font, lines,
       glyphs: geometry.glyphs.map(g => convert(g)), annotationRects: geometry.annotationRects.map(g => convert(g, true)),
+      annotationGlyphs: getAnnotationGlyphs().map(g => convert(g, true)),
       sections: sections.map(({ element, ...s }) => s) };
   }
   function updateMode(on) {
@@ -918,13 +933,13 @@
     get displayMode() { return displayMode; },
     get pageState() { return { current: pageIndex + 1, total: pages.length, height: lastPageHeight, pages: pages.map(p => ({ ...p, anchor: { ...p.anchor } })) }; },
     turnPage,
-    withPrintLayout(action) {
-      if (!paged()) return action();
+    withPrintLayout(action, constraints = null) {
+      if (!paged() && !constraints) return action();
       const anchor = capture();
       // Snapshot callbacks are synchronous; restore the screen before the next paint.
-      printLayout = true;
+      printLayout = true; printConstraints = constraints;
       try { layout(null); return action(); }
-      finally { printLayout = false; layout(anchor); }
+      finally { printConstraints = null; printLayout = false; layout(anchor); }
     },
     capture, restore, printSnapshot, getWritingGeometry,
     get direction() { return direction; },

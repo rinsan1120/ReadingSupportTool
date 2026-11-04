@@ -7,15 +7,15 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="description" content="文章を読みやすく整え、自分の朗読速度から作品の朗読時間を調べるツール。">
   <title>よみじたく | 朗読支援サイト</title>
-  <link rel="stylesheet" href="styles.css?v=page-turning">
+  <link rel="stylesheet" href="styles.css?v=pdf-reflow">
   <script src="samples.js" defer></script>
   <script src="reading-annotations.js?v=vertical-writing" defer></script>
   <script src="html-ruby.js?v=clipboard-fragments" defer></script>
-  <script src="reader.js?v=page-turning" defer></script>
+  <script src="reader.js?v=pdf-reflow" defer></script>
   <script src="manuscript-writing.js?v=page-turning" defer></script>
-  <script src="manuscript-print.js?v=page-turning" defer></script>
+  <script src="manuscript-print.js?v=pdf-reflow" defer></script>
   <script src="user-library.js?v=page-turning" defer></script>
-  <script src="app.js?v=page-turning" defer></script>
+  <script src="app.js?v=pdf-reflow" defer></script>
 </head>
 <body>
   <header class="site-header"><button class="brand" data-go="home"><span aria-hidden="true">☾</span> よみじたく <small>朗読支援サイト</small></button></header>
@@ -167,9 +167,9 @@
     <label for="pdf-layout">ページ配置</label>
     <select id="pdf-layout" data-field-id="FLD-PDF-LAYOUT">
       <option value="single">1枚に1ページ</option>
-      <option value="spread">1枚に2ページ（見開き）</option>
+      <option value="spread">1枚に2ページ（袋とじ用）</option>
     </select>
-    <p id="pdf-spread-help" class="muted" hidden>見開き配置はアプリ側で行います。次のブラウザ印刷画面では「1枚あたりのページ数」を1にしてください。</p>
+    <p id="pdf-spread-help" class="muted" hidden>袋とじ用の配置と中央約20mmの余白はアプリ側で確保します。次のブラウザ印刷画面では「1枚あたりのページ数」を1にしてください。</p>
     <p>次の印刷画面で「PDFとして保存」を選んでください。端末によっては共有・プリントからPDFを保存します。</p>
     <p id="pdf-paper-help" class="muted">A4・縦向き・倍率100%を基本とし、ヘッダーとフッターはOFFにしてください。保存が完了したかは印刷画面でご確認ください。</p>
     <p id="pdf-small-warning" hidden></p>

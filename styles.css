@@ -235,8 +235,7 @@ input[type=number] {
 #manuscript-print { display:none; }
 #manuscript-print.print-measuring { display:block; position:fixed; left:-100000px; top:0; visibility:hidden; pointer-events:none; }
 .manuscript-page { position:relative; width:180mm; height:266mm; margin:0; padding:0; border:0; overflow:hidden; background:#fff; color:#000; }
-.print-two-up .manuscript-page { width:133.5mm; height:180mm; }
-.print-two-up .manuscript-page.manuscript-memo-page { width:267mm; }
+.print-two-up .manuscript-page { width:123.5mm; height:180mm; }
 .manuscript-canvas { position:absolute; top:0; color:#000; }
 .manuscript-piece { position:absolute; top:0; white-space:pre; overflow-wrap:normal; word-break:normal; }
 .manuscript-annotation { color:#17365d; }
@@ -287,10 +286,9 @@ input[type=number] {
   body.manuscript-printing #manuscript-print.print-two-up { width:267mm; }
   .manuscript-page { break-inside:avoid; break-after:page; page-break-inside:avoid; page-break-after:always; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
   .manuscript-page:last-child { break-after:auto; page-break-after:auto; }
-  .manuscript-spread { page:spread; display:flex; width:267mm; height:180mm; break-inside:avoid; break-after:page; page-break-inside:avoid; page-break-after:always; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+  .manuscript-spread { page:spread; display:flex; gap:20mm; width:267mm; height:180mm; break-inside:avoid; break-after:page; page-break-inside:avoid; page-break-after:always; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
   .manuscript-spread[data-direction="vertical"] { flex-direction:row-reverse; }
-  .manuscript-spread > .manuscript-page { flex:0 0 133.5mm; width:133.5mm; height:180mm; break-inside:avoid; break-after:auto; page-break-after:auto; }
-  .manuscript-spread > .manuscript-page.manuscript-memo-page { flex-basis:267mm; width:267mm; }
+  .manuscript-spread > .manuscript-page { flex:0 0 123.5mm; width:123.5mm; height:180mm; break-inside:avoid; break-after:auto; page-break-after:auto; }
   .manuscript-spread:last-child { break-after:auto; page-break-after:auto; }
 }
 select {
