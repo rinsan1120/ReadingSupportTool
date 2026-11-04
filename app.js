@@ -401,7 +401,6 @@
     window.Reader.show(text, model, { editable: mode === 'read', end: measuredPartial ? timingRange?.end ?? 0 : null, writingDirection });
     window.ManuscriptWriting.show(mode === 'read' ? readMarks : sourceType === 'custom' && timeMarks?.source === text ? timeMarks : null, { editable: mode === 'read' });
     if (mode === 'read' && readerReturnState) {
-      Object.entries(readerReturnState.settings).forEach(([id, value]) => { $(id).value = value; applySetting(id, Number(value)); });
       if (readerReturnState.anchor) requestAnimationFrame(() => window.Reader.restore(readerReturnState.anchor));
     }
     syncPartialInputs();
@@ -504,9 +503,8 @@
       custom.checked = true; custom.dispatchEvent(new Event('change'));
       $('time-text').dispatchEvent(new Event('input'));
       setTarget(count, true);
-      const settings = Object.fromEntries(['reader-width', 'columns', 'line-height', 'break-lines'].map(id => [id, $(id).value]));
       displayReader('time', text);
-      readMeasurementReturn = { anchor: readerReturnAnchor, settings };
+      readMeasurementReturn = { anchor: readerReturnAnchor };
     } catch (error) { notify(`計測用の原稿を準備できません。${error.message}`); }
     finally { openingReader = false; }
   };
@@ -691,6 +689,7 @@
       $('break-lines-value').textContent = value ? `${value}表示${window.Reader.direction === 'vertical' ? '列' : '行'}ごと` : 'なし'; window.Reader.configure({ breaks: value });
     }
     rememberSettings();
+    document.dispatchEvent(new Event('manuscript-change'));
   }
   function syncWritingDirection(value) {
     document.querySelectorAll('button[data-direction]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.direction === value)));
@@ -1052,7 +1051,7 @@
         Object.assign(book, { draft, title, manuscript, pending, updatedAt: new Date().toISOString() });
       }
     }
-    library.displaySettings = { mode: window.Reader.displayMode };
+    library.displaySettings = window.Reader.displaySettings;
     library.profile.name = $('profile-name').value;
     library.history = history;
     library.target = validTarget(target) ? String(Number(target)) : '';
@@ -1286,7 +1285,12 @@
     $('export-manuscript').querySelector('span').textContent = '保存';
     $('export-manuscript').setAttribute('aria-label', 'バックアップを保存');
     library = candidate;
-    window.Reader.setDisplayMode(library.displaySettings?.mode ?? 'scroll');
+    window.Reader.configure(library.displaySettings);
+    $('line-height').value = library.displaySettings.height;
+    $('line-height-value').textContent = library.displaySettings.height.toFixed(1);
+    $('break-lines').value = library.displaySettings.breaks;
+    syncWritingDirection(window.Reader.direction);
+    window.Reader.setDisplayMode(library.displaySettings.mode);
     $('display-mode').value = window.Reader.displayMode;
     history = library.history; target = library.target; plannedMinutes = library.plannedMinutes;
     $('profile-name').value = library.profile.name; restoreBook(activeBook());

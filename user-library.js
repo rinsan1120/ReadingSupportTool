@@ -2,7 +2,8 @@
 (() => {
   'use strict';
   const KEY = 'yomijitaku-user-v1', MAX_BYTES = 30 * 1024 * 1024;
-  const empty = () => ({ format: 'yomijitaku-user', version: 1, profile: { name: '' }, displaySettings: { mode: 'scroll' }, manuscripts: [], activeId: null, history: [], target: '', plannedMinutes: '20' });
+  const defaultDisplaySettings = () => ({ mode: 'scroll', width: 900, fontSize: 22, height: 1.8, breaks: 5 });
+  const empty = () => ({ format: 'yomijitaku-user', version: 1, profile: { name: '' }, displaySettings: defaultDisplaySettings(), manuscripts: [], activeId: null, history: [], target: '', plannedMinutes: '20' });
   function validate(data) {
     const fail = () => { throw new Error('ファイルの形式・内容が正しくありません。よみじたくのユーザーデータJSONかどうかを確認してください。'); };
     const string = (v, max) => typeof v === 'string' && v.length <= max;
@@ -12,8 +13,13 @@
         !string(data.target, 20) || !string(data.plannedMinutes, 30) ||
         (data.target !== '' && (!Number.isSafeInteger(Number(data.target)) || Number(data.target) <= 0 || Number(data.target) > 1e9)) ||
         !data.plannedMinutes.trim() || !Number.isFinite(Number(data.plannedMinutes)) || Number(data.plannedMinutes) <= 0) fail();
-    if (data.displaySettings !== undefined && (!data.displaySettings || !['scroll', 'pages'].includes(data.displaySettings.mode))) fail();
-    const displaySettings = { mode: data.displaySettings?.mode ?? 'scroll' };
+    if (data.displaySettings !== undefined && (!data.displaySettings || typeof data.displaySettings !== 'object' || Array.isArray(data.displaySettings))) fail();
+    const defaults = defaultDisplaySettings();
+    const displaySettings = Object.fromEntries(Object.keys(defaults).map(key => [key, data.displaySettings?.[key] ?? defaults[key]]));
+    if (!['scroll', 'pages'].includes(displaySettings.mode) || !Number.isFinite(displaySettings.width) || displaySettings.width < 480 || displaySettings.width > 1400 ||
+        !Number.isFinite(displaySettings.fontSize) || displaySettings.fontSize < 18 || displaySettings.fontSize > 36 ||
+        !Number.isFinite(displaySettings.height) || displaySettings.height < 1.2 || displaySettings.height > 2.6 ||
+        !Number.isInteger(displaySettings.breaks) || displaySettings.breaks < 0 || displaySettings.breaks > 10) fail();
     const ids = new Set();
     const manuscripts = data.manuscripts.map(item => {
       if (!item || !string(item.id, 100) || !item.id || ids.has(item.id) || !string(item.title, 120) || !item.title.trim() ||

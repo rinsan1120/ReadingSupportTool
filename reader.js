@@ -912,7 +912,8 @@
     configure(next) {
       const anchor = capture();
       if (next.direction !== undefined) direction = next.direction === 'vertical' ? 'vertical' : 'horizontal';
-      if (next.width !== undefined && !mobile.matches) settings.width = next.width;
+      if (next.width !== undefined) settings.width = next.width;
+      if (next.fontSize !== undefined) settings.fontSize = next.fontSize;
       if (next.columns !== undefined) {
         settings.fontSize = Math.min(36, Math.max(18, root.getBoundingClientRect().width / next.columns));
       }
@@ -938,6 +939,7 @@
       scrollModeAnchor = fromPages && next === 'scroll' ? anchor : null;
     },
     get displayMode() { return displayMode; },
+    get displaySettings() { return { mode: displayMode, ...settings }; },
     get pageState() { return { current: pageIndex + 1, total: pages.length, height: lastPageHeight, pages: pages.map(p => ({ ...p, anchor: { ...p.anchor } })) }; },
     turnPage,
     withPrintLayout(action, constraints = null) {
