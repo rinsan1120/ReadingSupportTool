@@ -1283,7 +1283,7 @@
     $('storage-privacy').textContent = 'データはこのブラウザ内に保存します。外部へ送信しません。';
     ['export-user', 'save-user-status'].forEach(id => { $(id).textContent = 'バックアップを保存'; });
     ['import-user', 'library-load'].forEach(id => { $(id).textContent = '保存したデータを開く'; });
-    $('export-manuscript').querySelector('span').textContent = 'バックアップを保存';
+    $('export-manuscript').querySelector('span').textContent = '保存';
     $('export-manuscript').setAttribute('aria-label', 'バックアップを保存');
     library = candidate;
     window.Reader.setDisplayMode(library.displaySettings?.mode ?? 'scroll');
