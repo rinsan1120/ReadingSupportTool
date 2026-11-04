@@ -11,6 +11,7 @@
   let direction = 'horizontal';
   let displayMode = 'scroll', printLayout = false, printConstraints = null, pages = [], pageIndex = 0, lastPageHeight = 0, scrollModeAnchor = null, pageReadingAnchor = null;
   const viewport = document.getElementById('reader-viewport'), stage = document.getElementById('reader-stage');
+  const reading = document.getElementById('reading');
   const pageControls = document.getElementById('page-controls');
   const paged = () => displayMode === 'pages' && !printLayout;
   const pageHeight = () => Math.max(60, Math.floor(Math.min(innerHeight, window.visualViewport?.height ?? innerHeight)
@@ -488,9 +489,11 @@
   new MutationObserver(syncPageStart).observe(startButton, { attributes: true, attributeFilter: ['disabled'] });
   syncPageStart();
   let wheelAt = -Infinity, wheelTurnAt = -Infinity, wheelSum = 0, wheelUsed = false;
-  viewport.addEventListener('wheel', event => {
+  reading.addEventListener('wheel', event => {
     if (!paged()) { scrollModeAnchor = null; return; }
-    if (event.ctrlKey) return;
+    if (event.ctrlKey || event.metaKey) return;
+    const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+    if (target?.closest('dialog,[contenteditable=true],input,textarea,select')) return;
     event.preventDefault();
     const now = performance.now();
     if (now - wheelAt > 220) { wheelUsed = false; wheelSum = 0; }
@@ -500,7 +503,7 @@
     if (Math.abs(wheelSum) >= 24 && now - wheelTurnAt >= 450) {
       turnPage(Math.sign(wheelSum), true); wheelUsed = true; wheelTurnAt = now;
     }
-  }, { passive: false });
+  }, { passive: false, capture: true });
   document.addEventListener('keydown', event => {
     if (!paged() && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) scrollModeAnchor = null;
     if (!paged() || event.repeat || event.isComposing || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey
