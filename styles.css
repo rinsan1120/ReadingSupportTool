@@ -933,7 +933,8 @@ html { scrollbar-gutter: stable; }
 .reader-viewport-probe { position:fixed; top:0; left:0; width:0; height:100svh; visibility:hidden; pointer-events:none; contain:strict; }
 
 /* Mobile manuscript controls overlay the reading area without changing its width. */
-#mobile-reader-tab, #mobile-writing-dock, #mobile-writing-done, #mobile-writing-scroll { display:none; }
+.writing-tool-strip { display:contents; }
+#mobile-reader-tab, #mobile-writing-dock, #mobile-writing-done, #mobile-writing-scroll, .writing-tool-arrow { display:none; }
 #mobile-reader-menu:not([open]) { display:none; }
 @media(max-width:600px) {
   body:has(.mobile-manuscript:not([hidden])) { min-height:100svh; }
@@ -971,7 +972,11 @@ html { scrollbar-gutter: stable; }
   .mobile-manuscript #mobile-writing-done { display:flex; grid-column:2; grid-row:1; padding:6px; font-size:12px; border-color:var(--blue); }
   .mobile-manuscript #mobile-writing-scroll { display:flex; grid-column:2; grid-row:2; padding:6px 2px; font-size:12px; touch-action:manipulation; }
   .mobile-manuscript #mobile-writing-scroll[aria-pressed=true] { background:var(--blue); color:var(--bg); }
-  .mobile-manuscript .writing-tools { grid-column:1; grid-row:1; display:flex; max-width:100%; margin:0; overflow-x:auto; overscroll-behavior-x:contain; }
+  .mobile-manuscript .writing-tool-strip { display:block; position:relative; grid-column:1; grid-row:1; min-width:0; }
+  .mobile-manuscript .writing-tools { display:flex; height:100%; max-width:100%; margin:0; overflow-x:auto; overscroll-behavior-x:contain; scroll-padding-inline:24px; }
+  .mobile-manuscript .writing-tool-arrow { display:flex; position:absolute; top:2px; bottom:2px; z-index:1; width:24px; min-height:44px; padding:0; border:0; border-radius:6px; font-size:28px; line-height:1; touch-action:manipulation; }
+  .mobile-manuscript #writing-tools-left { left:0; background:linear-gradient(to right,var(--panel) 65%,transparent); }
+  .mobile-manuscript #writing-tools-right { right:0; background:linear-gradient(to left,var(--panel) 65%,transparent); }
   .mobile-manuscript .writing-tools button { flex:0 0 auto; min-width:64px; min-height:44px; }
   .mobile-manuscript #pen-options, .mobile-manuscript #marker-colors { grid-column:1; grid-row:2; flex-wrap:nowrap; justify-content:flex-start; overflow-x:auto; margin:0; }
   .mobile-manuscript #pen-options button, .mobile-manuscript #marker-colors button { flex:0 0 auto; min-height:44px; }

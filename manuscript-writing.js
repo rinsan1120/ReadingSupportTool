@@ -205,6 +205,27 @@
   let selectedMemo = null, selectedPen = null, penColor = 'red', penMode = 'free', lineDraft = null, linePress = null;
   let scrolling = false;
   const mobileWriting = matchMedia('(max-width: 600px)');
+  const toolList = $('writing-tools-list');
+  function updateToolArrows() {
+    const maximum = Math.max(0, toolList.scrollWidth - toolList.clientWidth);
+    // Safari can report scrollLeft outside the range during rubber-banding.
+    // A CSS-pixel tolerance also avoids arrows lingering on fractional ends.
+    const position = Math.max(0, Math.min(maximum, toolList.scrollLeft));
+    const visible = mobileWriting.matches && toolList.clientWidth > 0;
+    $('writing-tools-left').hidden = !visible || position <= 1;
+    $('writing-tools-right').hidden = !visible || maximum - position <= 1;
+  }
+  for (const [id, direction] of [['writing-tools-left', -1], ['writing-tools-right', 1]]) {
+    $(id).onclick = () => toolList.scrollBy({
+      left: direction * Math.max(64, toolList.clientWidth * .75),
+      behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+    });
+  }
+  toolList.addEventListener('scroll', updateToolArrows, { passive: true });
+  const toolSizeObserver = new ResizeObserver(updateToolArrows);
+  toolSizeObserver.observe(toolList);
+  [...toolList.children].forEach(button => toolSizeObserver.observe(button));
+  mobileWriting.addEventListener('change', updateToolArrows);
   let memoDefaults = { style: 'bubble', color: 'yellow', sizes: {} }, dialogStyle = 'bubble', dialogColor = 'yellow', dialogSizes = {};
   try {
     const saved = JSON.parse(localStorage.getItem('yomijitaku-memo-defaults'));
