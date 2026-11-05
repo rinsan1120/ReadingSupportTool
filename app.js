@@ -6,6 +6,8 @@
   let browserSession = null, browserSaveError = '';
   let pendingDownloadSnapshot = null;
   let view = 'home', mode = 'read', sourceType = 'sample', sample = null;
+  // Entry context is transient; saved history does not imply a completed flow.
+  let resultMode = 'records';
   let history = [], target = '', targetManual = false, plannedMinutes = '20';
   let readMeasurementReturn = null;
   let phase = 'idle', began = 0, accumulatedMilliseconds = 0, countdownTimer = 0, elapsedTimer = 0, noticeTimer = 0;
@@ -171,8 +173,8 @@
     if (view === 'read-input') renderSteps('read-input-steps', false, 0);
     if (view === 'time-input') renderSteps('time-input-steps', true, 0);
     if (view === 'results') {
-      $('result-steps').hidden = !history.length;
-      if (history.length) renderSteps('result-steps', true, 3);
+      $('result-steps').hidden = resultMode !== 'completed';
+      if (resultMode === 'completed') renderSteps('result-steps', true, 3);
     }
     if (view !== 'reading') return;
     const measuring = mode === 'time', active = measuring && phase !== 'idle';
@@ -219,11 +221,12 @@
   }
   setTarget(target);
   $('planned-minutes').value = plannedMinutes;
-  function show(next) {
+  function show(next, nextResultMode = 'records') {
     if (libraryReady) syncLibrary();
     if (view === 'reading' && next !== 'reading') { setZen(false); window.ManuscriptWriting.leave(); window.ManuscriptPrint.clear(); window.Reader.leave(); cancelMeasurement(); releaseWake(); }
     document.querySelectorAll('dialog[open]').forEach(d => d.close());
     document.querySelectorAll('.view').forEach(el => el.hidden = el.id !== next);
+    resultMode = next === 'results' ? nextResultMode : 'records';
     view = next; $('footer').hidden = next === 'reading';
     if (next === 'results' || next === 'estimate') renderResults();
     if (next === 'home') renderHomeResults();
@@ -841,7 +844,7 @@
         title: measuredType === 'sample' ? sample.title : readMeasurementReturn ? activeBook()?.title || '無題の原稿' : '用意した文章' });
       history = history.slice(-100); recordChanges();
     }
-    show('results');
+    show('results', 'completed');
   };
   function readingStatistics() {
     const characters = history.reduce((sum, r) => sum + r.characters, 0);
@@ -855,6 +858,10 @@
     $('home-average-speed').textContent = history.length ? paceText(readingStatistics().speed) : '';
   }
   function renderResults() {
+    const completed = resultMode === 'completed';
+    $('result-title').textContent = completed ? '計測結果' : 'あなたの朗読記録';
+    $('again').hidden = !completed;
+    $('records-measure').hidden = completed || !history.length;
     const { characters, seconds, speed } = readingStatistics();
     const minutes = Number(target) / speed;
     $('time-estimate').textContent = !history.length ? '計測結果がありません'
@@ -873,14 +880,14 @@
     $('result-empty').hidden = !!history.length; $('estimate-empty').hidden = !!history.length;
     $('estimate-results').hidden = !history.length;
     $('estimate-return').hidden = !readMeasurementReturn;
-    $('retry-measurement').hidden = !history.length;
+    $('retry-measurement').hidden = !completed || !history.length;
     $('history-count').textContent = `（${history.length}回）`;
     $('result-summary').textContent = history.length ? `合計${characters.toLocaleString()}文字・実測${seconds.toFixed(1)}秒 ／ 平均${Math.round(speed).toLocaleString()}文字/分` : '';
     const lastMeasurement = history.at(-1);
     const currentText = $('time-text').value.replace(/\r\n?/g, '\n');
     const retainedCustomText = lastMeasurement?.type === 'custom' && currentText && currentText === lastMeasuredCustomText?.replace(/\r\n?/g, '\n');
     $('again').textContent = readMeasurementReturn ? '原稿に戻る' : sourceType === 'custom' ? '入力した文章に戻る' : '計測設定に戻る';
-    $('result-retention').hidden = !retainedCustomText;
+    $('result-retention').hidden = !completed || !retainedCustomText;
     $('history').replaceChildren();
     history.forEach((record, i) => {
       const li = document.createElement('li'), detail = document.createElement('div'), small = document.createElement('small'), remove = document.createElement('button');
@@ -1041,7 +1048,6 @@
     const book = activeBook();
     $('profile-display').textContent = (library.profile.name ? `${library.profile.name}さんの本棚` : 'あなたの本棚') + (book ? ` · ${book.title}` : '');
     const owner = library.profile.name ? `${library.profile.name}さん` : '';
-    $('result-title').textContent = owner ? `${owner}の計測結果` : '計測結果';
     $('average-speed-title').textContent = owner ? `${owner}の平均朗読速度` : '平均朗読速度';
     $('estimate-average-speed-title').textContent = owner ? `${owner}の平均朗読速度` : '平均朗読速度';
     $('home-results-title').textContent = owner ? `${owner}の計測結果` : 'これまでの計測結果';

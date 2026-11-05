@@ -43,7 +43,7 @@
       </details>
       <section id="home-results" class="home-results" hidden aria-labelledby="home-results-title">
         <div><h2 id="home-results-title">これまでの計測結果</h2><p>平均朗読速度：<strong id="home-average-speed"></strong></p></div>
-        <button data-go="results">結果を見る →</button>
+        <button data-go="results">朗読記録を見る →</button>
       </section>
       <p id="storage-privacy" class="privacy">データはこのブラウザ内に保存します。外部へ送信しません。</p>
     </section>
@@ -125,7 +125,7 @@
         <section class="calculation-card" aria-labelledby="duration-title"><h2 id="duration-title">作品の推定朗読時間</h2><label for="result-target">作品全体の文字数</label><div class="inline"><input id="result-target" data-field-id="FLD-RESULT-TARGET" type="number" min="1" max="1000000000" step="1" inputmode="numeric" placeholder="例：4500"><span>文字</span></div><p id="time-estimate" class="calculation-value" aria-live="polite"></p></section>
       </div>
       <p class="muted">間の取り方や作品によって、実際の時間は変わります。</p>
-      <div class="inline"><button id="again" class="primary">計測設定に戻る</button><button id="retry-measurement">もう一度測る</button><button data-go="estimate">朗読時間を見積もる →</button></div>
+      <div class="inline"><button id="again" class="primary">計測設定に戻る</button><button id="retry-measurement">もう一度測る</button><button id="records-measure" data-go="time-input" class="primary" hidden>朗読速度を測る</button><button data-go="estimate">朗読時間を見積もる →</button></div>
       <p id="result-retention" class="muted result-retention" hidden>ホームへ戻っても文章は残ります。再読み込みやタブを閉じると失われます。</p>
       <details class="history-section"><summary>計測履歴 <span id="history-count"></span></summary><ul id="history" class="history"></ul><button id="reset-history" class="quiet">全履歴を削除</button></details>
       <p class="privacy">計測履歴は直近100件まで保持します。保存の状態は画面上部で確認できます。</p>
