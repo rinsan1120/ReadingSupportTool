@@ -20,7 +20,7 @@
     // Native print dimensions avoid Chromium clipping the unscaled height of a
     // transformed, tall bubble before shrinking it into its page.
     parent.style.setProperty('--memo-print-scale', scale);
-    return window.ManuscriptWriting.bubble(item, { ...settings, fontSize: settings.fontSize * scale }, x, y, tx, ty, parent);
+    return window.ManuscriptWriting.bubble(item, { ...settings, fontSize: (item.fontSize ?? settings.fontSize) * scale }, x, y, tx, ty, parent);
   }
   // Sweep the obstacle edges rather than a pixel grid. For each possible Y,
   // merge forbidden X intervals and keep the nearest unobstructed rectangle.

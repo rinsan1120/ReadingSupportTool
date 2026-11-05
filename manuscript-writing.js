@@ -203,7 +203,14 @@
   const editor = $('writing-memo-dialog'), input = $('writing-memo-input');
   let model = null, editable = true, enabled = false, tool = 'pen', markerColor = 'yellow', gesture = null, draftMemo = null, rendering = false;
   let selectedMemo = null, selectedPen = null, penColor = 'red', penMode = 'free', lineDraft = null, linePress = null;
-  let memoStyle = 'bubble', dialogStyle = 'bubble';
+  let memoDefaults = { style: 'bubble', color: 'yellow', sizes: {} }, dialogStyle = 'bubble', dialogColor = 'yellow', dialogSizes = {};
+  try {
+    const saved = JSON.parse(localStorage.getItem('yomijitaku-memo-defaults'));
+    if (saved && ['bubble', 'direct'].includes(saved.style) && window.ManuscriptMarks.MARKER_COLORS.includes(saved.color)) {
+      memoDefaults.style = saved.style; memoDefaults.color = saved.color;
+      for (const style of ['bubble', 'direct']) if (Number.isFinite(saved.sizes?.[style]) && saved.sizes[style] >= 8 && saved.sizes[style] <= 72) memoDefaults.sizes[style] = saved.sizes[style];
+    }
+  } catch { /* Preferences are optional when browser storage is unavailable. */ }
   let paintedPens = [], paintedMarkers = [];
   const direction = () => window.Reader.direction;
   const memoView = item => direction() === 'vertical' ? { ...item, ...(item.verticalPosition ?? { dx: -3, dy: 1, tx: 0, ty: 0 }) } : item;
@@ -216,9 +223,9 @@
     pen: '色を選び、本文付近をドラッグして線を描画。スクロールするときは書込メニューを閉じてください。',
     move: 'ペンの線をタップして選択し、ドラッグして一筆全体を移動。線以外の場所ではスクロールできます。',
     marker: '最初の文字から最後の文字へなぞって強調。スクロールするときは書込メニューを閉じてください。',
-    memo: '本文をタップして作成。本体・丸い足先をドラッグ。選択後にもう一度タップして編集。',
+    memo: '配置する場所をタップして追加。メモを選ぶと編集・削除できます。',
     ruby: '文字の前後をタップして読み仮名を追加。読み仮名を選ぶと編集できます。',
-    eraser: '線・マーカーをタップして削除。メモはメモツールで選択して×から削除。'
+    eraser: '線・マーカーをタップして削除。メモはメモツールで選択して削除。'
   };
   const svg = (name, attributes, parent) => {
     const el = document.createElementNS('http://www.w3.org/2000/svg', name);
@@ -262,11 +269,11 @@
   function cancelPending() {
     releaseGesture(); cancelLine(); draftMemo = null; selectedMemo = null; selectedPen = null;
     if (editor.open) editor.close();
-    if ($('memo-settings-dialog').open) $('memo-settings-dialog').close();
     render();
   }
   function controls() {
     toolbar.hidden = !enabled;
+    toolbar.dataset.tool = tool;
     $('writing-mode').setAttribute('aria-expanded', String(enabled));
     const controls = document.querySelector('.reader-controls');
     const changed = controls.classList.contains('is-writing') !== enabled;
@@ -285,13 +292,11 @@
     $('pen-line-mode').setAttribute('aria-pressed', String(tool === 'pen' && penMode === 'line'));
     document.querySelectorAll('[data-pen-color]').forEach(button =>
       button.setAttribute('aria-pressed', String(tool === 'pen' && button.dataset.penColor === penColor)));
-    const selected = model?.items.find(item => item.id === selectedMemo);
-    $('marker-colors').hidden = !enabled || !['marker', 'memo'].includes(tool);
-    // Keep the toolbar's height stable when selecting a note during a drag.
-    $('marker-colors').style.visibility = tool === 'memo' && !selected ? 'hidden' : '';
-    $('marker-colors').setAttribute('aria-label', tool === 'memo' ? 'メモの色' : 'マーカーの色');
-    $('memo-settings-open').hidden = !enabled || tool !== 'memo';
-    document.querySelectorAll('[data-marker-color]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.markerColor === (tool === 'memo' ? selected?.color : markerColor))));
+    $('marker-colors').hidden = !enabled || tool !== 'marker';
+    document.querySelectorAll('[data-marker-color]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.markerColor === markerColor)));
+    $('memo-opacity-setting').hidden = !editable || !model;
+    $('memo-opacity').value = model?.memoSettings.opacity ?? .9;
+    $('memo-opacity-value').textContent = `${Math.round((model?.memoSettings.opacity ?? .9) * 100)}%`;
     const helpText = tool === 'pen' && penMode === 'line'
       ? '色を選び、始点をクリック。カーソル位置まで線が伸びるので、終点をクリックして確定。Escで取り消し。'
       : help[tool];
@@ -405,16 +410,29 @@
           const origin = center(glyph), font = geometry.fontSize;
           const x = Math.max(0, Math.min(outer.width - 180, ox + origin.x + item.dx * font));
           const y = Math.max(0, oy + origin.y + item.dy * font);
-          const noteSettings = item.style === 'direct' ? { ...model.memoSettings, fontSize: item.fontSize ?? model.memoSettings.fontSize } : model.memoSettings;
+          const noteSettings = { ...model.memoSettings, fontSize: item.fontSize ?? model.memoSettings.fontSize };
           const note = bubble(item, noteSettings, x, y, ox + origin.x + item.tx * font, oy + origin.y + item.ty * font, memos);
           const active = editable && enabled && tool === 'memo';
           note.classList.toggle('memo-editable', active);
           note.classList.toggle('memo-selected', active && selectedMemo === item.id);
           if (active && selectedMemo === item.id) {
-            const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'memo-remove';
-            remove.textContent = '×'; remove.setAttribute('aria-label', 'このメモを削除'); note.append(remove);
+            const actions = document.createElement('div'); actions.className = 'memo-actions';
+            actions.setAttribute('role', 'group'); actions.setAttribute('aria-label', '選択中のメモの操作');
+            for (const [name, label] of [['edit', '編集'], ['remove', '削除']]) {
+              const button = document.createElement('button'); button.type = 'button'; button.className = `memo-${name}`;
+              button.textContent = label; button.setAttribute('aria-label', `このメモを${label}`);
+              button.onclick = () => {
+                if (name === 'edit') openMemo(item);
+                else if (confirm('このメモを削除しますか？')) { model.remove(item.id); selectedMemo = null; render(); }
+              };
+              actions.append(button);
+            }
+            // Keep the controls fully legible even when memo opacity is low.
+            memos.append(actions);
+            actions.style.left = `${Math.max(0, Math.min(note.offsetLeft, outer.width - 180))}px`;
+            actions.style.top = `${note.offsetTop + note.offsetHeight + 8}px`;
           }
-          bottom = Math.max(bottom, y + note.offsetHeight, oy + origin.y + item.ty * font + 12);
+          bottom = Math.max(bottom, y + note.offsetHeight + (active && selectedMemo === item.id ? 52 : 0), oy + origin.y + item.ty * font + 12);
         }
         stage.style.minHeight = bottom ? `${Math.ceil(bottom + 16)}px` : '';
       } else stage.style.minHeight = '';
@@ -428,15 +446,19 @@
   function memoDialogSync() {
     $('memo-style-bubble').setAttribute('aria-pressed', String(dialogStyle === 'bubble'));
     $('memo-style-direct').setAttribute('aria-pressed', String(dialogStyle === 'direct'));
-    $('memo-font-size-row').hidden = dialogStyle !== 'direct';
+    document.querySelectorAll('[data-memo-color]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.memoColor === dialogColor)));
   }
   function openMemo(item) {
     if (!editable || !enabled) return;
     draftMemo = { ...item }; input.value = item.text || '';
-    dialogStyle = item.id ? item.style ?? 'bubble' : memoStyle;
-    $('writing-memo-font-size').value = item.fontSize ?? model?.memoSettings.fontSize ?? 16;
+    dialogStyle = item.id ? item.style ?? 'bubble' : memoDefaults.style;
+    dialogColor = item.id ? item.color : memoDefaults.color;
+    dialogSizes = { bubble: memoDefaults.sizes.bubble ?? model.memoSettings.fontSize, direct: memoDefaults.sizes.direct ?? model.memoSettings.fontSize };
+    if (item.id) dialogSizes[dialogStyle] = item.fontSize ?? model.memoSettings.fontSize;
+    $('writing-memo-font-size').value = dialogSizes[dialogStyle];
     memoDialogSync();
-    $('writing-memo-delete').hidden = true;
+    $('writing-memo-title').textContent = item.id ? 'メモを編集' : 'メモを追加';
+    $('writing-memo-save').textContent = item.id ? '保存' : '追加';
     $('writing-memo-save').disabled = !input.value.trim();
     fitEditor(); editor.showModal(); input.focus({ preventScroll: true });
   }
@@ -512,15 +534,11 @@
     if (tool === 'ruby') return;
     if (!e.isPrimary) { releaseGesture(); render(); return; }
     if (e.button !== 0 || editor.open) return;
+    if (e.target.closest('.memo-actions')) return;
     const note = e.target.closest('.writing-memo');
     if (note) {
       if (tool !== 'memo') return;
       const item = memoView(model.items.find(item => item.id === Number(note.dataset.markId)));
-      if (e.target.closest('.memo-remove')) {
-        e.preventDefault();
-        if (confirm('このメモを削除しますか？')) { model.remove(item.id); selectedMemo = null; render(); }
-        return;
-      }
       e.preventDefault();
       const point = localPoint(e), box = note.getBoundingClientRect(), rootBox = root.getBoundingClientRect();
       gesture = { id: e.pointerId, first: point, scroll: scrollY, moved: false, memo: copy(item), preview: copy(item),
@@ -624,7 +642,9 @@
         model.updateMemo(completed.memo.id, changes);
       }
       else if (completed.wasSelected && completed.part === 'body') openMemo(completed.memo);
-      render(); return;
+      render();
+      if (!completed.moved && !editor.open) memos.querySelector('.memo-actions')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      return;
     }
     if (tool === 'pen') updateStroke(point);
     if (tool === 'marker') {
@@ -643,6 +663,7 @@
   stage.addEventListener('pointercancel', () => { releaseGesture(); cancelLine(); render(); });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && (gesture?.pen || lineDraft)) { e.preventDefault(); releaseGesture(); cancelLine(); render(); }
+    if (e.key === 'Escape' && selectedMemo && !editor.open) { selectedMemo = null; render(); }
   });
   stage.addEventListener('lostpointercapture', () => { linePress = null; if (gesture) { gesture = null; render(); } });
   document.querySelectorAll('[data-writing-tool]').forEach(button => button.onclick = async () => {
@@ -656,8 +677,7 @@
   });
   document.querySelectorAll('[data-marker-color]').forEach(button => button.onclick = () => {
     if (!editable || !enabled) return;
-    if (tool === 'memo' && selectedMemo) model.updateMemo(selectedMemo, { color: button.dataset.markerColor });
-    else if (tool === 'marker') markerColor = button.dataset.markerColor;
+    if (tool === 'marker') markerColor = button.dataset.markerColor;
     render();
   });
   document.querySelectorAll('[data-pen-color]').forEach(button => button.onclick = () => {
@@ -670,43 +690,38 @@
     if (penMode === 'free') cancelLine();
     controls(); render();
   };
-  const settingsDialog = $('memo-settings-dialog');
-  $('memo-settings-open').onclick = () => {
-    if (!editable || !enabled || tool !== 'memo') return;
-    $('memo-font-size').value = model.memoSettings.fontSize; $('memo-opacity').value = model.memoSettings.opacity;
-    settingsDialog.showModal();
+  $('memo-opacity').oninput = () => {
+    if (!editable || !model) return;
+    model.memoSettings = window.ManuscriptMarks.settings({ ...model.memoSettings, opacity: Number($('memo-opacity').value) });
+    render(); changed();
   };
-  $('memo-settings-form').onsubmit = e => {
-    e.preventDefault();
-    if (editable && enabled && tool === 'memo') model.memoSettings = window.ManuscriptMarks.settings({ fontSize: Number($('memo-font-size').value), opacity: Number($('memo-opacity').value) });
-    settingsDialog.close(); render();
-    changed();
-  };
-  $('memo-settings-cancel').onclick = () => settingsDialog.close();
   document.addEventListener('pointerdown', e => {
-    if (selectedMemo && !e.target.closest('.writing-memo, #marker-colors, #memo-settings-open, #memo-settings-dialog, #writing-memo-dialog')) { selectedMemo = null; render(); }
+    if (selectedMemo && !e.target.closest('.writing-memo, .memo-actions, #writing-memo-dialog')) { selectedMemo = null; render(); }
   });
   $('writing-undo').onclick = () => { if (!editable || !enabled) return; cancelPending(); model?.undo(); render(); };
   input.addEventListener('input', () => { $('writing-memo-save').disabled = !input.value.trim(); });
   input.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.isComposing || e.keyCode === 229)) e.preventDefault(); });
-  $('memo-style-bubble').onclick = () => { dialogStyle = 'bubble'; memoDialogSync(); };
-  $('memo-style-direct').onclick = () => { dialogStyle = 'direct'; memoDialogSync(); };
+  for (const style of ['bubble', 'direct']) $(`memo-style-${style}`).onclick = () => {
+    const size = $('writing-memo-font-size');
+    if (size.validity.valid) dialogSizes[dialogStyle] = Number(size.value);
+    dialogStyle = style; size.value = dialogSizes[style]; memoDialogSync();
+  };
+  document.querySelectorAll('[data-memo-color]').forEach(button => button.onclick = () => { dialogColor = button.dataset.memoColor; memoDialogSync(); });
   $('writing-memo-form').addEventListener('submit', e => {
     e.preventDefault(); const text = input.value.trim();
     if (!editable || !enabled || !draftMemo || !text || text.length > 200) return;
     if (tool !== 'memo') return;
-    const fontSize = Math.max(8, Math.min(72, Math.round(Number($('writing-memo-font-size').value)) || model.memoSettings.fontSize));
-    // Bubble memos stay byte-identical to earlier formats: the style fields
-    // exist only on direct memos, so converting back clears them (assigning
-    // undefined drops the keys when the item is serialized and restored).
-    const styleChanges = dialogStyle === 'direct' ? { style: 'direct', fontSize } : { style: undefined, fontSize: undefined };
+    const fontSize = Math.max(8, Math.min(72, Number($('writing-memo-font-size').value) || model.memoSettings.fontSize));
+    const styleChanges = { style: dialogStyle === 'direct' ? 'direct' : undefined, fontSize, color: dialogColor };
     if (draftMemo.id) model.updateMemo(draftMemo.id, { text, ...styleChanges });
-    else { model.add(memoPlacement({ ...draftMemo, text, ...(dialogStyle === 'direct' ? { style: 'direct', fontSize } : {}) })); memoStyle = dialogStyle; }
+    else model.add(memoPlacement({ ...draftMemo, text, ...styleChanges }));
+    memoDefaults = { style: dialogStyle, color: dialogColor, sizes: { ...memoDefaults.sizes, [dialogStyle]: fontSize } };
+    try { localStorage.setItem('yomijitaku-memo-defaults', JSON.stringify(memoDefaults)); } catch { /* Keep session defaults. */ }
     cancelPending();
   });
-  $('writing-memo-delete').onclick = () => { if (!editable) return; if (enabled && tool === 'memo' && draftMemo?.id && confirm('このメモを削除しますか？')) model.remove(draftMemo.id); cancelPending(); };
-  $('writing-memo-cancel').onclick = cancelPending;
-  editor.addEventListener('cancel', e => { e.preventDefault(); cancelPending(); });
+  const closeMemo = () => { draftMemo = null; editor.close(); render(); };
+  $('writing-memo-cancel').onclick = closeMemo;
+  editor.addEventListener('cancel', e => { e.preventDefault(); closeMemo(); });
   editor.addEventListener('close', () => { draftMemo = null; });
   window.visualViewport?.addEventListener('resize', fitEditor);
   window.visualViewport?.addEventListener('scroll', fitEditor);
@@ -742,8 +757,8 @@
     setMode, cancelPending,
     get hasMarks() { return Boolean(model?.hasMarks); },
     get hasPens() { return Boolean(model?.items.some(item => item.type === 'pen')); },
-    get hasPending() { return Boolean(gesture || draftMemo || lineDraft || settingsDialog.open); },
-    focusPending() { if (editor.open) input.focus(); else if (settingsDialog.open) $('memo-font-size').focus(); },
+    get hasPending() { return Boolean(gesture || draftMemo || lineDraft); },
+    focusPending() { if (editor.open) input.focus(); },
     get enabled() { return enabled; }
   };
 })();

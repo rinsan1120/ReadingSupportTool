@@ -91,7 +91,7 @@ button:where(:not(.entry):not(.startup-choice):not(.back):not(.brand)) { white-s
 .read-input-actions #open-read { width:100%; }
 .text-link { align-self:center; min-height:44px; padding:8px 14px; color:var(--muted); background:transparent; border:0; border-radius:6px; font-size:.88rem; text-decoration:underline; text-underline-offset:3px; }
 .text-link:hover { color:var(--blue); background:transparent; }
-.library-status button,.book-actions button,.writing-options button,#marker-colors button,#pen-options button,.settings-tabs button,#settings-dialog .dialog-heading button,#memo-settings-open,#writing-off { min-height:var(--control-height-compact); }
+.library-status button,.book-actions button,.writing-options button,#marker-colors button,#pen-options button,.settings-tabs button,#settings-dialog .dialog-heading button,#writing-off { min-height:var(--control-height-compact); }
 .book-actions { align-items:stretch; flex-wrap:wrap; }
 .book-actions button { flex:1 1 84px; }
 .library-status button { padding:7px 12px; }
@@ -821,6 +821,7 @@ html { scrollbar-gutter: stable; }
   .writing-tools button { flex-direction:row; padding:7px 5px; gap:5px; font-size:12px; min-width:0; }
   .writing-tools .tool-icon { width:19px; height:22px; }
   .writing-options,#writing-tool-help { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); margin:0; }
+  #writing-toolbar[data-tool=memo] #writing-tool-help { position:static; width:auto; height:auto; overflow:visible; clip-path:none; margin:6px 0 0; }
   .reader-controls.is-scroll-hidden { transform:translateY(calc(-100% - 1px)); pointer-events:none; }
 }
 @media(prefers-reduced-motion:reduce) { .reader-controls { transition:none; } }
@@ -857,9 +858,22 @@ html { scrollbar-gutter: stable; }
 .memo-selected .memo-direct-text { outline:2px dashed currentColor; outline-offset:3px; }
 .memo-editable .memo-tip { r:8; stroke-width:2; }
 .memo-selected .memo-body { outline:2px dashed currentColor; outline-offset:3px; }
-.memo-remove { position:absolute; right:-8px; top:-14px; min-height:28px; width:28px; padding:0; border-radius:50%; color:inherit; background:#fffdf5; pointer-events:auto; touch-action:none; }
-#memo-settings-dialog label { display:block; margin:16px 0; }
-#memo-settings-open { display:block; margin:6px auto 0; min-height:34px; }
+/* Explicit actions stay beside the selected memo without resizing the toolbar. */
+.memo-actions { position:absolute; display:flex; gap:8px; width:180px; z-index:5; pointer-events:auto; }
+.memo-actions button { min-height:44px; flex:1; padding:8px; font:14px/1.4 system-ui,sans-serif; color:var(--text); background:var(--panel); }
+.memo-selected { z-index:4; }
+#writing-memo-dialog { width:min(480px,calc(100% - 24px)); overflow-y:auto; }
+#writing-memo-form fieldset { border:0; padding:0; margin:14px 0; min-width:0; }
+#writing-memo-form legend { padding:0; }
+.memo-style-row,.memo-color-row { display:flex; gap:8px; margin:6px 0; }
+.memo-style-row button,.memo-color-row button { flex:1; min-width:0; min-height:44px; padding:8px 6px; }
+.memo-color-row button { display:flex; align-items:center; justify-content:center; gap:4px; font-size:14px; white-space:nowrap; }
+#writing-memo-form [aria-pressed=true] { outline:2px solid var(--blue); outline-offset:1px; background:#23364f; }
+.memo-color-row button::before { content:""; flex:none; width:10px; height:10px; border-radius:50%; background:#ffd148; }
+.memo-color-row [data-memo-color=lightblue]::before { background:#60c6ff; }
+.memo-color-row [data-memo-color=pink]::before { background:#ff89b9; }
+.memo-format-help,#memo-opacity-help { font-size:12px; margin:6px 0; }
+#memo-opacity-setting { margin-top:12px; }
 .memo-editable, .memo-editable .memo-tail, .memo-editable .memo-tip-layer { touch-action:none; }
 
 .memo-tip-layer { z-index:2; }

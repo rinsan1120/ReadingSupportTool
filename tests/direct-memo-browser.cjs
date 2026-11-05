@@ -1,6 +1,6 @@
 // Direct-write memos: a memo style that draws bare text on the manuscript.
 // Existing bubble memos and v1-v5 files must stay byte-compatible; saving
-// moves to v6 and only direct memos gain style/fontSize fields.
+// keeps v6; confirmed edits store an independent fontSize for either style.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -74,14 +74,15 @@ const saved = async page => (await saveUser(page)).manuscripts[0].manuscript;
     await page.locator('#writing-memo-save').click();
     data = await saved(page);
     const converted = data.marks.find(m => m.text === '直接メモ');
-    assert.ok(converted); assert.ok(!('style' in converted) && !('fontSize' in converted), 'converted bubble is pristine again');
+    assert.ok(converted); assert.ok(!('style' in converted)); assert.equal(converted.fontSize, 16, 'bubble uses its own size');
     assert.equal(await page.locator('.writing-memo.memo-direct', { hasText: '直接メモ' }).count(), 0);
     // A fresh direct memo reaches the PDF in place, with no note page.
     await page.locator('[data-writing-tool=memo]').click();
     const spot2 = await glyphPoint(page, 300);
     await page.mouse.click(spot2.x, spot2.y);
     await page.locator('#writing-memo-dialog').waitFor();
-    assert.equal(await page.locator('#memo-style-direct').getAttribute('aria-pressed'), 'true', 'style choice is remembered');
+    assert.equal(await page.locator('#memo-style-bubble').getAttribute('aria-pressed'), 'true', 'last saved style is remembered');
+    await page.locator('#memo-style-direct').click();
     await page.locator('#writing-memo-input').fill('印刷確認');
     await page.locator('#writing-memo-save').click();
     data = await saved(page);
@@ -103,7 +104,7 @@ const saved = async page => (await saveUser(page)).manuscripts[0].manuscript;
     await page.close();
     console.log('desktop: v5 compat, direct create, conversion, PDF in-place passed');
     // Vertical: direct text is vertical on screen and reaches the PDF.
-    const v6v = { ...v5, version: 6, writingDirection: 'vertical', marks: [{ id: 1, type: 'memo', offset: 0, dx: .6, dy: 1, tx: 0, ty: 0, color: 'pink', text: '縦の直接', style: 'direct', fontSize: 24, verticalPosition: { dx: -3, dy: 1, tx: 0, ty: 0 } }] };
+    const v6v = { ...v5, version: 6, writingDirection: 'vertical', marks: [{ id: 1, type: 'memo', offset: 0, dx: .6, dy: 1, tx: 0, ty: 0, color: 'pink', text: '縦の直接', style: 'direct', fontSize: 24, verticalPosition: { dx: -3, dy: 1, tx: 0, ty: 0 } }, { ...bubble, id: 2, offset: 100, fontSize: 32 }] };
     const vpage = await browser.newPage({ viewport: { width: 1200, height: 900 } });
     const verrors = []; vpage.on('pageerror', e => verrors.push(e.message));
     await vpage.goto(`http://127.0.0.1:${server.address().port}/`);
@@ -114,9 +115,11 @@ const saved = async page => (await saveUser(page)).manuscripts[0].manuscript;
     const vel = vpage.locator('.writing-memo.memo-direct.memo-vertical', { hasText: '縦の直接' });
     assert.equal(await vel.count(), 1);
     assert.equal(await vel.locator('.memo-direct-text').evaluate(el => getComputedStyle(el).writingMode), 'vertical-rl');
+    assert.equal(await vpage.locator('#writing-memos .writing-memo[data-mark-id="2"]').evaluate(el => getComputedStyle(el).fontSize), '32px');
     await vpage.locator('#export-pdf').click();
     await vpage.waitForFunction(() => document.getElementById('pdf-dialog').open);
     assert.ok(await vpage.locator('#manuscript-print .memo-direct').count() >= 1, 'vertical direct memo in PDF');
+    assert.equal(await vpage.locator('#manuscript-print .writing-memo[data-mark-id="2"]').evaluate(el => Math.round(parseFloat(getComputedStyle(el).fontSize) / +getComputedStyle(el.parentElement).getPropertyValue('--memo-print-scale'))), 32);
     await vpage.locator('#pdf-cancel').click();
     assert.deepEqual(verrors, []);
     await vpage.close();
