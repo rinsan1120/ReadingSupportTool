@@ -462,7 +462,6 @@ footer {
 #writing-memo-dialog { position:fixed; inset:auto 0; top:var(--editor-center,50dvh); transform:translateY(-50%); margin:0 auto; max-height:var(--editor-height,calc(100dvh - 24px)); }
 #writing-memo-dialog h2 { margin:0 0 8px; }
 #writing-memo-input { width:100%; min-height:46px; padding:10px; border:1px solid #7897c157; border-radius:8px; background:#080f1e; color:var(--text); font-size:16px; }
-.ruby-help { margin:8px 16px; color:var(--muted); font-size:12px; text-align:center; }
 .reading-annotation { color:#fcd58a; }
 /* Atomic base/reading pairs reserve enough line-box space at low line heights.
    The reader measures the base text, never the small reading above it. */

@@ -32,7 +32,6 @@
   const readingEdge = () => Math.max(window.visualViewport?.offsetTop || 0, controls.getBoundingClientRect().bottom) + 12;
   let annotations = null, annotationsEditable = true, rubyMode = false, draft = null, editAnchor = null;
   let readingChangeGuard = async () => true, readingChangePending = false, editorSuspended = false;
-  const rubyHelp = document.getElementById('ruby-help');
   const editor = document.getElementById('ruby-dialog');
   const rubyInput = document.getElementById('ruby-input');
   const segmenter = new Intl.Segmenter('ja', { granularity: 'grapheme' });
@@ -738,7 +737,6 @@
   }
   function updateMode(on) {
     rubyMode = Boolean(annotations && annotationsEditable && on);
-    rubyHelp.hidden = !rubyMode;
     root.classList.toggle('ruby-mode', rubyMode);
     root.dispatchEvent(new CustomEvent('reader-ruby-mode', { detail: rubyMode }));
   }
