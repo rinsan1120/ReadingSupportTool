@@ -135,7 +135,7 @@ const length = points => points.slice(1).reduce((sum, p, i) => sum + Math.hypot(
 
       // Real manual save + load, legacy v1-v4 imports, schema rejection.
       const saved = (await saveUser(page)).manuscripts[0].manuscript;
-      assert.equal(saved.version, 5); assert.deepEqual(saved.marks, final.items);
+      assert.equal(saved.version, 6); assert.deepEqual(saved.marks, final.items);
       const restored = await page.evaluate(saved => {
         const { manuscript, markings } = ManuscriptMarks.restoreManuscript(JSON.stringify(saved));
         const roundtrip = JSON.parse(ManuscriptMarks.serializeManuscript(manuscript, markings));

@@ -198,7 +198,7 @@ const modelTests = page => page.evaluate(() => {
       await page.locator('#pdf-cancel').click();
       const saved = await saveUser(page);
       const manuscript = saved.manuscripts.find(m => m.id === saved.activeId).manuscript;
-      assert.equal(manuscript.version, 5); assert.equal(manuscript.writingDirection, 'vertical');
+      assert.equal(manuscript.version, 6); assert.equal(manuscript.writingDirection, 'vertical');
       assert.deepEqual(manuscript.marks, stored); assert.equal(manuscript.text, text);
       await page.locator('#measure-current').click();
       assert.equal(await page.evaluate(() => Reader.direction), 'vertical');

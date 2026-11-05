@@ -837,7 +837,15 @@ html { scrollbar-gutter: stable; }
 .memo-tail, .memo-tip-layer { position:absolute; left:0; top:0; overflow:visible; color:inherit; }
 .memo-tail path { fill:none; stroke:currentColor; stroke-width:2; }
 .memo-tip { fill:currentColor; stroke:#fffdf5; stroke-width:1; }
+.writing-memo.memo-direct { width:auto; max-width:320px; }
+.memo-direct-text { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.4; }
+.writing-memo.memo-vertical { max-width:none; max-height:420px; }
+.writing-memo.memo-vertical .memo-direct-text { writing-mode:vertical-rl; }
+.memo-style-row { display:flex; gap:8px; margin:12px 0 4px; }
+#memo-font-size-row input { display:block; width:120px; margin-top:6px; }
 .memo-editable .memo-body, .memo-editable .memo-tip { pointer-events:auto; touch-action:none; cursor:move; }
+.memo-editable .memo-direct-text { pointer-events:auto; touch-action:none; cursor:move; }
+.memo-selected .memo-direct-text { outline:2px dashed currentColor; outline-offset:3px; }
 .memo-editable .memo-tip { r:8; stroke-width:2; }
 .memo-selected .memo-body { outline:2px dashed currentColor; outline-offset:3px; }
 .memo-remove { position:absolute; right:-8px; top:-14px; min-height:28px; width:28px; padding:0; border-radius:50%; color:inherit; background:#fffdf5; pointer-events:auto; touch-action:none; }

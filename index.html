@@ -7,13 +7,13 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="description" content="文章を読みやすく整え、自分の朗読速度から作品の朗読時間を調べるツール。">
   <title>よみじたく | 朗読支援サイト</title>
-  <link rel="stylesheet" href="styles.css?v=pdf-reflow">
+  <link rel="stylesheet" href="styles.css?v=direct-memo">
   <script src="samples.js" defer></script>
-  <script src="reading-annotations.js?v=vertical-writing" defer></script>
+  <script src="reading-annotations.js?v=direct-memo" defer></script>
   <script src="html-ruby.js?v=clipboard-fragments" defer></script>
   <script src="reader.js?v=pdf-reflow" defer></script>
-  <script src="manuscript-writing.js?v=line-mode" defer></script>
-  <script src="manuscript-print.js?v=pdf-reflow" defer></script>
+  <script src="manuscript-writing.js?v=direct-memo" defer></script>
+  <script src="manuscript-print.js?v=direct-memo" defer></script>
   <script src="user-library.js?v=page-turning" defer></script>
   <script src="app.js?v=pdf-reflow" defer></script>
 </head>
@@ -185,7 +185,7 @@
     </form>
   </dialog>
   <dialog id="memo-settings-dialog" data-dialog-id="DLG-MEMO-SETTINGS" aria-labelledby="memo-settings-title"><form id="memo-settings-form"><h2 id="memo-settings-title">全メモ共通の設定</h2><label>文字サイズ <input id="memo-font-size" data-field-id="FLD-MEMO-FONT-SIZE" type="number" min="12" max="28" step="1" required> px</label><label>不透明度 <input id="memo-opacity" data-field-id="FLD-MEMO-OPACITY" type="range" min="0.2" max="1" step="0.05"></label><div class="ruby-editor-actions"><button id="memo-settings-cancel" type="button">キャンセル</button><button type="submit" class="primary">適用</button></div></form></dialog>
-  <dialog id="writing-memo-dialog" data-dialog-id="DLG-MEMO" aria-labelledby="writing-memo-title"><form id="writing-memo-form"><h2 id="writing-memo-title">文字メモ</h2><p class="muted">吹き出しと足先は、登録後にドラッグして移動できます。</p><label for="writing-memo-input">メモ（200文字以内・改行可）</label><textarea id="writing-memo-input" data-field-id="FLD-MEMO-TEXT" maxlength="200" rows="5" required></textarea><div class="ruby-editor-actions"><button id="writing-memo-cancel" type="button">キャンセル</button><button id="writing-memo-delete" type="button" hidden>削除</button><button id="writing-memo-save" type="submit" class="primary" disabled>登録</button></div></form></dialog>
+  <dialog id="writing-memo-dialog" data-dialog-id="DLG-MEMO" aria-labelledby="writing-memo-title"><form id="writing-memo-form"><h2 id="writing-memo-title">文字メモ</h2><p class="muted">登録後にドラッグして移動できます。形式は編集時に切り替えられます。</p><div class="memo-style-row" role="group" aria-label="メモの形式"><button type="button" id="memo-style-bubble" aria-pressed="true">吹き出し</button><button type="button" id="memo-style-direct" aria-pressed="false">直接書き</button></div><label id="memo-font-size-row" for="writing-memo-font-size" hidden>文字サイズ（8〜72px）<input id="writing-memo-font-size" type="number" min="8" max="72" step="1" value="16"></label><label for="writing-memo-input">メモ（200文字以内・改行可）</label><textarea id="writing-memo-input" data-field-id="FLD-MEMO-TEXT" maxlength="200" rows="5" required></textarea><div class="ruby-editor-actions"><button id="writing-memo-cancel" type="button">キャンセル</button><button id="writing-memo-delete" type="button" hidden>削除</button><button id="writing-memo-save" type="submit" class="primary" disabled>登録</button></div></form></dialog>
   <input id="user-file" type="file" accept=".json,application/json" hidden>
   <dialog id="startup-dialog" aria-labelledby="startup-title">
     <p class="eyebrow">よみじたく</p><h2 id="startup-title">よみじたくを始める</h2>

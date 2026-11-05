@@ -161,7 +161,7 @@ const server = http.createServer((req, res) => {
       for (const p of pdf.paths) assert.equal(p.color, ['rgb(197, 34, 40)', 'rgb(37, 99, 235)', 'rgb(21, 128, 61)'][(p.id - 1) % 3]);
       assert.deepEqual(pdf.paths.map(({ color, ...p }) => p), pdf.redPaths.map(({ color, ...p }) => p), 'color has no effect on PDF geometry');
       const userFile = await saveUser(page), saved = userFile.manuscripts[0].manuscript;
-      assert.equal(saved.version, 5); assert.deepEqual(saved.marks, beforeMove.items);
+      assert.equal(saved.version, 6); assert.deepEqual(saved.marks, beforeMove.items);
       const roundTrip = await page.evaluate(saved => ManuscriptMarks.restoreManuscript(JSON.stringify(saved)).markings.items, saved);
       assert.deepEqual(roundTrip, saved.marks);
       await page.reload(); const loading = loadUser(page, userFile); await page.locator('#confirm-ok').click(); await loading; await page.locator('#library-list .book-open').click();

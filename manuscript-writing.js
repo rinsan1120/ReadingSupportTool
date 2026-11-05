@@ -110,7 +110,7 @@
         const label = `書き込み${index + 1}件目：`;
         const fields = {
           pen: ['id', 'type', 'offset', 'layoutKey', 'points', 'witnesses', 'fontSize', 'color', 'direction'],
-          marker: ['id', 'type', 'start', 'end', 'color'], memo: ['id', 'type', 'offset', 'dx', 'dy', 'tx', 'ty', 'color', 'text', 'verticalPosition']
+          marker: ['id', 'type', 'start', 'end', 'color'], memo: ['id', 'type', 'offset', 'dx', 'dy', 'tx', 'ty', 'color', 'text', 'verticalPosition', 'style', 'fontSize']
         };
         if (!item || typeof item !== 'object' || Array.isArray(item) || typeof item.type !== 'string' || !Object.hasOwn(fields, item.type)) throw new Error(`${label}書き込み種類が不正です。`);
         object(item, fields[item.type], label);
@@ -130,6 +130,14 @@
             if (!this.MARKER_COLORS.includes(item.color)) throw new Error(`${label}メモの色が不正です。`);
             if (typeof item.text !== 'string' || !item.text.trim() || item.text.length > 200) throw new Error(`${label}メモは空白だけでない200文字以内の文字列にしてください。`);
             restored.items.push({ ...base, offset: item.offset, dx: item.dx, dy: item.dy, tx: item.tx, ty: item.ty, color: item.color, text: item.text });
+            if (item.style !== undefined) {
+              if (!['bubble', 'direct'].includes(item.style)) throw new Error(`${label}メモの形式が不正です。`);
+              restored.items.at(-1).style = item.style;
+            }
+            if (item.fontSize !== undefined) {
+              if (!Number.isFinite(item.fontSize) || item.fontSize < 8 || item.fontSize > 72) throw new Error(`${label}メモの文字サイズは8〜72で指定してください。`);
+              restored.items.at(-1).fontSize = item.fontSize;
+            }
             if (item.verticalPosition !== undefined) {
               object(item.verticalPosition, ['dx', 'dy', 'tx', 'ty'], label);
               coordinates({ x: item.verticalPosition.dx, y: item.verticalPosition.dy }, ['x', 'y'], label);
@@ -184,7 +192,7 @@
       if (manuscript.source !== markings.source) throw new Error('本文と書き込みの原文が一致しません。本文を確認してから保存してください。');
       const validated = window.ReadingAnnotations.fromData(manuscript.toJSON());
       const marks = this.fromItems(markings.items, validated, markings.memoSettings).items;
-      const json = JSON.stringify({ ...validated.toJSON(), version: 5, marks, memoSettings: this.settings(markings.memoSettings), writingDirection: markings.direction }, null, 2);
+      const json = JSON.stringify({ ...validated.toJSON(), version: 6, marks, memoSettings: this.settings(markings.memoSettings), writingDirection: markings.direction }, null, 2);
       if (json.length > window.ReadingAnnotations.MAX_FILE_BYTES || new TextEncoder().encode(json).length > window.ReadingAnnotations.MAX_FILE_BYTES) throw new Error('原稿ファイルは10MiBまでです。');
       return json;
     }
@@ -195,6 +203,7 @@
   const editor = $('writing-memo-dialog'), input = $('writing-memo-input');
   let model = null, editable = true, enabled = false, tool = 'pen', markerColor = 'yellow', gesture = null, draftMemo = null, rendering = false;
   let selectedMemo = null, selectedPen = null, penColor = 'red', penMode = 'free', lineDraft = null, linePress = null;
+  let memoStyle = 'bubble', dialogStyle = 'bubble';
   let paintedPens = [], paintedMarkers = [];
   const direction = () => window.Reader.direction;
   const memoView = item => direction() === 'vertical' ? { ...item, ...(item.verticalPosition ?? { dx: -3, dy: 1, tx: 0, ty: 0 }) } : item;
@@ -317,8 +326,25 @@
     const draft = lineDraft; cancelLine();
     model.add(draft.item);
   }
+  // Direct memos draw bare text at the stored position: no background, frame
+  // or tail. settings.fontSize is always the effective size (callers fold the
+  // per-item size in), so screen and PDF share this exact renderer.
+  function directNote(item, settings, x, y, parent) {
+    const note = document.createElement('div'); note.className = 'writing-memo memo-direct'; note.dataset.markId = item.id;
+    Object.assign(note.style, { left: `${x}px`, top: `${y}px`, fontSize: `${settings.fontSize}px`, opacity: settings.opacity });
+    note.dataset.color = item.color;
+    if (direction() === 'vertical') note.classList.add('memo-vertical');
+    const text = document.createElement('div'); text.className = 'memo-direct-text'; text.textContent = item.text; note.append(text); parent.append(note);
+    // Stored coordinates stay untouched; only the drawn box is pulled back
+    // inside its container, mirroring how bubbles clamp to the stage.
+    const width = note.offsetWidth, height = note.offsetHeight;
+    if (parent.clientWidth && x + width > parent.clientWidth) note.style.left = `${Math.max(0, parent.clientWidth - width)}px`;
+    if (parent.clientHeight && y + height > parent.clientHeight) note.style.top = `${Math.max(0, parent.clientHeight - height)}px`;
+    return note;
+  }
   // Shared screen/PDF renderer: tail, background and ink share one opacity.
   function bubble(item, settings, x, y, tx, ty, parent, scale = 1) {
+    if (item.style === 'direct') return directNote(item, settings, x, y, parent);
     const note = document.createElement('div'); note.className = 'writing-memo'; note.dataset.markId = item.id;
     Object.assign(note.style, { left: `${x}px`, top: `${y}px`, fontSize: `${settings.fontSize}px`, opacity: settings.opacity });
     if (scale !== 1) Object.assign(note.style, { transform: `scale(${scale})`, transformOrigin: '0 0' });
@@ -377,7 +403,8 @@
           const origin = center(glyph), font = geometry.fontSize;
           const x = Math.max(0, Math.min(outer.width - 180, ox + origin.x + item.dx * font));
           const y = Math.max(0, oy + origin.y + item.dy * font);
-          const note = bubble(item, model.memoSettings, x, y, ox + origin.x + item.tx * font, oy + origin.y + item.ty * font, memos);
+          const noteSettings = item.style === 'direct' ? { ...model.memoSettings, fontSize: item.fontSize ?? model.memoSettings.fontSize } : model.memoSettings;
+          const note = bubble(item, noteSettings, x, y, ox + origin.x + item.tx * font, oy + origin.y + item.ty * font, memos);
           const active = editable && enabled && tool === 'memo';
           note.classList.toggle('memo-editable', active);
           note.classList.toggle('memo-selected', active && selectedMemo === item.id);
@@ -396,9 +423,17 @@
     editor.style.setProperty('--editor-center', `${(viewport?.offsetTop || 0) + height / 2}px`);
     editor.style.setProperty('--editor-height', `${Math.max(120, height - 24)}px`);
   }
+  function memoDialogSync() {
+    $('memo-style-bubble').setAttribute('aria-pressed', String(dialogStyle === 'bubble'));
+    $('memo-style-direct').setAttribute('aria-pressed', String(dialogStyle === 'direct'));
+    $('memo-font-size-row').hidden = dialogStyle !== 'direct';
+  }
   function openMemo(item) {
     if (!editable || !enabled) return;
     draftMemo = { ...item }; input.value = item.text || '';
+    dialogStyle = item.id ? item.style ?? 'bubble' : memoStyle;
+    $('writing-memo-font-size').value = item.fontSize ?? model?.memoSettings.fontSize ?? 16;
+    memoDialogSync();
     $('writing-memo-delete').hidden = true;
     $('writing-memo-save').disabled = !input.value.trim();
     fitEditor(); editor.showModal(); input.focus({ preventScroll: true });
@@ -652,11 +687,19 @@
   $('writing-undo').onclick = () => { if (!editable || !enabled) return; cancelPending(); model?.undo(); render(); };
   input.addEventListener('input', () => { $('writing-memo-save').disabled = !input.value.trim(); });
   input.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.isComposing || e.keyCode === 229)) e.preventDefault(); });
+  $('memo-style-bubble').onclick = () => { dialogStyle = 'bubble'; memoDialogSync(); };
+  $('memo-style-direct').onclick = () => { dialogStyle = 'direct'; memoDialogSync(); };
   $('writing-memo-form').addEventListener('submit', e => {
     e.preventDefault(); const text = input.value.trim();
     if (!editable || !enabled || !draftMemo || !text || text.length > 200) return;
     if (tool !== 'memo') return;
-    if (draftMemo.id) model.editMemo(draftMemo.id, text); else model.add(memoPlacement({ ...draftMemo, text }));
+    const fontSize = Math.max(8, Math.min(72, Math.round(Number($('writing-memo-font-size').value)) || model.memoSettings.fontSize));
+    // Bubble memos stay byte-identical to earlier formats: the style fields
+    // exist only on direct memos, so converting back clears them (assigning
+    // undefined drops the keys when the item is serialized and restored).
+    const styleChanges = dialogStyle === 'direct' ? { style: 'direct', fontSize } : { style: undefined, fontSize: undefined };
+    if (draftMemo.id) model.updateMemo(draftMemo.id, { text, ...styleChanges });
+    else { model.add(memoPlacement({ ...draftMemo, text, ...(dialogStyle === 'direct' ? { style: 'direct', fontSize } : {}) })); memoStyle = dialogStyle; }
     cancelPending();
   });
   $('writing-memo-delete').onclick = () => { if (!editable) return; if (enabled && tool === 'memo' && draftMemo?.id && confirm('このメモを削除しますか？')) model.remove(draftMemo.id); cancelPending(); };

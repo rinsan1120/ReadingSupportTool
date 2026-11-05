@@ -224,7 +224,7 @@
     for (const [number, item] of memoItems.entries()) {
       const glyph = glyphs.get(item.offset), line = glyph && byLine.get(glyph.line);
       if (!line) throw new Error('文字メモの本文位置を確認できません。朗読画面を開き直してから出力してください。');
-      const el = printBubble(item, memoSettings, 0, 0, 0, 0, measurePage, scale);
+      const el = printBubble(item, item.style === 'direct' ? { ...memoSettings, fontSize: item.fontSize ?? memoSettings.fontSize } : memoSettings, 0, 0, 0, 0, measurePage, scale);
       const size = el.getBoundingClientRect();
       groupByLine.get(line.index).memos.push({ item, glyph, number: number + 1, width: size.width, height: size.height });
     }
@@ -357,6 +357,16 @@
         const center = place(memo.glyph.x + memo.glyph.width / 2, memo.glyph.y + memo.glyph.height / 2 + line.placedTop - line.top);
         const gx = center.x, gy = center.y;
         const preferred = { x: left + gx + memo.item.dx * font, y: gy + memo.item.dy * font };
+        if (memo.item.style === 'direct') {
+          // Direct text belongs exactly where it was written: clamp it into
+          // the page like the live stage does, never divert it to note pages.
+          const itemSettings = { ...memoSettings, fontSize: memo.item.fontSize ?? memoSettings.fontSize };
+          const px = clamp(preferred.x, memoInset, Math.max(memoInset, paper.width - memoInset - memo.width));
+          const py = clamp(preferred.y, memoInset, Math.max(memoInset, paper.height - memoInset - memo.height));
+          printBubble(memo.item, itemSettings, px - left, py, 0, 0, canvas, scale);
+          obstacles.push({ left: px, right: px + memo.width, top: py, bottom: py + memo.height });
+          continue;
+        }
         const position = memoPosition(memo.width, memo.height, preferred, obstacles, paper, memoInset, gap);
         if (!position) {
           overflow.push({ ...memo, line }); continue;
