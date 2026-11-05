@@ -308,7 +308,9 @@
     const anchor = window.Reader.capture();
     cancelPending(); window.Reader.setRubyMode(false); enabled = Boolean(model && on);
     if (!enabled && tool === 'ruby') tool = 'pen';
-    controls(); render(); window.Reader.restore(anchor);
+    controls(); render();
+    if (document.getElementById('reading').classList.contains('mobile-manuscript')) window.Reader.refresh(anchor);
+    else window.Reader.restore(anchor);
   }
   function strokePoints(item, geometry) {
     const glyph = geometry.byOffset.get(item.offset);

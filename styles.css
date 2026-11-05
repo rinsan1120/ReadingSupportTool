@@ -927,3 +927,50 @@ html { scrollbar-gutter: stable; }
 
 /* Small viewport measurement has no effect on document flow or scroll bounds. */
 .reader-viewport-probe { position:fixed; top:0; left:0; width:0; height:100svh; visibility:hidden; pointer-events:none; contain:strict; }
+
+/* Mobile manuscript controls live outside document flow. The right gutter is
+   permanent, so the tab cannot cover text/ruby or change wrapping on opening. */
+#mobile-reader-tab, #mobile-writing-dock, #mobile-writing-done { display:none; }
+#mobile-reader-menu:not([open]) { display:none; }
+@media(max-width:600px) {
+  body:has(.mobile-manuscript:not([hidden])) { min-height:100svh; }
+  .mobile-manuscript { --mobile-page-height:0px; --mobile-dock-height:0px; padding-bottom:calc(var(--mobile-page-height) + var(--mobile-dock-height) + env(safe-area-inset-bottom) + 20px); }
+  .mobile-manuscript .reader-controls { position:static; height:env(safe-area-inset-top,0px); min-height:0; transform:none; transition:none; }
+  .mobile-manuscript #reader-progress { display:none; }
+  .mobile-manuscript #direction-notice:not([hidden]) { position:fixed; top:calc(var(--mobile-visual-top,0px) + env(safe-area-inset-top)); left:env(safe-area-inset-left); right:calc(36px + env(safe-area-inset-right)); z-index:10; background:var(--panel); }
+  .mobile-manuscript #reader-viewport { margin-left:env(safe-area-inset-left); margin-right:calc(44px + env(safe-area-inset-right)); }
+  .mobile-manuscript #reader { margin-top:12px; }
+  .mobile-manuscript #mobile-reader-tab { display:flex; flex-direction:column; gap:2px; position:fixed; right:env(safe-area-inset-right); top:calc(var(--mobile-visual-top,0px) + env(safe-area-inset-top) + var(--mobile-visual-height,100dvh) * .35); z-index:20; width:44px; min-height:64px; padding:6px 2px; border-radius:10px 0 0 10px; font-size:11px; touch-action:manipulation; }
+  #mobile-reader-tab > span:first-child { font-size:18px; }
+  #mobile-reader-menu { position:fixed; inset:var(--mobile-visual-top,0px) 0 auto auto; margin:0; width:min(340px,calc(100% - 44px)); max-width:none; height:var(--mobile-visual-height,100dvh); max-height:100dvh; box-sizing:border-box; padding:calc(12px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) 12px; border:0; border-left:1px solid var(--border); border-radius:16px 0 0 16px; overflow-y:auto; overscroll-behavior:contain; }
+  #mobile-reader-menu::backdrop { background:#0008; }
+  .mobile-menu-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; }
+  .mobile-menu-heading h2 { margin:0; font-size:18px; }
+  #mobile-reader-menu .reader-toolbar { display:flex; flex-direction:column; padding:0; border:0; background:none; gap:8px; align-items:stretch; }
+  #mobile-reader-menu #reader-topline { display:flex; flex-direction:column; gap:8px; }
+  #mobile-reader-menu #reader-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  #mobile-reader-menu #writing-direction { grid-column:1/-1; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  #mobile-reader-menu button, #mobile-reader-menu #reader-topline button { flex:none; width:100%; min-width:0; height:auto; min-height:48px; border-radius:8px; padding:10px 6px; font-size:14px; flex-direction:row; gap:6px; touch-action:manipulation; }
+  #mobile-reader-menu .mobile-menu-heading button { width:auto; flex-shrink:0; padding-inline:12px; }
+  #mobile-reader-menu .tool-icon { width:20px; height:20px; flex-shrink:0; }
+  #mobile-reader-menu .button-state { font-size:10px; }
+  #mobile-reader-menu #reader-save-state { display:none!important; }
+  #mobile-reader-menu #reader-save-state:not([hidden]) { display:inline-block!important; }
+  .mobile-manuscript #page-controls { bottom:var(--mobile-visual-bottom,0px)!important; padding-left:max(6px,env(safe-area-inset-left)); padding-right:max(6px,env(safe-area-inset-right)); touch-action:manipulation; }
+  .mobile-manuscript #mobile-writing-dock { display:block; position:fixed; bottom:calc(var(--mobile-visual-bottom,0px) + var(--mobile-page-height)); left:env(safe-area-inset-left); right:env(safe-area-inset-right); z-index:10; }
+  .mobile-manuscript #writing-toolbar:not([hidden]) { display:grid; grid-template-columns:minmax(0,1fr) 76px; grid-template-rows:48px 44px minmax(0,1fr); gap:4px; height:156px; max-height:40dvh; box-sizing:border-box; padding:6px 8px; border-top:1px solid var(--border); border-bottom:0; overflow-y:auto; }
+  .mobile-manuscript #mobile-writing-done { display:flex; grid-column:2; grid-row:1; padding:6px; font-size:12px; border-color:var(--blue); }
+  .mobile-manuscript .writing-tools { grid-column:1; grid-row:1; display:flex; max-width:100%; margin:0; overflow-x:auto; overscroll-behavior-x:contain; }
+  .mobile-manuscript .writing-tools button { flex:0 0 auto; min-width:64px; min-height:44px; }
+  .mobile-manuscript #pen-options, .mobile-manuscript #marker-colors { grid-column:1/-1; grid-row:2; flex-wrap:nowrap; justify-content:flex-start; overflow-x:auto; margin:0; }
+  .mobile-manuscript #pen-options button, .mobile-manuscript #marker-colors button { flex:0 0 auto; min-height:44px; }
+  .mobile-manuscript #writing-tool-help, .mobile-manuscript #writing-toolbar[data-tool=memo] #writing-tool-help { position:static; grid-column:1/-1; grid-row:3; width:auto; height:auto; clip-path:none; overflow-y:auto; margin:0; text-align:left; font-size:11px; }
+  body.zen-reading .mobile-manuscript #mobile-reader-tab { display:none; }
+  body.zen-reading .mobile-manuscript .reader-controls { display:block; }
+  body.zen-reading .mobile-manuscript #direction-notice { display:none; }
+  body.zen-reading .mobile-manuscript .zen-bar { bottom:calc(var(--mobile-visual-bottom,0px) + var(--mobile-page-height) + 8px); right:max(12px,env(safe-area-inset-right)); }
+}
+@media(max-width:600px) and (prefers-reduced-motion:no-preference) {
+  #mobile-reader-menu[open] { animation:mobile-reader-enter .16s ease-out; }
+  @keyframes mobile-reader-enter { from { transform:translateX(100%); } to { transform:translateX(0); } }
+}

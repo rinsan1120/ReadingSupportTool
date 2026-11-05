@@ -235,6 +235,7 @@
     $('time-annotation-retention').hidden = !hasReadings(timeAnnotations) && !timeMarks?.hasMarks;
     $('writing-retention').hidden = !readMarks.hasMarks;
     syncScreenId();
+    syncMobileReader();
     window.scrollTo(0, 0);
     $(next).querySelector('h1')?.focus({ preventScroll: true });
   }
@@ -563,7 +564,7 @@
   function closeWritingMenu() {
     closeSettings();
     window.ManuscriptWriting.setMode(false);
-    $('writing-mode').focus({ preventScroll: true });
+    (mobileReaderActive() ? $('mobile-reader-tab') : $('writing-mode')).focus({ preventScroll: true });
   }
   $('writing-mode').onclick = async () => {
     if (window.ManuscriptWriting.enabled) { closeWritingMenu(); return; }
@@ -571,6 +572,72 @@
     closeSettings();
     window.ManuscriptWriting.setMode(true);
   };
+  $('mobile-writing-done').onclick = closeWritingMenu;
+
+  // Reuse the actual controls and handlers; desktop and measurement retain
+  // their original DOM order. Opening the drawer never resizes the manuscript.
+  const mobileReaderMedia = matchMedia('(max-width: 600px)');
+  const readerToolbar = document.querySelector('.reader-toolbar');
+  const writingToolbar = $('writing-toolbar');
+  const toolbarHome = document.createComment('reader toolbar');
+  const writingHome = document.createComment('writing toolbar');
+  readerToolbar.before(toolbarHome); writingToolbar.before(writingHome);
+  const mobileMenu = $('mobile-reader-menu');
+  function mobileReaderActive() { return mobileReaderMedia.matches && view === 'reading' && mode === 'read'; }
+  function syncMobileReader() {
+    const active = mobileReaderActive();
+    $('reading').classList.toggle('mobile-manuscript', active);
+    if (active) {
+      $('mobile-reader-actions').append(readerToolbar);
+      $('mobile-writing-dock').append(writingToolbar);
+    } else {
+      mobileMenu.close();
+      toolbarHome.after(readerToolbar); writingHome.after(writingToolbar);
+    }
+    fitMobileReader();
+  }
+  function closeMobileReader() {
+    mobileMenu.close();
+  }
+  $('mobile-reader-tab').onclick = () => {
+    if (!mobileReaderActive()) return;
+    mobileMenu.showModal();
+    $('mobile-reader-tab').setAttribute('aria-expanded', 'true');
+    $('mobile-reader-close').focus({ preventScroll: true });
+  };
+  $('mobile-reader-close').onclick = closeMobileReader;
+  mobileMenu.addEventListener('close', () => $('mobile-reader-tab').setAttribute('aria-expanded', 'false'));
+  // Close before the target's existing handler opens a dialog or changes view.
+  mobileMenu.addEventListener('click', event => {
+    if (event.target.closest('.reader-toolbar button')) closeMobileReader();
+    if (event.target === mobileMenu) {
+      const rect = mobileMenu.getBoundingClientRect();
+      if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closeMobileReader();
+    }
+  }, true);
+  function fitMobileReader() {
+    const viewport = window.visualViewport;
+    const height = viewport?.height ?? innerHeight, top = viewport?.offsetTop ?? 0;
+    const reading = $('reading');
+    reading.style.setProperty('--mobile-visual-top', `${top}px`);
+    reading.style.setProperty('--mobile-visual-height', `${height}px`);
+    reading.style.setProperty('--mobile-visual-bottom', `${Math.max(0, innerHeight - height - top)}px`);
+    const pageHeight = $('page-controls').getBoundingClientRect().height;
+    reading.style.setProperty('--mobile-page-height', `${pageHeight}px`);
+    const dockHeight = mobileReaderActive() ? $('mobile-writing-dock').getBoundingClientRect().height : 0;
+    reading.style.setProperty('--mobile-dock-height', `${dockHeight}px`);
+  }
+  new ResizeObserver(fitMobileReader).observe($('page-controls'));
+  new ResizeObserver(fitMobileReader).observe($('mobile-writing-dock'));
+  document.addEventListener('reader-writing-mode', fitMobileReader);
+  mobileReaderMedia.addEventListener('change', () => {
+    const anchor = window.Reader.capture();
+    syncMobileReader();
+    if (view === 'reading') window.Reader.refresh(anchor);
+  });
+  window.visualViewport?.addEventListener('resize', fitMobileReader);
+  window.visualViewport?.addEventListener('scroll', fitMobileReader);
+  addEventListener('resize', fitMobileReader);
   window.Reader.setEditModeGuard(approveEditing);
   document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.dataset.close === 'settings-dialog' ? closeSettings() : $(b.dataset.close).close());
   const settingsMobile = matchMedia('(max-width: 600px)');

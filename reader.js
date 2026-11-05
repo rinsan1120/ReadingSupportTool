@@ -14,9 +14,11 @@
   const reading = document.getElementById('reading');
   const pageControls = document.getElementById('page-controls');
   const paged = () => displayMode === 'pages' && !printLayout;
+  const mobileDockHeight = () => reading.classList.contains('mobile-manuscript')
+    ? document.getElementById('mobile-writing-dock').getBoundingClientRect().height : 0;
   const pageHeight = () => Math.max(60, Math.floor(Math.min(innerHeight, window.visualViewport?.height ?? innerHeight)
     - controls.getBoundingClientRect().height - (measurementBar.hidden ? 0 : measurementBar.getBoundingClientRect().height)
-    - Math.max(52, pageControls.getBoundingClientRect().height) - 32));
+    - Math.max(52, pageControls.getBoundingClientRect().height) - mobileDockHeight() - 32));
   const vertical = () => direction === 'vertical';
   const measurementBar = document.getElementById('measurement-bar');
   const controls = document.querySelector('.reader-controls');
@@ -885,6 +887,7 @@
   viewportObserver.observe(controls, { box: 'border-box' });
   viewportObserver.observe(measurementBar, { box: 'border-box' });
   viewportObserver.observe(pageControls, { box: 'border-box' });
+  viewportObserver.observe(document.getElementById('mobile-writing-dock'), { box: 'border-box' });
   viewportObserver.observe(viewportProbe, { box: 'border-box' });
   window.visualViewport?.addEventListener('resize', refreshVisibleHeight);
   addEventListener('resize', refreshVisibleHeight);

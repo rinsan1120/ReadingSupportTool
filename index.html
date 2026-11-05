@@ -7,15 +7,15 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="description" content="文章を読みやすく整え、自分の朗読速度から作品の朗読時間を調べるツール。">
   <title>よみじたく | 朗読支援サイト</title>
-  <link rel="stylesheet" href="styles.css?v=bookshelf-reading-estimate">
+  <link rel="stylesheet" href="styles.css?v=mobile-reader-menu">
   <script src="samples.js" defer></script>
   <script src="reading-annotations.js?v=direct-memo" defer></script>
   <script src="html-ruby.js?v=clipboard-fragments" defer></script>
-  <script src="reader.js?v=ruby-help" defer></script>
-  <script src="manuscript-writing.js?v=memo-editor" defer></script>
+  <script src="reader.js?v=mobile-reader-menu" defer></script>
+  <script src="manuscript-writing.js?v=mobile-reader-menu" defer></script>
   <script src="manuscript-print.js?v=memo-editor" defer></script>
   <script src="user-library.js?v=paper-save" defer></script>
-  <script src="app.js?v=paper-save" defer></script>
+  <script src="app.js?v=mobile-reader-menu" defer></script>
 </head>
 <body>
   <header class="site-header"><button class="brand" data-go="home"><span aria-hidden="true">☾</span> よみじたく <small>朗読支援サイト</small></button></header>
@@ -76,6 +76,12 @@
       <div class="inline"><button id="prepare-time" class="primary">文章を確認して計測へ →</button><button id="existing-results" hidden>これまでの結果を見る</button></div>
     </section>
     <section id="reading" class="view reading-view" hidden aria-labelledby="reading-title">
+      <button id="mobile-reader-tab" type="button" aria-label="原稿の操作メニューを開く" aria-haspopup="dialog" aria-controls="mobile-reader-menu" aria-expanded="false"><span aria-hidden="true">☰</span><span>操作</span></button>
+      <dialog id="mobile-reader-menu" aria-labelledby="mobile-reader-menu-title">
+        <div class="mobile-menu-heading"><h2 id="mobile-reader-menu-title">原稿の操作</h2><button id="mobile-reader-close" type="button" aria-label="操作メニューを閉じる">閉じる</button></div>
+        <div id="mobile-reader-actions"></div>
+      </dialog>
+      <div id="mobile-writing-dock"></div>
       <div class="reader-controls">
         <div id="reader-progress" class="reader-progress"><span id="reader-state" class="reader-state" role="status"></span><span id="display-mode-state" class="display-mode-state">スクロール</span><ol id="reader-steps" class="flow-steps" aria-label="作業の進行状況"></ol></div>
         <div class="reader-toolbar">
@@ -100,6 +106,7 @@
         </div>
         <p id="direction-notice" role="status" hidden>ペンの書き込みは、縦書きと横書きで別々に保存されます。<br>切り替え先には引き継がれませんが、元の表示方向に戻すと、以前の書き込みが再表示されます。</p>
         <div id="writing-toolbar" aria-label="書き込みツール" hidden>
+          <button id="mobile-writing-done" type="button">書込を完了</button>
           <div class="writing-tools" role="group" aria-label="使用するツール"><button data-writing-tool="pen" aria-pressed="true" aria-label="ペン"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m4 16-1 5 5-1L21 7l-5-5ZM13 5l5 5"/></svg><span>ペン</span></button><button data-writing-tool="marker" aria-pressed="false" aria-label="マーカー"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m4 15 9-12 7 5-9 12Zm0 0 7 5M2 22h12"/></svg><span>マーカー</span></button><button data-writing-tool="memo" aria-pressed="false" aria-label="文字メモ"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h16v13l-6 5H4ZM14 21v-5h6M7 7h10M7 11h8"/></svg><span>メモ</span></button><button data-writing-tool="ruby" aria-pressed="false" aria-label="ルビ"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><text x="3" y="7" font-size="6" fill="currentColor" stroke="none">よみ</text><text x="3" y="21" font-size="15" fill="currentColor" stroke="none">字</text></svg><span>ルビ</span></button><button data-writing-tool="eraser" aria-pressed="false" aria-label="消去"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m3 15 12-12 7 7-12 12H8Zm5-5 9 9M10 22h12"/></svg><span>消去</span></button><button id="writing-undo" aria-label="元に戻す" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4 2 10l6 6M2 10h12a7 7 0 0 1 0 14"/></svg><span>戻す</span></button></div>
           <div id="pen-options" role="group" aria-label="ペンの色と操作" hidden><button id="pen-line-mode" aria-pressed="false">直線</button><button data-pen-color="red" aria-pressed="true">赤</button><button data-pen-color="blue" aria-pressed="false">青</button><button data-pen-color="green" aria-pressed="false">緑</button><button data-writing-tool="move" aria-pressed="false" aria-label="ペンを移動"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20M8 6l4-4 4 4M8 18l4 4 4-4M6 8l-4 4 4 4M18 8l4 4-4 4"/></svg><span>移動</span></button></div>
           <div id="marker-colors" role="group" aria-label="マーカーの色" hidden><button data-marker-color="yellow" aria-pressed="true">黄色</button><button data-marker-color="lightblue" aria-pressed="false">水色</button><button data-marker-color="pink" aria-pressed="false">ピンク</button></div>
