@@ -248,6 +248,26 @@
     }
     return lines;
   }
+  function verticalColumnOverflow(column) {
+    if (!mobile.matches || printLayout) return { left: 0, right: 0 };
+    const box = column.getBoundingClientRect();
+    let left = box.left, right = box.right;
+    const include = rect => {
+      if (!rect.width || !rect.height) return;
+      left = Math.min(left, rect.left); right = Math.max(right, rect.right);
+    };
+    // Range bounds expose glyph/fallback-font overflow and native rt placement.
+    // Include the ruby wrapper too: its padding reserves space around the ink.
+    // Measure rt text explicitly rather than relying on a browser's ruby range.
+    const walker = document.createTreeWalker(column, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      range.selectNodeContents(walker.currentNode);
+      for (const rect of range.getClientRects()) include(rect);
+    }
+    column.querySelectorAll('.source-ruby-unit').forEach(unit => include(unit.getBoundingClientRect()));
+    // Round outward to CSS subpixels; never round a required ink extent down.
+    return { left: Math.ceil((box.left - left) * 64) / 64, right: Math.ceil((right - box.right) * 64) / 64 };
+  }
   function layout(anchor = capture()) {
     if (printing() || root.closest('[hidden]')) return;
     viewport.classList.toggle('is-paged', paged());
@@ -335,16 +355,26 @@
         const pitch = settings.fontSize * settings.height;
         const pageWidth = root.clientWidth;
         let page = null, used = 0, count = 0;
+        const newPage = () => {
+          page = document.createElement('div'); page.className = 'vertical-page';
+          page.style.height = `${layoutColumnHeight}px`; b.el.append(page); used = 0;
+        };
         for (const line of b.lines) {
           const gap = settings.breaks && count && count % settings.breaks === 0 ? gapSize : 0;
-          if (!page || used + gap + pitch > pageWidth + .1) {
-            page = document.createElement('div'); page.className = 'vertical-page';
-            page.style.height = `${layoutColumnHeight}px`; b.el.append(page); used = 0;
-          } else used += gap;
+          if (!page) newPage();
           const span = document.createElement('span'); span.className = 'vertical-column';
-          span.style.right = `${used}px`; span.style.width = `${pitch}px`;
+          span.style.right = '0px'; span.style.width = `${pitch}px`;
           appendRuns(b, span, line.start, line.end); page.append(span);
-          used += pitch; count++;
+          const overflow = verticalColumnOverflow(span);
+          const occupiedWidth = pitch + overflow.left + overflow.right;
+          if (used && used + gap + occupiedWidth > pageWidth + .1) {
+            newPage(); page.append(span);
+          } else used += gap;
+          // Keep the native column width (and requested spacing) intact, but
+          // pack its complete painted footprint into the section. Geometry,
+          // source hit testing and page splitting all read these same DOM nodes.
+          span.style.right = `${used + overflow.right}px`;
+          used += occupiedWidth; count++;
           // A frozen column may be taller with another engine's font metrics.
           // Expand its section instead of clipping ink or wrapping into a neighbour.
           const extent = span.scrollHeight;
