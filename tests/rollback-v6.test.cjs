@@ -23,3 +23,13 @@ test('invalid direct-memo fields reject; legacy versions still read',()=>{
  assert.throws(()=>app.ManuscriptMarks.restoreManuscript(JSON.stringify({...base,marks:[{...memo,style:'direct',fontSize:20,extra:1}]})),/未対応/);
  for(const version of [1,2,3,4,5]){const d={format:'reading-support-manuscript',version,text:'本文',annotations:[],sourceRubies:[],marks:[],memoSettings:{fontSize:16,opacity:.9}};assert.equal(app.ManuscriptMarks.restoreManuscript(JSON.stringify(d)).manuscript.source,'本文')}
 });
+test('user data paperMode is validated and preserved by both builds',()=>{
+ const data={format:'yomijitaku-user',version:1,profile:{name:''},displaySettings:{mode:'pages',width:900,fontSize:22,height:1.8,breaks:5},paperMode:true,manuscripts:[],activeId:null,history:[],target:'',plannedMinutes:'20'};
+ assert.equal(app.UserLibrary.parse(JSON.stringify(data)).paperMode,true);
+ assert.equal(normal.UserLibrary.parse(JSON.stringify(data)).paperMode,true);
+ const absent={...data};delete absent.paperMode;
+ assert.equal(app.UserLibrary.parse(JSON.stringify(absent)).paperMode,false);
+ assert.equal(normal.UserLibrary.parse(JSON.stringify(absent)).paperMode,false);
+ assert.throws(()=>app.UserLibrary.parse(JSON.stringify({...data,paperMode:'on'})));
+ assert.throws(()=>normal.UserLibrary.parse(JSON.stringify({...data,paperMode:1})));
+});

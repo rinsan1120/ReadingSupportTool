@@ -641,7 +641,7 @@
   $('paper-mode').onclick = () => {
     if (view !== 'reading' || phase !== 'idle') return;
     const on = !$('reader-stage').classList.contains('paper-mode');
-    if (mode === 'read') readPaper = on;
+    if (mode === 'read') { readPaper = on; library.paperMode = on; syncLibrary(); }
     else timingPaper[sourceType] = { text: displayedText, on };
     applyPaper(on);
   };
@@ -1009,7 +1009,7 @@
     pendingReadPaste = book?.pending ? { model: window.ReadingAnnotations.fromData(book.pending), input: book.draft } : null;
     $('manuscript-title').value = book?.title || '';
     $('read-count').textContent = `${countText($('read-text').value)}文字`;
-    readPaper = false; readMeasurementReturn = null;
+    readPaper = library?.paperMode === true; readMeasurementReturn = null;
     renderIdentity();
   }
   let libraryRenderKey = '', renamingId = null;
