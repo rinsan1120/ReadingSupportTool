@@ -1,5 +1,5 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),cp=require('node:child_process');
-function load(normal){const c=vm.createContext({window:{},Intl,TextEncoder,structuredClone,Event,document:{dispatchEvent(){}}});for(const name of ['reading-annotations.js','manuscript-writing.js','user-library.js']){let s=normal?cp.execFileSync('git',['show','vertical-writing:'+name],{encoding:'utf8'}):fs.readFileSync(name,'utf8');if(name==='manuscript-writing.js')s=s.slice(0,s.indexOf('  const $ ='))+'})();';vm.runInContext(s,c)}return c.window}
+function load(normal){const c=vm.createContext({window:{},Intl,TextEncoder,structuredClone,Event,document:{dispatchEvent(){}}});for(const name of ['reading-annotations.js','manuscript-writing.js','user-library.js']){let s=normal?cp.execFileSync('git',['show','main:'+name],{encoding:'utf8'}):fs.readFileSync(name,'utf8');if(name==='manuscript-writing.js')s=s.slice(0,s.indexOf('  const $ ='))+'})();';vm.runInContext(s,c)}return c.window}
 const app=load(false),normal=load(true);
 test('normal -> rollback edits -> normal retains v5 hidden data',()=>{
  const r=new normal.ReadingAnnotations('本文。'),m=new normal.ManuscriptMarks(r.source);m.direction='vertical';m.add({type:'memo',offset:0,text:'元',color:'pink',dx:1,dy:2,tx:0,ty:0,verticalPosition:{dx:-2,dy:3,tx:0,ty:0}});

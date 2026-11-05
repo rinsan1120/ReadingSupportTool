@@ -2,14 +2,25 @@
 (() => {
   'use strict';
   const KEY = 'yomijitaku-user-v1', MAX_BYTES = 30 * 1024 * 1024;
-  const empty = () => ({ format: 'yomijitaku-user', version: 1, profile: { name: '' }, manuscripts: [], activeId: null, history: [], target: '', plannedMinutes: '20' });
+  const defaultDisplaySettings = () => ({ mode: 'scroll', width: 900, fontSize: 22, height: 1.8, breaks: 5 });
+  const empty = () => ({ format: 'yomijitaku-user', version: 1, profile: { name: '' }, displaySettings: defaultDisplaySettings(), manuscripts: [], activeId: null, history: [], target: '', plannedMinutes: '20' });
   function validate(data) {
     const fail = () => { throw new Error('ファイルの形式・内容が正しくありません。よみじたくのユーザーデータJSONかどうかを確認してください。'); };
     const fields = (value, allowed) => {
       if (value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).some(key => !allowed.includes(key))) throw new Error('未対応の保存情報があります。情報を保護するため読み込みを中止しました。');
     };
-    fields(data, ['format', 'version', 'profile', 'manuscripts', 'activeId', 'history', 'target', 'plannedMinutes']);
+    fields(data, ['format', 'version', 'profile', 'displaySettings', 'manuscripts', 'activeId', 'history', 'target', 'plannedMinutes']);
     fields(data?.profile, ['name']);
+    // Reader display settings belong to the newer build's UI. This build does
+    // not use them, but validates and carries them verbatim so a round trip
+    // through the rollback build never loses the reader's place or layout.
+    fields(data?.displaySettings, ['mode', 'width', 'fontSize', 'height', 'breaks']);
+    const displayDefaults = defaultDisplaySettings();
+    const displaySettings = Object.fromEntries(Object.keys(displayDefaults).map(key => [key, data?.displaySettings?.[key] ?? displayDefaults[key]]));
+    if (!['scroll', 'pages'].includes(displaySettings.mode) || !Number.isFinite(displaySettings.width) || displaySettings.width < 480 || displaySettings.width > 1400 ||
+        !Number.isFinite(displaySettings.fontSize) || displaySettings.fontSize < 18 || displaySettings.fontSize > 36 ||
+        !Number.isFinite(displaySettings.height) || displaySettings.height < 1.2 || displaySettings.height > 2.6 ||
+        !Number.isInteger(displaySettings.breaks) || displaySettings.breaks < 0 || displaySettings.breaks > 10) fail();
     const string = (v, max) => typeof v === 'string' && v.length <= max;
     const date = v => typeof v === 'string' && Number.isFinite(Date.parse(v));
     if (!data || data.format !== 'yomijitaku-user' || data.version !== 1 || !string(data.profile?.name, 80) ||
@@ -41,7 +52,7 @@
           !['sample', 'custom'].includes(r.type) || (r.measuredAt !== null && !date(r.measuredAt)) || !string(r.title, 120)) fail();
       return { characters: r.characters, seconds: r.seconds, type: r.type, measuredAt: r.measuredAt, title: r.title };
     });
-    return { ...empty(), profile: { name: data.profile.name }, manuscripts, activeId: data.activeId, history, target: data.target, plannedMinutes: data.plannedMinutes };
+    return { ...empty(), profile: { name: data.profile.name }, displaySettings, manuscripts, activeId: data.activeId, history, target: data.target, plannedMinutes: data.plannedMinutes };
   }
   function parse(json) {
     if (new TextEncoder().encode(json).length > MAX_BYTES) throw new Error('ファイルが大きすぎます（上限は約30MBです）。');

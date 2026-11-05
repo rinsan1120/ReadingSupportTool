@@ -45,7 +45,7 @@
     }
     static fromData(data) {
       if (!data || typeof data !== 'object' || Array.isArray(data) || data.format !== 'reading-support-manuscript') throw new Error('原稿ファイルのformatが一致しません。');
-      if (![1, 2, 3, 4, 5].includes(data.version)) throw new Error('対応していないversionです。対応バージョンは1〜5です。');
+      if (![1, 2, 3, 4, 5, 6].includes(data.version)) throw new Error('対応していないversionです。対応バージョンは1〜6です。');
       const fields = (value, allowed) => {
         if (value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).some(key => !allowed.includes(key))) throw new Error('未対応の原稿フィールドがあります。情報を保護するため読み込みを中止しました。');
       };

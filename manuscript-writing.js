@@ -110,7 +110,7 @@
         const label = `書き込み${index + 1}件目：`;
         const fields = {
           pen: ['id', 'type', 'offset', 'layoutKey', 'points', 'witnesses', 'fontSize', 'color', 'direction'],
-          marker: ['id', 'type', 'start', 'end', 'color'], memo: ['id', 'type', 'offset', 'dx', 'dy', 'tx', 'ty', 'color', 'text', 'verticalPosition']
+          marker: ['id', 'type', 'start', 'end', 'color'], memo: ['id', 'type', 'offset', 'dx', 'dy', 'tx', 'ty', 'color', 'text', 'verticalPosition', 'style', 'fontSize']
         };
         if (!item || typeof item !== 'object' || Array.isArray(item) || typeof item.type !== 'string' || !Object.hasOwn(fields, item.type)) throw new Error(`${label}書き込み種類が不正です。`);
         object(item, fields[item.type], label);
@@ -130,6 +130,17 @@
             if (!this.MARKER_COLORS.includes(item.color)) throw new Error(`${label}メモの色が不正です。`);
             if (typeof item.text !== 'string' || !item.text.trim() || item.text.length > 200) throw new Error(`${label}メモは空白だけでない200文字以内の文字列にしてください。`);
             restored.items.push({ ...base, offset: item.offset, dx: item.dx, dy: item.dy, tx: item.tx, ty: item.ty, color: item.color, text: item.text });
+            // Direct-write memos are newer than this build's UI: the fields
+            // are validated and preserved verbatim, and the memo is shown as
+            // an ordinary bubble so nothing is hidden or lost.
+            if (item.style !== undefined) {
+              if (!['bubble', 'direct'].includes(item.style)) throw new Error(`${label}メモの形式が不正です。`);
+              restored.items.at(-1).style = item.style;
+            }
+            if (item.fontSize !== undefined) {
+              if (!Number.isFinite(item.fontSize) || item.fontSize < 8 || item.fontSize > 72) throw new Error(`${label}メモの文字サイズは8〜72で指定してください。`);
+              restored.items.at(-1).fontSize = item.fontSize;
+            }
             if (item.verticalPosition !== undefined) {
               object(item.verticalPosition, ['dx', 'dy', 'tx', 'ty'], label);
               coordinates({ x: item.verticalPosition.dx, y: item.verticalPosition.dy }, ['x', 'y'], label);
@@ -184,7 +195,7 @@
       if (manuscript.source !== markings.source) throw new Error('本文と書き込みの原文が一致しません。本文を確認してから保存してください。');
       const validated = window.ReadingAnnotations.fromData(manuscript.toJSON());
       const marks = this.fromItems(markings.items, validated, markings.memoSettings).items;
-      const json = JSON.stringify({ ...validated.toJSON(), version: 5, marks, memoSettings: this.settings(markings.memoSettings), writingDirection: markings.direction }, null, 2);
+      const json = JSON.stringify({ ...validated.toJSON(), version: 6, marks, memoSettings: this.settings(markings.memoSettings), writingDirection: markings.direction }, null, 2);
       if (json.length > window.ReadingAnnotations.MAX_FILE_BYTES || new TextEncoder().encode(json).length > window.ReadingAnnotations.MAX_FILE_BYTES) throw new Error('原稿ファイルは10MiBまでです。');
       return json;
     }
