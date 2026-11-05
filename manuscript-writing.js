@@ -203,6 +203,8 @@
   const editor = $('writing-memo-dialog'), input = $('writing-memo-input');
   let model = null, editable = true, enabled = false, tool = 'pen', markerColor = 'yellow', gesture = null, draftMemo = null, rendering = false;
   let selectedMemo = null, selectedPen = null, penColor = 'red', penMode = 'free', lineDraft = null, linePress = null;
+  let scrolling = false;
+  const mobileWriting = matchMedia('(max-width: 600px)');
   let memoDefaults = { style: 'bubble', color: 'yellow', sizes: {} }, dialogStyle = 'bubble', dialogColor = 'yellow', dialogSizes = {};
   try {
     const saved = JSON.parse(localStorage.getItem('yomijitaku-memo-defaults'));
@@ -284,7 +286,10 @@
     $('writing-mode').hidden = !editable;
     if (changed) stage.dispatchEvent(new CustomEvent('reader-writing-mode', { bubbles: true }));
     stage.classList.toggle('writing-active', enabled);
-    stage.classList.toggle('writing-drag', enabled && !['memo', 'ruby', 'move'].includes(tool));
+    stage.classList.toggle('writing-drag', enabled && !scrolling && !['memo', 'ruby', 'move'].includes(tool));
+    stage.classList.toggle('writing-scroll', enabled && scrolling);
+    $('mobile-writing-scroll').setAttribute('aria-pressed', String(scrolling));
+    $('mobile-writing-scroll').textContent = scrolling ? '書込に戻る' : 'スクロール';
     document.querySelectorAll('[data-writing-tool]').forEach(button => button.setAttribute('aria-pressed',
       String(button.dataset.writingTool === tool || button.dataset.writingTool === 'pen' && tool === 'move')));
     $('pen-options').hidden = !enabled || !['pen', 'move'].includes(tool);
@@ -297,7 +302,7 @@
     $('memo-opacity-setting').hidden = !editable || !model;
     $('memo-opacity').value = model?.memoSettings.opacity ?? .9;
     $('memo-opacity-value').textContent = `${Math.round((model?.memoSettings.opacity ?? .9) * 100)}%`;
-    const helpText = tool === 'pen' && penMode === 'line'
+    const helpText = scrolling ? '原稿を上下にスクロールできます。「書込に戻る」で直前のツールに戻ります。' : tool === 'pen' && penMode === 'line'
       ? '色を選び、始点をクリック。カーソル位置まで線が伸びるので、終点をクリックして確定。Escで取り消し。'
       : help[tool];
     if ($('writing-tool-help').textContent !== helpText) $('writing-tool-help').textContent = helpText;
@@ -306,12 +311,23 @@
   function setMode(on) {
     if (on && !editable) return;
     const anchor = window.Reader.capture();
-    cancelPending(); window.Reader.setRubyMode(false); enabled = Boolean(model && on);
+    cancelPending(); scrolling = false; window.Reader.setRubyMode(false); enabled = Boolean(model && on);
     if (!enabled && tool === 'ruby') tool = 'pen';
     controls(); render();
     if (document.getElementById('reading').classList.contains('mobile-manuscript')) window.Reader.refresh(anchor);
     else window.Reader.restore(anchor);
   }
+  function setScrolling(on) {
+    if (!enabled || on && !mobileWriting.matches) return;
+    cancelPending();
+    scrolling = Boolean(on);
+    // Suspend ruby hit testing too, without changing the selected writing tool,
+    // pen/marker colours or line mode. Scrolling never edits the stored model.
+    if (tool === 'ruby') window.Reader.setRubyMode(!scrolling);
+    controls(); render();
+  }
+  $('mobile-writing-scroll').onclick = () => setScrolling(!scrolling);
+  mobileWriting.addEventListener('change', () => { if (!mobileWriting.matches && scrolling) setScrolling(false); });
   function strokePoints(item, geometry) {
     const glyph = geometry.byOffset.get(item.offset);
     if (!glyph) return null;
@@ -532,7 +548,7 @@
     } catch (error) { alert(`赤ペンを移動できません。${error.message}`); }
   }
   stage.addEventListener('pointerdown', e => {
-    if (!enabled || !editable) return;
+    if (!enabled || !editable || scrolling) return;
     if (tool === 'ruby') return;
     if (!e.isPrimary) { releaseGesture(); render(); return; }
     if (e.button !== 0 || editor.open) return;
@@ -675,7 +691,7 @@
     if (next === 'ruby') {
       if (!await window.Reader.activateRubyMode()) return;
     } else window.Reader.setRubyMode(false);
-    tool = next; controls(); render();
+    scrolling = false; tool = next; controls(); render();
   });
   document.querySelectorAll('[data-marker-color]').forEach(button => button.onclick = () => {
     if (!editable || !enabled) return;
@@ -754,13 +770,14 @@
       }
       return { source: model.source, items: copy((forPrint ? selected : model.items).map(item => forPrint && item.type === 'memo' ? memoView(item) : item)), memoSettings: copy(model.memoSettings), pens };
     },
-    show(next, options = {}) { cancelPending(); model = next; editable = options.editable !== false; enabled = false; controls(); render(); },
-    leave() { cancelPending(); enabled = false; model = null; controls(); render(); },
+    show(next, options = {}) { cancelPending(); scrolling = false; model = next; editable = options.editable !== false; enabled = false; controls(); render(); },
+    leave() { cancelPending(); scrolling = false; enabled = false; model = null; controls(); render(); },
     setMode, cancelPending,
     get hasMarks() { return Boolean(model?.hasMarks); },
     get hasPens() { return Boolean(model?.items.some(item => item.type === 'pen')); },
     get hasPending() { return Boolean(gesture || draftMemo || lineDraft); },
     focusPending() { if (editor.open) input.focus(); },
-    get enabled() { return enabled; }
+    get enabled() { return enabled; },
+    get scrolling() { return enabled && scrolling; }
   };
 })();

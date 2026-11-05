@@ -933,7 +933,7 @@ html { scrollbar-gutter: stable; }
 .reader-viewport-probe { position:fixed; top:0; left:0; width:0; height:100svh; visibility:hidden; pointer-events:none; contain:strict; }
 
 /* Mobile manuscript controls overlay the reading area without changing its width. */
-#mobile-reader-tab, #mobile-writing-dock, #mobile-writing-done { display:none; }
+#mobile-reader-tab, #mobile-writing-dock, #mobile-writing-done, #mobile-writing-scroll { display:none; }
 #mobile-reader-menu:not([open]) { display:none; }
 @media(max-width:600px) {
   body:has(.mobile-manuscript:not([hidden])) { min-height:100svh; }
@@ -942,6 +942,10 @@ html { scrollbar-gutter: stable; }
   .mobile-manuscript #reader-progress { display:none; }
   .mobile-manuscript #direction-notice:not([hidden]) { position:fixed; top:calc(var(--mobile-visual-top,0px) + env(safe-area-inset-top)); left:env(safe-area-inset-left); right:calc(36px + env(safe-area-inset-right)); z-index:10; background:var(--panel); }
   .mobile-manuscript #reader-viewport { margin-left:env(safe-area-inset-left); margin-right:env(safe-area-inset-right); }
+  .mobile-manuscript.mobile-writing #reader-viewport { clip-path:inset(var(--mobile-writing-clip-top,0px) 0 var(--mobile-writing-clip-bottom,0px)); }
+  .mobile-manuscript.mobile-writing #reader-viewport:has(.writing-scroll), .mobile-manuscript .writing-scroll { touch-action:pan-y pinch-zoom; }
+  .mobile-manuscript .writing-scroll #writing-pen, .mobile-manuscript .writing-scroll #writing-memos { pointer-events:none; }
+  .mobile-manuscript #reader-stage.writing-scroll #writing-pen .pen-hit, .mobile-manuscript .writing-scroll .writing-memo *, .mobile-manuscript .writing-scroll .memo-actions { pointer-events:none; touch-action:pan-y pinch-zoom; }
   .mobile-manuscript #reader { margin-top:12px; }
   .mobile-manuscript #mobile-reader-tab { display:flex; flex-direction:column; gap:2px; position:fixed; right:0; bottom:calc(var(--mobile-visual-bottom,0px) + var(--mobile-page-height) + var(--mobile-dock-height)); z-index:20; width:calc(36px + env(safe-area-inset-right)); min-height:60px; padding:6px env(safe-area-inset-right) 6px 2px; border-radius:8px 0 0 8px; background:rgb(24 41 66 / 45%); font-size:11px; touch-action:manipulation; }
   .mobile-manuscript #mobile-reader-tab:hover { background:rgb(33 57 87 / 45%); }
@@ -962,11 +966,14 @@ html { scrollbar-gutter: stable; }
   #mobile-reader-menu #reader-save-state:not([hidden]) { display:inline-block!important; }
   .mobile-manuscript #page-controls { bottom:var(--mobile-visual-bottom,0px)!important; padding-left:max(6px,env(safe-area-inset-left)); padding-right:max(6px,env(safe-area-inset-right)); touch-action:manipulation; }
   .mobile-manuscript #mobile-writing-dock { display:block; position:fixed; bottom:calc(var(--mobile-visual-bottom,0px) + var(--mobile-page-height)); left:env(safe-area-inset-left); right:env(safe-area-inset-right); z-index:10; }
+  .mobile-manuscript.mobile-writing:not(.has-paged-reader) #mobile-writing-dock { padding-bottom:env(safe-area-inset-bottom); background:var(--panel); }
   .mobile-manuscript #writing-toolbar:not([hidden]) { display:grid; grid-template-columns:minmax(0,1fr) 76px; grid-template-rows:48px 44px minmax(0,1fr); gap:4px; height:156px; max-height:40dvh; box-sizing:border-box; padding:6px 8px; border-top:1px solid var(--border); border-bottom:0; overflow-y:auto; }
   .mobile-manuscript #mobile-writing-done { display:flex; grid-column:2; grid-row:1; padding:6px; font-size:12px; border-color:var(--blue); }
+  .mobile-manuscript #mobile-writing-scroll { display:flex; grid-column:2; grid-row:2; padding:6px 2px; font-size:12px; touch-action:manipulation; }
+  .mobile-manuscript #mobile-writing-scroll[aria-pressed=true] { background:var(--blue); color:var(--bg); }
   .mobile-manuscript .writing-tools { grid-column:1; grid-row:1; display:flex; max-width:100%; margin:0; overflow-x:auto; overscroll-behavior-x:contain; }
   .mobile-manuscript .writing-tools button { flex:0 0 auto; min-width:64px; min-height:44px; }
-  .mobile-manuscript #pen-options, .mobile-manuscript #marker-colors { grid-column:1/-1; grid-row:2; flex-wrap:nowrap; justify-content:flex-start; overflow-x:auto; margin:0; }
+  .mobile-manuscript #pen-options, .mobile-manuscript #marker-colors { grid-column:1; grid-row:2; flex-wrap:nowrap; justify-content:flex-start; overflow-x:auto; margin:0; }
   .mobile-manuscript #pen-options button, .mobile-manuscript #marker-colors button { flex:0 0 auto; min-height:44px; }
   .mobile-manuscript #writing-tool-help, .mobile-manuscript #writing-toolbar[data-tool=memo] #writing-tool-help { position:static; grid-column:1/-1; grid-row:3; width:auto; height:auto; clip-path:none; overflow-y:auto; margin:0; text-align:left; font-size:11px; }
   body.zen-reading .mobile-manuscript #mobile-reader-tab { display:none; }

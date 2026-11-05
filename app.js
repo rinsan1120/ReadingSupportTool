@@ -619,6 +619,8 @@
     const viewport = window.visualViewport;
     const height = viewport?.height ?? innerHeight, top = viewport?.offsetTop ?? 0;
     const reading = $('reading');
+    const writing = mobileReaderActive() && Boolean(window.ManuscriptWriting?.enabled);
+    reading.classList.toggle('mobile-writing', writing);
     reading.style.setProperty('--mobile-visual-top', `${top}px`);
     reading.style.setProperty('--mobile-visual-height', `${height}px`);
     reading.style.setProperty('--mobile-visual-bottom', `${Math.max(0, innerHeight - height - top)}px`);
@@ -626,9 +628,20 @@
     reading.style.setProperty('--mobile-page-height', `${pageHeight}px`);
     const dockHeight = mobileReaderActive() ? $('mobile-writing-dock').getBoundingClientRect().height : 0;
     reading.style.setProperty('--mobile-dock-height', `${dockHeight}px`);
+    if (writing) {
+      // Clip only the painted/hit-tested work area. Keep the source DOM and
+      // document scrolling intact so every saved writing coordinate stays in
+      // the existing reader-relative coordinate system (no nested scroller).
+      const rect = $('reader-viewport').getBoundingClientRect();
+      const workTop = top + toolbarHome.parentElement.getBoundingClientRect().height;
+      const workBottom = $('mobile-writing-dock').getBoundingClientRect().top;
+      reading.style.setProperty('--mobile-writing-clip-top', `${Math.max(0, workTop - rect.top)}px`);
+      reading.style.setProperty('--mobile-writing-clip-bottom', `${Math.max(0, rect.bottom - workBottom)}px`);
+    }
   }
   new ResizeObserver(fitMobileReader).observe($('page-controls'));
   new ResizeObserver(fitMobileReader).observe($('mobile-writing-dock'));
+  new ResizeObserver(fitMobileReader).observe($('reader-viewport'));
   document.addEventListener('reader-writing-mode', fitMobileReader);
   mobileReaderMedia.addEventListener('change', () => {
     const anchor = window.Reader.capture();
@@ -638,6 +651,7 @@
   window.visualViewport?.addEventListener('resize', fitMobileReader);
   window.visualViewport?.addEventListener('scroll', fitMobileReader);
   addEventListener('resize', fitMobileReader);
+  addEventListener('scroll', fitMobileReader, { passive: true });
   window.Reader.setEditModeGuard(approveEditing);
   document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.dataset.close === 'settings-dialog' ? closeSettings() : $(b.dataset.close).close());
   const settingsMobile = matchMedia('(max-width: 600px)');

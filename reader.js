@@ -526,6 +526,7 @@
   let wheelAt = -Infinity, wheelTurnAt = -Infinity, wheelSum = 0, wheelUsed = false;
   reading.addEventListener('wheel', event => {
     if (!paged()) { scrollModeAnchor = null; return; }
+    if (window.ManuscriptWriting?.scrolling) return;
     if (event.ctrlKey || event.metaKey) return;
     const target = event.target instanceof Element ? event.target : event.target?.parentElement;
     if (target?.closest('dialog,[contenteditable=true],input,textarea,select')) return;
