@@ -751,7 +751,7 @@
   };
   function applySetting(id, value) {
     if (id === 'reader-width') window.Reader.configure({ width: value });
-    if (id === 'columns') window.Reader.configure({ columns: value });
+    if (id === 'columns') window.Reader.configure(window.Reader.direction === 'vertical' ? { fontSize: value } : { columns: value });
     if (id === 'line-height') {
       $('line-height-value').textContent = value.toFixed(1); window.Reader.configure({ height: value });
     }
@@ -765,7 +765,7 @@
     document.querySelectorAll('button[data-direction]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.direction === value)));
     $('vertical-help').hidden = value !== 'vertical';
     $('vertical-help').textContent = window.Reader.displayMode === 'pages' ? '上から下、右から左へ読みます。ペンは縦横別に保存されます。' : '各区画を右から左へ読み、下へスクロールすると続きが読めます。ペンは縦横別に保存されます。';
-    $('columns-label').textContent = value === 'vertical' ? '文字サイズの目安（小さい値ほど大きい文字）' : '1行の文字数目安';
+    $('columns-label').textContent = value === 'vertical' ? '文字サイズの目安' : '1行の文字数目安';
     $('tab-columns').textContent = value === 'vertical' ? '文字サイズ' : '文字数';
     $('tab-line-height').textContent = value === 'vertical' ? '列間隔' : '行間';
     $('line-height-label').textContent = value === 'vertical' ? '列間隔' : '行間';
@@ -830,7 +830,7 @@
       const value = Number(input.value);
       if (!window.ManuscriptWriting.hasMarks || settingsApproved) { applySetting(id, value); return; }
       pendingSetting = { id, value };
-      $(sliderOutput[id]).textContent = id === 'reader-width' ? `${value}px` : id === 'columns' ? `約${value}文字`
+      $(sliderOutput[id]).textContent = id === 'reader-width' ? `${value}px` : id === 'columns' ? (window.Reader.direction === 'vertical' ? `${value}px` : `約${value}文字`)
         : id === 'line-height' ? value.toFixed(1) : value ? `${value}表示行ごと` : 'なし';
     });
   });

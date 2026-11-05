@@ -270,9 +270,9 @@
     widthInput.setAttribute('aria-valuetext', `現在の表示幅 ${Math.round(width)}ピクセル`);
     const minColumns = Math.max(1, Math.ceil(width / 36));
     const maxColumns = Math.max(minColumns, Math.floor(width / 18));
-    columnsInput.min = minColumns;
-    columnsInput.max = maxColumns;
-    columnsInput.value = Math.min(maxColumns, Math.max(minColumns, Math.round(width / settings.fontSize)));
+    columnsInput.min = vertical() ? 18 : minColumns;
+    columnsInput.max = vertical() ? 36 : maxColumns;
+    columnsInput.value = vertical() ? Math.round(settings.fontSize) : Math.min(maxColumns, Math.max(minColumns, Math.round(width / settings.fontSize)));
     columnsOutput.textContent = vertical() ? `${Math.round(settings.fontSize)}px` : `約${columnsInput.value}文字`;
     columnsInput.setAttribute('aria-valuetext', vertical() ? `文字サイズ ${Math.round(settings.fontSize)}ピクセル` : `1行に約${columnsInput.value}文字`);
     root.style.fontSize = `${settings.fontSize}px`;
