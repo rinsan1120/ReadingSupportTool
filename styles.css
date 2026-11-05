@@ -764,7 +764,11 @@ html { scrollbar-gutter: stable; }
 .settings-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
 .settings-tabs button { flex: 1; min-width: 0; padding: 8px; min-height: 40px; font-size: 14px; white-space: nowrap; }
 .settings-tabs [aria-selected=true] { background: var(--blue); color: var(--bg); }
+#setting-display-mode { display:contents; }
 @media(max-width:600px) {
+  #setting-display-mode { display:block; }
+  .settings-tabs { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:4px; }
+  .settings-tabs button { padding:8px 2px; min-height:44px; font-size:12px; white-space:normal; overflow-wrap:anywhere; }
   #settings-dialog[open] {
     position: fixed;
     inset: auto 0 0;

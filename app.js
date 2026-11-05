@@ -663,8 +663,12 @@
       ['reader-width', 'columns'].forEach(id => settingsBaseline.set(id, { value: $(id).value, label: $(sliderOutput[id]).textContent }));
     } else rememberSettings();
   });
-  const settingNames = layoutSettings;
-  let activeSetting = 'columns';
+  const settingNames = ['display-mode', ...layoutSettings];
+  let activeSetting = 'display-mode';
+  const displayHelpHome = document.createComment('desktop reading direction help');
+  $('vertical-help').before(displayHelpHome);
+  const memoOpacityHome = document.createComment('desktop memo opacity setting');
+  $('memo-opacity-setting').before(memoOpacityHome);
   function reserveSettingsSpace() {
     const panel = $('settings-dialog');
     const height = panel.open && settingsMobile.matches ? Math.ceil(panel.getBoundingClientRect().height) : 0;
@@ -673,6 +677,12 @@
   function updateSettingsControls() {
     $('settings-tabs').hidden = !settingsMobile.matches;
     $('setting-width').hidden = settingsMobile.matches;
+    // Keep the desktop explanation in its original position. On phones it
+    // belongs to the display-mode panel and disappears with that panel.
+    if (settingsMobile.matches) $('setting-display-mode').append($('vertical-help'));
+    else displayHelpHome.after($('vertical-help'));
+    if (settingsMobile.matches) $('setting-columns').append($('memo-opacity-setting'));
+    else memoOpacityHome.after($('memo-opacity-setting'));
     settingNames.forEach(name => {
       const group = $(`setting-${name}`), tab = $(`tab-${name}`);
       group.hidden = settingsMobile.matches && activeSetting !== name;
@@ -766,8 +776,6 @@
     $('vertical-help').hidden = value !== 'vertical';
     $('vertical-help').textContent = window.Reader.displayMode === 'pages' ? '上から下、右から左へ読みます。ペンは縦横別に保存されます。' : '各区画を右から左へ読み、下へスクロールすると続きが読めます。ペンは縦横別に保存されます。';
     $('columns-label').textContent = value === 'vertical' ? '文字サイズの目安' : '1行の文字数目安';
-    $('tab-columns').textContent = value === 'vertical' ? '文字サイズ' : '文字数';
-    $('tab-line-height').textContent = value === 'vertical' ? '列間隔' : '行間';
     $('line-height-label').textContent = value === 'vertical' ? '列間隔' : '行間';
     const breaks = Number($('break-lines').value);
     $('break-lines-value').textContent = breaks ? `${breaks}表示${value === 'vertical' ? '列' : '行'}ごと` : 'なし';

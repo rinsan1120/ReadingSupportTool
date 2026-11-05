@@ -7,7 +7,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="description" content="文章を読みやすく整え、自分の朗読速度から作品の朗読時間を調べるツール。">
   <title>よみじたく | 朗読支援サイト</title>
-  <link rel="stylesheet" href="styles.css?v=mobile-reader-menu">
+  <link rel="stylesheet" href="styles.css?v=display-mode-tab">
   <script src="samples.js" defer></script>
   <script src="reading-annotations.js?v=direct-memo" defer></script>
   <script src="html-ruby.js?v=clipboard-fragments" defer></script>
@@ -15,7 +15,7 @@
   <script src="manuscript-writing.js?v=mobile-reader-menu" defer></script>
   <script src="manuscript-print.js?v=memo-editor" defer></script>
   <script src="user-library.js?v=paper-save" defer></script>
-  <script src="app.js?v=mobile-reader-menu" defer></script>
+  <script src="app.js?v=display-mode-tab" defer></script>
 </head>
 <body>
   <header class="site-header"><button class="brand" data-go="home"><span aria-hidden="true">☾</span> よみじたく <small>朗読支援サイト</small></button></header>
@@ -154,12 +154,15 @@
   <footer id="footer"><span><span id="screen-id-copy" role="button" tabindex="0" aria-label="現在の画面IDをコピー">よみじたく</span> 〜 朗読支援サイト 〜</span><span>Created by rinsan1120 <a class="x-profile-link" href="https://x.com/rinsan11201" target="_blank" rel="noopener noreferrer" aria-label="rinsan11201のXプロフィール（新しいタブで開く）"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg></a></span></footer>
   <dialog id="settings-dialog" data-dialog-id="DLG-SETTINGS" aria-labelledby="settings-title">
     <div class="dialog-heading"><h2 id="settings-title">表示設定</h2><button data-close="settings-dialog">閉じる</button></div>
-    <label class="display-mode-setting" for="display-mode">表示方式 <select id="display-mode"><option value="scroll">スクロール</option><option value="pages">ページめくり</option></select></label>
-    <p id="page-turn-help" class="muted" hidden>前へ・次へボタン、ホイール、矢印キー、左右端のタップ・横スワイプで移動できます。書込・ルビ操作中はボタンで移動してください。</p>
     <div id="settings-tabs" class="settings-tabs" role="tablist" aria-label="調整する項目" hidden>
-      <button id="tab-columns" role="tab" aria-selected="true" aria-controls="setting-columns" data-setting="columns">文字数</button>
-      <button id="tab-line-height" role="tab" aria-selected="false" aria-controls="setting-line-height" data-setting="line-height" tabindex="-1">行間</button>
+      <button id="tab-display-mode" role="tab" aria-selected="true" aria-controls="setting-display-mode" data-setting="display-mode">表示方式</button>
+      <button id="tab-columns" role="tab" aria-selected="false" aria-controls="setting-columns" data-setting="columns" tabindex="-1">文字サイズ</button>
+      <button id="tab-line-height" role="tab" aria-selected="false" aria-controls="setting-line-height" data-setting="line-height" tabindex="-1">列間隔</button>
       <button id="tab-break-lines" role="tab" aria-selected="false" aria-controls="setting-break-lines" data-setting="break-lines" tabindex="-1">区切り</button>
+    </div>
+    <div id="setting-display-mode">
+      <label class="display-mode-setting" for="display-mode">表示方式 <select id="display-mode"><option value="scroll">スクロール</option><option value="pages">ページめくり</option></select></label>
+      <p id="page-turn-help" class="muted" hidden>前へ・次へボタン、ホイール、矢印キー、左右端のタップ・横スワイプで移動できます。書込・ルビ操作中はボタンで移動してください。</p>
     </div>
     <div id="setting-width"><label for="reader-width">本文の表示幅 <output id="reader-width-value">900px</output></label><input id="reader-width" data-field-id="FLD-SETTINGS-READER-WIDTH" type="range" min="480" max="1400" step="1" value="900"></div>
     <p id="vertical-help" class="muted" hidden>各区画を右から左へ読み、下へスクロールすると続きが読めます。ペンは縦横別に保存されます。</p>
