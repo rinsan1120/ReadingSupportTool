@@ -1175,8 +1175,15 @@
       open.className = 'book-open'; open.setAttribute('aria-label', `${book.title}を開く`);
       const title = document.createElement('span'); title.className = 'book-title'; title.textContent = book.title; open.append(title);
       const count = countText(book.draft);
-      const estimate = count && charsPerMinute ? ` · 朗読目安 約${count / charsPerMinute < 1 ? '1分未満' : `${Math.round(count / charsPerMinute)}分`}` : '';
-      detail.textContent = `${count.toLocaleString()}文字 · ${new Date(book.updatedAt).toLocaleDateString('ja-JP')}${estimate}`;
+      const metaMain = document.createElement('span'); metaMain.className = 'book-meta-line';
+      metaMain.textContent = `${count.toLocaleString()}文字 · ${new Date(book.updatedAt).toLocaleDateString('ja-JP')}`;
+      detail.append(metaMain);
+      if (count && charsPerMinute) {
+        const minutes = count / charsPerMinute;
+        const metaTime = document.createElement('span'); metaTime.className = 'book-meta-line';
+        metaTime.textContent = `あなたの朗読時間（目安） ${minutes < 1 ? '1分未満' : `約${Math.round(minutes)}分`}`;
+        detail.append(metaTime);
+      }
       open.append(detail);
       const preview = book.draft.replace(/\s+/g, ' ').trim().slice(0, 160);
       if (preview) { const p = document.createElement('small'); p.className = 'book-preview'; p.textContent = preview; open.append(p); }
