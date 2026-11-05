@@ -64,7 +64,8 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('#writing-mode').getAttribute('aria-expanded'), 'true');
       assert.equal(await page.locator('#writing-mode .button-state').count(), 0);
       assert.equal(await page.locator('#writing-off').getAttribute('aria-label'), '書込メニューを閉じる');
-      assert.ok(await page.locator('#export-pdf').isHidden()); assert.ok(await page.locator('#measure-current').isHidden());
+      assert.ok(await page.locator('#export-pdf').isVisible()); assert.ok(await page.locator('#export-pdf').isDisabled());
+      assert.ok(await page.locator('#measure-current').isVisible()); assert.ok(await page.locator('#measure-current').isDisabled());
       assert.ok(await page.locator('#pen-options').isVisible());
       assert.equal(await page.locator('[data-pen-color=red]').getAttribute('aria-pressed'), 'true');
       assert.ok(await page.evaluate(() => [...document.querySelectorAll('.writing-tools button, #pen-options button')]

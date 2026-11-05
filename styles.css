@@ -407,6 +407,7 @@ footer {
 .writing-options span { color:var(--muted); font-size:11px; }
 .writing-options button { font-size:12px; padding:7px 12px; }
 #marker-colors, #pen-options { display:flex; justify-content:center; gap:6px; margin-top:6px; }
+#pen-line-mode { margin-right:10px; }
 #marker-colors button, #pen-options button { display:flex; align-items:center; gap:6px; min-height:var(--control-height-compact); padding:6px 10px; font-size:12px; }
 #marker-colors button::before { content:""; width:12px; height:12px; border-radius:50%; background:#ffd148; }
 #marker-colors [data-marker-color=lightblue]::before { background:#60c6ff; }
