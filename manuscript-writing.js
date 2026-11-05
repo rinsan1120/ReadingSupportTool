@@ -194,7 +194,7 @@
   const markers = $('writing-markers'), pens = $('writing-pen'), memos = $('writing-memos');
   const editor = $('writing-memo-dialog'), input = $('writing-memo-input');
   let model = null, editable = true, enabled = false, tool = 'pen', markerColor = 'yellow', gesture = null, draftMemo = null, rendering = false;
-  let selectedMemo = null, selectedPen = null, penColor = 'red';
+  let selectedMemo = null, selectedPen = null, penColor = 'red', penMode = 'free', lineDraft = null, linePress = null;
   let paintedPens = [], paintedMarkers = [];
   const direction = () => window.Reader.direction;
   const memoView = item => direction() === 'vertical' ? { ...item, ...(item.verticalPosition ?? { dx: -3, dy: 1, tx: 0, ty: 0 }) } : item;
@@ -249,8 +249,9 @@
     const previous = gesture; gesture = null;
     if (previous && stage.hasPointerCapture(previous.id)) stage.releasePointerCapture(previous.id);
   }
+  function cancelLine() { lineDraft = null; linePress = null; }
   function cancelPending() {
-    releaseGesture(); draftMemo = null; selectedMemo = null; selectedPen = null;
+    releaseGesture(); cancelLine(); draftMemo = null; selectedMemo = null; selectedPen = null;
     if (editor.open) editor.close();
     if ($('memo-settings-dialog').open) $('memo-settings-dialog').close();
     render();
@@ -269,6 +270,8 @@
     document.querySelectorAll('[data-writing-tool]').forEach(button => button.setAttribute('aria-pressed',
       String(button.dataset.writingTool === tool || button.dataset.writingTool === 'pen' && tool === 'move')));
     $('pen-options').hidden = !enabled || !['pen', 'move'].includes(tool);
+    $('pen-line-mode').hidden = tool !== 'pen';
+    $('pen-line-mode').setAttribute('aria-pressed', String(tool === 'pen' && penMode === 'line'));
     document.querySelectorAll('[data-pen-color]').forEach(button =>
       button.setAttribute('aria-pressed', String(tool === 'pen' && button.dataset.penColor === penColor)));
     const selected = model?.items.find(item => item.id === selectedMemo);
@@ -278,7 +281,10 @@
     $('marker-colors').setAttribute('aria-label', tool === 'memo' ? 'メモの色' : 'マーカーの色');
     $('memo-settings-open').hidden = !enabled || tool !== 'memo';
     document.querySelectorAll('[data-marker-color]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.markerColor === (tool === 'memo' ? selected?.color : markerColor))));
-    if ($('writing-tool-help').textContent !== help[tool]) $('writing-tool-help').textContent = help[tool];
+    const helpText = tool === 'pen' && penMode === 'line'
+      ? '色を選び、始点をクリック。カーソル位置まで線が伸びるので、終点をクリックして確定。Escで取り消し。'
+      : help[tool];
+    if ($('writing-tool-help').textContent !== helpText) $('writing-tool-help').textContent = helpText;
     $('writing-undo').disabled = !editable || !model?.canUndo;
   }
   function setMode(on) {
@@ -295,6 +301,21 @@
     // One rigid translation follows the anchor. Rewrapping never reshapes or
     // edits stored points, even for strokes spanning several lines.
     return item.points.map(p => ({ x: origin.x + p.x * font, y: origin.y + p.y * font }));
+  }
+  // A straight line is stored as an ordinary two-point pen, so moving,
+  // erasing, Undo and the PDF path treat it exactly like a freehand stroke.
+  function updateLineEnd(point) {
+    const geometry = window.Reader.getWritingGeometry(), font = geometry.fontSize;
+    lineDraft.item.points[1] = { x: (point.x - lineDraft.origin.x) / font, y: (point.y - lineDraft.origin.y) / font };
+    const witness = nearest(point, geometry);
+    if (witness && !lineDraft.item.witnesses.some(w => w.offset === witness.start)) {
+      const c = center(witness);
+      lineDraft.item.witnesses.push({ offset: witness.start, x: (c.x - lineDraft.origin.x) / font, y: (c.y - lineDraft.origin.y) / font });
+    }
+  }
+  function commitLine() {
+    const draft = lineDraft; cancelLine();
+    model.add(draft.item);
   }
   // Shared screen/PDF renderer: tail, background and ink share one opacity.
   function bubble(item, settings, x, y, tx, ty, parent, scale = 1) {
@@ -321,7 +342,7 @@
       paintedPens = []; paintedMarkers = [];
       controls();
       if (!model || root.closest('[hidden]')) { stage.style.minHeight = ''; return; }
-      if (model.items.length || gesture) {
+      if (model.items.length || gesture || lineDraft) {
         const geometry = window.Reader.getWritingGeometry(), rect = root.getBoundingClientRect(), outer = stage.getBoundingClientRect();
         const ox = rect.left - outer.left, oy = rect.top - outer.top;
         const markerGroup = svg('g', { transform: `translate(${ox} ${oy})` }, markers);
@@ -329,6 +350,7 @@
         const items = model.items.filter(item => item.type !== 'pen' || (item.direction ?? 'horizontal') === direction())
           .map(item => gesture?.memo?.id === item.id ? gesture.preview : item.type === 'memo' ? memoView(item) : item);
         if (gesture?.preview && !gesture.memo && !gesture.pen) items.push(gesture.preview);
+        if (lineDraft) items.push(lineDraft.item);
         const noteItems = []; let bottom = 0;
         for (const item of items) {
           if (item.type === 'marker') {
@@ -480,6 +502,23 @@
         pen: copy(pen), points: strokePoints(pen, window.Reader.getWritingGeometry()), dx: 0, dy: 0 };
       stage.setPointerCapture(e.pointerId); render(); return;
     }
+    if (tool === 'pen' && penMode === 'line') {
+      const geometry = window.Reader.getWritingGeometry(), point = localPoint(e), glyph = nearest(point, geometry);
+      if (!lineDraft) {
+        if (!glyph) { render(); return; }
+        e.preventDefault();
+        const origin = center(glyph);
+        const start = { x: (point.x - origin.x) / geometry.fontSize, y: (point.y - origin.y) / geometry.fontSize };
+        lineDraft = { origin, scroll: scrollY, item: { type: 'pen', direction: direction(), offset: glyph.start, layoutKey: geometry.layoutKey,
+          fontSize: geometry.fontSize, color: penColor, points: [{ ...start }, { ...start }], witnesses: [{ offset: glyph.start, x: 0, y: 0 }] } };
+        render(); return;
+      }
+      e.preventDefault();
+      updateLineEnd(point);
+      linePress = { id: e.pointerId };
+      stage.setPointerCapture(e.pointerId);
+      render(); return;
+    }
     const geometry = window.Reader.getWritingGeometry(), point = localPoint(e), glyph = nearest(point, geometry);
     if (!glyph && tool !== 'eraser') { render(); return; }
     if (tool !== 'memo') e.preventDefault();
@@ -493,6 +532,9 @@
     render();
   });
   stage.addEventListener('pointermove', e => {
+    if (editable && lineDraft && !gesture && (!linePress || linePress.id === e.pointerId)) {
+      updateLineEnd(localPoint(e)); render(); return;
+    }
     if (!editable || !gesture || gesture.id !== e.pointerId) return;
     const point = localPoint(e);
     if (Math.hypot(point.x - gesture.first.x, point.y - gesture.first.y) > 8) gesture.moved = true;
@@ -512,6 +554,14 @@
     if (tool === 'pen' || tool === 'marker') render();
   });
   stage.addEventListener('pointerup', e => {
+    if (linePress && linePress.id === e.pointerId && lineDraft) {
+      updateLineEnd(localPoint(e));
+      const [start, end] = lineDraft.item.points;
+      const longEnough = Math.hypot(end.x - start.x, end.y - start.y) * lineDraft.item.fontSize >= 2;
+      linePress = null;
+      if (longEnough) commitLine();
+      render(); return;
+    }
     if (!editable || !gesture || gesture.id !== e.pointerId) return;
     const point = localPoint(e);
     if (Math.hypot(point.x - gesture.first.x, point.y - gesture.first.y) > 8) gesture.moved = true;
@@ -553,11 +603,11 @@
     }
     render();
   });
-  stage.addEventListener('pointercancel', () => { releaseGesture(); render(); });
+  stage.addEventListener('pointercancel', () => { releaseGesture(); cancelLine(); render(); });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && gesture?.pen) { e.preventDefault(); releaseGesture(); render(); }
+    if (e.key === 'Escape' && (gesture?.pen || lineDraft)) { e.preventDefault(); releaseGesture(); cancelLine(); render(); }
   });
-  stage.addEventListener('lostpointercapture', () => { if (gesture) { gesture = null; render(); } });
+  stage.addEventListener('lostpointercapture', () => { linePress = null; if (gesture) { gesture = null; render(); } });
   document.querySelectorAll('[data-writing-tool]').forEach(button => button.onclick = async () => {
     if (!editable) return;
     const next = button.dataset.writingTool;
@@ -577,6 +627,12 @@
     if (!editable || !enabled || !['pen', 'move'].includes(tool)) return;
     cancelPending(); penColor = button.dataset.penColor; tool = 'pen'; controls(); render();
   });
+  $('pen-line-mode').onclick = () => {
+    if (!editable || !enabled || tool !== 'pen') return;
+    penMode = penMode === 'line' ? 'free' : 'line';
+    if (penMode === 'free') cancelLine();
+    controls(); render();
+  };
   const settingsDialog = $('memo-settings-dialog');
   $('memo-settings-open').onclick = () => {
     if (!editable || !enabled || tool !== 'memo') return;
@@ -609,10 +665,12 @@
   editor.addEventListener('close', () => { draftMemo = null; });
   window.visualViewport?.addEventListener('resize', fitEditor);
   window.visualViewport?.addEventListener('scroll', fitEditor);
-  root.addEventListener('reader-layout', () => { releaseGesture(); render(); });
+  root.addEventListener('reader-layout', () => { releaseGesture(); cancelLine(); render(); });
+  root.addEventListener('reader-page', () => { cancelLine(); render(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) cancelPending(); });
   addEventListener('scroll', () => {
     if (gesture && Math.abs(scrollY - gesture.scroll) > 2) { releaseGesture(); render(); }
+    if (lineDraft && Math.abs(scrollY - lineDraft.scroll) > 2) { cancelLine(); render(); }
   }, { passive: true });
   // Printing temporarily hides the live reader. Do not measure or reposition
   // overlays against its zero-size boxes; repaint once the normal page returns.
@@ -639,7 +697,7 @@
     setMode, cancelPending,
     get hasMarks() { return Boolean(model?.hasMarks); },
     get hasPens() { return Boolean(model?.items.some(item => item.type === 'pen')); },
-    get hasPending() { return Boolean(gesture || draftMemo || settingsDialog.open); },
+    get hasPending() { return Boolean(gesture || draftMemo || lineDraft || settingsDialog.open); },
     focusPending() { if (editor.open) input.focus(); else if (settingsDialog.open) $('memo-font-size').focus(); },
     get enabled() { return enabled; }
   };
