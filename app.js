@@ -562,7 +562,6 @@
     window.ManuscriptWriting.setMode(false);
     $('writing-mode').focus({ preventScroll: true });
   }
-  $('writing-off').onclick = closeWritingMenu;
   $('writing-mode').onclick = async () => {
     if (window.ManuscriptWriting.enabled) { closeWritingMenu(); return; }
     if (!await approveEditing(false)) return;
