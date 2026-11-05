@@ -42,7 +42,14 @@ const saved = async page => (await saveUser(page)).manuscripts[0].manuscript;
     assert.ok(kept); assert.ok(!('style' in kept) && !('fontSize' in kept), 'bubble memo gains no new fields');
     assert.equal(kept.text, '既存の吹き出し');
     // Create a direct memo through the dialog.
+    assert.equal(await page.locator('#export-pdf').isDisabled(), false);
     await page.locator('#writing-mode').click();
+    // The reader menu lineup stays constant while writing: PDF and measure
+    // remain visible, just disabled.
+    assert.equal(await page.locator('#export-pdf').isVisible(), true);
+    assert.equal(await page.locator('#export-pdf').isDisabled(), true);
+    assert.equal(await page.locator('#measure-current').isVisible(), true);
+    assert.equal(await page.locator('#measure-current').isDisabled(), true);
     await page.locator('[data-writing-tool=memo]').click();
     const spot = await glyphPoint(page, 200);
     await page.mouse.click(spot.x, spot.y);

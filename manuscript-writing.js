@@ -271,7 +271,9 @@
     const controls = document.querySelector('.reader-controls');
     const changed = controls.classList.contains('is-writing') !== enabled;
     controls.classList.toggle('is-writing', enabled);
-    ['export-pdf', 'measure-current'].forEach(id => { $(id).hidden = enabled || !editable; });
+    // Keep the reader menu lineup constant: while writing, PDF and measure
+    // stay visible but disabled instead of disappearing.
+    ['export-pdf', 'measure-current'].forEach(id => { $(id).hidden = !editable; $(id).disabled = enabled; });
     $('writing-mode').hidden = !editable;
     if (changed) stage.dispatchEvent(new CustomEvent('reader-writing-mode', { bubbles: true }));
     stage.classList.toggle('writing-active', enabled);
