@@ -219,3 +219,16 @@ test('global display mode survives browser/file storage; older files default to 
     assert.throws(() => s.api.parse(JSON.stringify({ ...data, displaySettings: invalid })));
   }
 });
+
+test('paper mode preference survives browser/file storage; older files default to off', () => {
+  const s = setup(), data = fixture(s);
+  delete data.paperMode;
+  assert.equal(s.api.parse(JSON.stringify(data)).paperMode, false);
+  data.paperMode = true;
+  const session = s.api.openBrowser(); session.save(data);
+  assert.equal(s.api.openBrowser().data.paperMode, true);
+  assert.equal(s.api.parse(JSON.stringify(data)).paperMode, true);
+  for (const invalid of [null, 1, 'on', {}]) {
+    assert.throws(() => s.api.parse(JSON.stringify({ ...data, paperMode: invalid })));
+  }
+});
