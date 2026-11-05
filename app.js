@@ -221,7 +221,7 @@
   }
   setTarget(target);
   $('planned-minutes').value = plannedMinutes;
-  function show(next, nextResultMode = 'records') {
+  function show(next, nextResultMode = 'records', focusHeading = true) {
     if (libraryReady) syncLibrary();
     if (view === 'reading' && next !== 'reading') { setZen(false); window.ManuscriptWriting.leave(); window.ManuscriptPrint.clear(); window.Reader.leave(); cancelMeasurement(); releaseWake(); }
     document.querySelectorAll('dialog[open]').forEach(d => d.close());
@@ -237,7 +237,7 @@
     syncScreenId();
     syncMobileReader();
     window.scrollTo(0, 0);
-    $(next).querySelector('h1')?.focus({ preventScroll: true });
+    if (focusHeading) $(next).querySelector('h1')?.focus({ preventScroll: true });
   }
   document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => requestNavigation(b.dataset.go)));
   function selectSample() {
@@ -1392,6 +1392,7 @@
     return window.UserLibrary.openBrowser(storage, { replacement });
   }
   function useUserData(candidate, filename = '', session = openBrowserSession()) {
+    const initialHome = !libraryReady;
     clearTimeout(changeTimer);
     libraryReady = false;
     browserSession = session; browserSaveError = ''; captureFailed = false;
@@ -1417,7 +1418,7 @@
     $('planned-minutes').value = plannedMinutes; $('estimate-minutes').value = plannedMinutes;
     userFilename = filename; savedUserSnapshot = snapshotKey(library);
     libraryReady = true; document.querySelector('main').inert = false;
-    syncLibrary(); renderResults(); show('home');
+    syncLibrary(); renderResults(); show('home', 'records', !initialHome);
   }
   let restoringUser = false;
   const chooseUserFile = () => { if (!savingUser && !restoringUser) $('user-file').click(); };
