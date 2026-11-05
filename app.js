@@ -1134,7 +1134,7 @@
     const totalChars = library.history.reduce((sum, r) => sum + r.characters, 0);
     const charsPerMinute = totalSeconds > 0 ? totalChars / totalSeconds * 60 : 0;
     const key = JSON.stringify([renamingId, library.activeId, charsPerMinute,
-      library.manuscripts.map(b => [b.id, b.title, b.updatedAt, b.draft.length, countText(b.draft), b.draft.slice(0, 50)])]);
+      library.manuscripts.map(b => [b.id, b.title, b.updatedAt, b.draft.length, countText(b.draft), b.draft.slice(0, 160)])]);
     if (key === libraryRenderKey) return;
     libraryRenderKey = key;
     $('library-empty').hidden = !!library.manuscripts.length;
@@ -1171,12 +1171,14 @@
         li.append(input, editActions); return li;
       }
       const open = document.createElement('button'), detail = document.createElement('small'), rename = document.createElement('button'), remove = document.createElement('button');
-      open.className = 'book-open'; open.textContent = book.title; open.setAttribute('aria-label', `${book.title}を開く`);
+      detail.className = 'book-meta';
+      open.className = 'book-open'; open.setAttribute('aria-label', `${book.title}を開く`);
+      const title = document.createElement('span'); title.className = 'book-title'; title.textContent = book.title; open.append(title);
       const count = countText(book.draft);
       const estimate = count && charsPerMinute ? ` · 朗読目安 約${count / charsPerMinute < 1 ? '1分未満' : `${Math.round(count / charsPerMinute)}分`}` : '';
       detail.textContent = `${count.toLocaleString()}文字 · ${new Date(book.updatedAt).toLocaleDateString('ja-JP')}${estimate}`;
       open.append(detail);
-      const preview = book.draft.replace(/\s+/g, ' ').trim().slice(0, 50);
+      const preview = book.draft.replace(/\s+/g, ' ').trim().slice(0, 160);
       if (preview) { const p = document.createElement('small'); p.className = 'book-preview'; p.textContent = preview; open.append(p); }
       if (book.id === library.activeId) open.setAttribute('aria-current', 'true');
       open.onclick = () => {

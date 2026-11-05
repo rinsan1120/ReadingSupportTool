@@ -33,12 +33,15 @@ main[data-screen-id="SCR-READ-VIEW"] #save-user-status { display:none; }
 .bookshelf,.user-settings { margin-top:28px; padding:20px; border:1px solid var(--border); border-radius:14px; background:var(--panel); }
 .library-list { list-style:none; padding:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:12px; }
 .library-list li { display:flex; flex-direction:column; align-items:stretch; gap:6px; min-width:0; }
-.book-actions { display:flex; gap:6px; }
-.book-actions button { flex:1; padding:8px; min-height:40px; }
-.book-open { display:flex; flex-direction:column; align-items:stretch; justify-content:flex-start; gap:0; width:100%; min-width:0; min-height:120px; padding:14px 16px; text-align:left; overflow-wrap:anywhere; border-left:4px solid var(--accent); }
-.book-open small { display:block; color:var(--muted); margin-top:8px; font-weight:400; }
+.book-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+.book-actions button { min-width:0; padding:8px; min-height:40px; }
+.book-open { display:flex; flex-direction:column; align-items:stretch; justify-content:flex-start; gap:0; width:100%; min-width:0; height:192px; padding:14px 16px; text-align:left; overflow:hidden; overflow-wrap:anywhere; border-left:4px solid var(--accent); }
+/* Reserve matching title, metadata and preview slots on every bookshelf card. */
+.book-open .book-title { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; flex:0 0 auto; width:100%; height:2.8em; line-height:1.4; overflow:hidden; }
+.book-open small { color:var(--muted); margin-top:8px; font-weight:400; }
+.book-open .book-meta { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; flex:0 0 auto; width:100%; height:2.9em; line-height:1.45; overflow:hidden; }
 .book-open[aria-current=true] { border-left-color:#fbbf24; background:#1b2d47; }
-.book-open .book-preview { line-height:1.55; overflow-wrap:anywhere; }
+.book-open .book-preview { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; flex:0 0 auto; width:100%; height:4.65em; line-height:1.55; overflow:hidden; overflow-wrap:anywhere; }
 .library-rename-input { flex:1; min-width:0; padding:12px; color:var(--text); background:var(--bg); border:1px solid #7897c159; border-radius:8px; }
 #estimate-book { width:100%; margin:8px 0; padding:12px; color:var(--text); background:var(--bg); border:1px solid #7897c159; border-radius:8px; }
 .user-settings summary { cursor:pointer; padding:4px 0; }
@@ -92,8 +95,7 @@ button:where(:not(.entry):not(.startup-choice):not(.back):not(.brand)) { white-s
 .text-link { align-self:center; min-height:44px; padding:8px 14px; color:var(--muted); background:transparent; border:0; border-radius:6px; font-size:.88rem; text-decoration:underline; text-underline-offset:3px; }
 .text-link:hover { color:var(--blue); background:transparent; }
 .library-status button,.book-actions button,.writing-options button,#marker-colors button,#pen-options button,.settings-tabs button,#settings-dialog .dialog-heading button { min-height:var(--control-height-compact); }
-.book-actions { align-items:stretch; flex-wrap:wrap; }
-.book-actions button { flex:1 1 84px; }
+.book-actions { align-items:stretch; }
 .library-status button { padding:7px 12px; }
 .book-actions button { padding:8px 12px; }
 .startup-choice { display:flex; align-items:flex-start; justify-content:center; }
