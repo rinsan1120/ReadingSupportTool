@@ -221,7 +221,7 @@
   $('planned-minutes').value = plannedMinutes;
   function show(next) {
     if (libraryReady) syncLibrary();
-    if (view === 'reading' && next !== 'reading') { window.ManuscriptWriting.leave(); window.ManuscriptPrint.clear(); window.Reader.leave(); cancelMeasurement(); releaseWake(); }
+    if (view === 'reading' && next !== 'reading') { setZen(false); window.ManuscriptWriting.leave(); window.ManuscriptPrint.clear(); window.Reader.leave(); cancelMeasurement(); releaseWake(); }
     document.querySelectorAll('dialog[open]').forEach(d => d.close());
     document.querySelectorAll('.view').forEach(el => el.hidden = el.id !== next);
     view = next; $('footer').hidden = next === 'reading';
@@ -388,6 +388,7 @@
     $('toolbar-settings').disabled = phase !== 'idle';
     $('export-manuscript').hidden = mode !== 'read';
     $('export-pdf').hidden = mode !== 'read';
+    $('fullscreen-reading').hidden = mode !== 'read';
     $('measure-current').hidden = mode !== 'read';
     $('writing-mode').hidden = mode !== 'read';
     measuredPartial = mode === 'time' && sourceType === 'custom' && partialOn;
@@ -1001,6 +1002,40 @@
   addEventListener('resize', resetToolbarViewport);
   addEventListener('orientationchange', resetToolbarViewport);
   window.visualViewport?.addEventListener('resize', resetToolbarViewport);
+
+  // Fullscreen reading: a manuscript-only view for reading without
+  // measuring. The layout class does the work; the Fullscreen API is an
+  // enhancement where available (it is missing on some mobile browsers).
+  const zenButton = $('fullscreen-reading');
+  let zenActive = false, zenIdleTimer = 0;
+  function zenShowUi() {
+    if (!zenActive) return;
+    document.body.classList.add('zen-ui');
+    clearTimeout(zenIdleTimer);
+    zenIdleTimer = setTimeout(() => document.body.classList.remove('zen-ui'), 2600);
+  }
+  function setZen(on) {
+    if (on === zenActive) return;
+    if (on && view !== 'reading') return;
+    if (on && window.ManuscriptWriting?.enabled) $('writing-mode').click();
+    zenActive = on;
+    document.body.classList.toggle('zen-reading', on);
+    zenButton.setAttribute('aria-pressed', String(on));
+    if (on) {
+      zenShowUi();
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    } else {
+      clearTimeout(zenIdleTimer);
+      document.body.classList.remove('zen-ui');
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    }
+    window.dispatchEvent(new Event('resize'));
+  }
+  zenButton.onclick = () => setZen(true);
+  $('zen-exit').onclick = () => setZen(false);
+  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && zenActive) setZen(false); });
+  document.addEventListener('keydown', event => { if (zenActive && event.key === 'Escape' && !document.fullscreenElement) setZen(false); });
+  ['pointermove', 'pointerdown'].forEach(name => document.addEventListener(name, zenShowUi, { passive: true }));
 
   function activeBook() { return library?.manuscripts.find(book => book.id === library.activeId); }
   function renderIdentity() {

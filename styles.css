@@ -426,6 +426,15 @@ footer {
 #reader-viewport.is-paged { position:relative; overflow:hidden; overflow:clip; padding-block:16px; box-sizing:border-box; background:var(--panel); touch-action:pinch-zoom; overscroll-behavior:contain; }
 #reader-viewport.is-paged:has(#reader-stage.paper-mode) { background:#fff; }
 #page-controls { position:fixed; bottom:0; left:0; right:0; z-index:9; min-height:52px; padding:4px 12px calc(4px + env(safe-area-inset-bottom)); background:var(--bg); border-top:1px solid var(--border); display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:center; }
+/* Fullscreen reading: manuscript only. The exit button and the page
+   controls fade in on activity and back out while reading. */
+.zen-bar { display:none; }
+body.zen-reading .reader-controls { display:none; }
+body.zen-reading .zen-bar { display:block; position:fixed; right:12px; bottom:calc(12px + env(safe-area-inset-bottom)); z-index:30; opacity:0; pointer-events:none; transition:opacity .25s ease; }
+body.zen-reading.zen-ui .zen-bar { opacity:1; pointer-events:auto; }
+.zen-bar button { min-height:40px; padding:8px 16px; background:#0b1325e6; }
+body.zen-reading #page-controls { opacity:0; pointer-events:none; transition:opacity .25s ease; }
+body.zen-reading.zen-ui #page-controls { opacity:1; pointer-events:auto; }
 #page-controls[data-direction=vertical] { flex-direction:row-reverse; }
 #page-controls button { min-width:70px; min-height:44px; padding:8px 14px; }
 #page-position { min-width:108px; text-align:center; font-variant-numeric:tabular-nums; }

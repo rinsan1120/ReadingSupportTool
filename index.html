@@ -7,7 +7,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="description" content="文章を読みやすく整え、自分の朗読速度から作品の朗読時間を調べるツール。">
   <title>よみじたく | 朗読支援サイト</title>
-  <link rel="stylesheet" href="styles.css?v=ruby-help">
+  <link rel="stylesheet" href="styles.css?v=fullscreen">
   <script src="samples.js" defer></script>
   <script src="reading-annotations.js?v=direct-memo" defer></script>
   <script src="html-ruby.js?v=clipboard-fragments" defer></script>
@@ -15,7 +15,7 @@
   <script src="manuscript-writing.js?v=menu-fixed" defer></script>
   <script src="manuscript-print.js?v=direct-memo" defer></script>
   <script src="user-library.js?v=page-turning" defer></script>
-  <script src="app.js?v=pdf-reflow" defer></script>
+  <script src="app.js?v=fullscreen" defer></script>
 </head>
 <body>
   <header class="site-header"><button class="brand" data-go="home"><span aria-hidden="true">☾</span> よみじたく <small>朗読支援サイト</small></button></header>
@@ -95,6 +95,7 @@
             <button id="measure-current" aria-label="この文章で時間を計測" hidden><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="14" r="8"/><path d="M9 2h6m-3 0v4m0 3v5l3 2"/></svg><span>計測</span></button>
             <button id="export-manuscript" aria-label="保存" hidden><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h13l4 4v14H3V3h1Zm3 0v7h10V3M7 21v-8h10v8"/></svg><span>保存</span><span class="button-state" id="reader-save-state" hidden>未保存</span></button>
             <button id="export-pdf" aria-label="PDF出力" hidden><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2h10l5 5v15H5ZM15 2v6h5"/><text x="6" y="17" font-size="7" fill="currentColor" stroke="none">PDF</text></svg><span>PDF</span></button>
+            <button id="fullscreen-reading" type="button" aria-label="全画面で読む" aria-pressed="false" hidden><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span>全画面</span></button>
           </div>
         </div>
         <p id="direction-notice" role="status" hidden>ペンの書き込みは、縦書きと横書きで別々に保存されます。<br>切り替え先には引き継がれませんが、元の表示方向に戻すと、以前の書き込みが再表示されます。</p>
@@ -111,6 +112,7 @@
       <p id="layout-status" class="layout-status" role="status"></p>
       <div id="reader-viewport"><div id="reader-stage"><div class="reader-text-area"><article id="reader" aria-label="原稿本文"></article></div><svg id="writing-markers" aria-hidden="true"></svg><svg id="writing-pen" aria-hidden="true"></svg><div id="writing-memos" aria-label="文字メモ"></div></div></div>
       <nav id="page-controls" aria-label="原稿のページ送り" hidden><button id="page-previous" type="button">前へ</button><span id="page-position" role="status" aria-live="polite" aria-atomic="true"></span><button id="page-next" type="button">次へ</button><button id="page-start" type="button" class="primary" hidden>計測を始める</button></nav>
+      <div id="zen-bar" class="zen-bar"><button id="zen-exit" type="button">全画面を終了</button></div>
       <div id="measurement-bar" class="measurement-bar" hidden><div class="measurement-time"><span id="elapsed" aria-live="off">0:00</span><small id="measurement-status" role="status"></small></div><button id="pause-measurement" disabled>一時停止</button><button id="finish" class="primary">読了</button></div>
       <div id="countdown" class="countdown" hidden role="status" aria-live="assertive"></div>
     </section>
