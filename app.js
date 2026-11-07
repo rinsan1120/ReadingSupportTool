@@ -33,6 +33,65 @@
     $('paper-mode').setAttribute('aria-label', `白背景：${on ? 'ON' : 'OFF'}`);
   }
   let openingReader = false;
+  // Browser entries contain navigation metadata only. Reader context stays in memory.
+  const navigationSession = `${Date.now()}-${Math.random()}`;
+  let navigationIndex = 0, navigatingHistory = false, restoringHistory = false;
+  const readerContexts = new Map();
+  const navigationViews = new Set(['home', 'read-input', 'reading', 'time-input', 'results', 'estimate']);
+  function navigationRoute(next, nextResultMode) {
+    return { view: next, mode: next === 'reading' ? mode : null,
+      resultMode: next === 'results' ? nextResultMode : 'records' };
+  }
+  function writeNavigation(next, nextResultMode, replace = false) {
+    if (!libraryReady || navigatingHistory) return;
+    const route = navigationRoute(next, nextResultMode);
+    const old = window.history.state;
+    if (!replace && old?.session === navigationSession &&
+      old.view === route.view && old.mode === route.mode && old.resultMode === route.resultMode) return;
+    if (!replace) navigationIndex++;
+    window.history[replace ? 'replaceState' : 'pushState'](
+      { session: navigationSession, index: navigationIndex, ...route }, '', `#${route.view}${route.mode ? `-${route.mode}` : ''}`);
+    if (next === 'reading') readerContexts.set(navigationIndex, {
+      book: library.activeId, text: displayedText, input: $('time-text').value, source: sourceType, sample
+    });
+  }
+  function restoreNavigation(state) {
+    let next = navigationViews.has(state?.view) ? state.view : 'home';
+    if (next === 'reading') {
+      const context = readerContexts.get(state.index);
+      const read = state.mode === 'read';
+      const text = read ? readAnnotations.source : context?.text;
+      if (!text || (context && context.book !== library.activeId) ||
+        (!read && (!context || (context.source === 'custom' && context.input !== $('time-text').value)))) {
+        next = read ? 'read-input' : 'time-input';
+      } else {
+        if (!read) { sourceType = context.source; sample = context.sample; }
+        // This only renders retained models; it never creates or replaces annotations.
+        cancelMeasurement();
+        displayReader(read ? 'read' : 'time', text);
+        return;
+      }
+    }
+    show(next, state?.resultMode === 'completed' && history.length ? 'completed' : 'records');
+  }
+  addEventListener('popstate', event => {
+    const state = event.state;
+    if (restoringHistory) { restoringHistory = false; return; }
+    if (!libraryReady) return;
+    const valid = state?.session === navigationSession && Number.isSafeInteger(state.index) && state.index >= 0;
+    const delta = valid ? navigationIndex - state.index : 0;
+    if (!readyForDirectAction() || (phase !== 'idle' &&
+      !window.confirm('この画面を離れると、その回の計測結果は保存されません。移動しますか？'))) {
+      if (delta) { restoringHistory = true; window.history.go(delta); }
+      else writeNavigation(view, resultMode, true);
+      return;
+    }
+    if (valid) navigationIndex = state.index;
+    navigatingHistory = true;
+    try { restoreNavigation(valid ? state : null); }
+    finally { navigatingHistory = false; }
+    writeNavigation(view, resultMode, true);
+  });
   const hasReadings = model => !!(model && (model.entries.length || model.sourceRubies.length));
   function ask(message, action = '削除する', title = '操作の確認') {
     return new Promise(resolve => {
@@ -222,6 +281,7 @@
   setTarget(target);
   $('planned-minutes').value = plannedMinutes;
   function show(next, nextResultMode = 'records', focusHeading = true) {
+    writeNavigation(next, nextResultMode);
     if (libraryReady) syncLibrary();
     if (view === 'reading' && next !== 'reading') { setZen(false); window.ManuscriptWriting.leave(); window.ManuscriptPrint.clear(); window.Reader.leave(); cancelMeasurement(); releaseWake(); }
     document.querySelectorAll('dialog[open]').forEach(d => d.close());
@@ -995,7 +1055,6 @@
     if (readMeasurementReturn) {
       const returnState = readMeasurementReturn;
       readMeasurementReturn = null;
-      show('reading');
       displayReader('read', readAnnotations.source, returnState);
       return;
     }
@@ -1440,7 +1499,15 @@
     $('planned-minutes').value = plannedMinutes; $('estimate-minutes').value = plannedMinutes;
     userFilename = filename; savedUserSnapshot = snapshotKey(library);
     libraryReady = true; document.querySelector('main').inert = false;
-    syncLibrary(); renderResults(); show('home', 'records', !initialHome);
+    const initialRoute = initialHome ? location.hash.slice(1) : 'home';
+    readerContexts.clear();
+    syncLibrary(); renderResults();
+    navigatingHistory = true;
+    try {
+      restoreNavigation(initialRoute === 'reading-read' ? { view: 'reading', mode: 'read' }
+        : { view: navigationViews.has(initialRoute) ? initialRoute : 'home' });
+    } finally { navigatingHistory = false; }
+    writeNavigation(view, resultMode, true);
   }
   let restoringUser = false;
   const chooseUserFile = () => { if (!savingUser && !restoringUser) $('user-file').click(); };
