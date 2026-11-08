@@ -102,7 +102,9 @@ const shot = async (page, name) => {
       assert.equal(await page.locator('#time-text').inputValue(), customText);
       // Retry uses the retained manuscript, and cancellation saves no record.
       await page.locator('#existing-results').click();
-      await page.locator('#retry-measurement').click();
+      assert.equal(await page.locator('#result-steps').isVisible(), false);
+      await page.locator('#records-measure').click();
+      await page.locator('#prepare-time').click();
       await readerState(page, '計測準備', '計測設定に戻る', 4, 2);
       await page.locator('#start').click();
       await page.evaluate(() => dispatchEvent(new Event('pagehide')));
@@ -139,8 +141,9 @@ const shot = async (page, name) => {
       assert.equal(await textOf(page, 'home-average-speed'), '約300文字 / 分');
       await shot(page, `home-history-${width}`);
       await page.locator('#home-results [data-go=results]').click();
-      await steps(page, 'result-steps', 4, 4);
-      assert.equal(await textOf(page, 'again'), '計測設定に戻る', 'home history never offers a nonexistent manuscript');
+      assert.equal(await page.locator('#result-steps').isVisible(), false);
+      assert.equal(await textOf(page, 'result-title'), 'あなたの朗読記録');
+      assert.equal(await page.locator('#again').isVisible(), false);
       assert.equal(await textOf(page, 'average-speed'), '約300文字 / 分');
       await page.locator('#results [data-go=estimate]').click();
       assert.equal(await textOf(page, 'estimate-average-speed'), '約300文字 / 分');

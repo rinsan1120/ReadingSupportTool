@@ -1,10 +1,10 @@
 # SCREEN_REGISTRY — 画面・入力項目・ダイアログ識別子台帳
 
 - 対象アプリ：よみじたく（ReadingSupportTool）
-- 版：1.3
-- 制定日：2026-10-21／最終更新：2026-10-26
+- 版：1.4
+- 制定日：2026-10-21／最終更新：2026-11-04
 - 状態：識別子台帳。従来分の識別属性・画面IDコピーは実装済み。追加入力・ダイアログの識別属性は未付与
-- 対応元：`main` の `index.html` と `app.js`（2026-10-26・ユーザーライブラリ統合後を照合）
+- 対応元：`main` の `index.html` と `app.js`（2026-11-04・ブラウザ自動保存と縦書き機能の統合後を照合）
 
 ## 1. 目的と適用範囲
 
@@ -45,7 +45,7 @@
 
 - 計測準備から再開準備までの行は、すべて `view === 'reading'`、`mode === 'time'` を前提とします。同じ `#reading` 領域を状態ごとに区別するもので、独立したHTMLの `section` ではありません。
 - **`SCR-RESULT-SPEED` は旧結果画面の速度タブ用の識別子で、現在のコードからは生成されません。**過去のIssue・報告との互換参照として保持し、再利用しません。現在は `SCR-RESULT-TIME` で両方の数値を含む共通結果画面を示します。
-- 起動時はホームを無効化した状態で `DLG-STARTUP` を開きます。書込メニューの開閉・ツール切替は `SCR-READ-VIEW` 内の操作状態であり、別画面とはしません。
+- 起動時はホームを無効化した状態で `DLG-STARTUP` を開きます。「はじめる」はブラウザ自動保存データの再開または新規開始、「保存したデータを開く」はファイルバックアップ読込です。縦書き・横書きの切替や書込メニューの開閉は `SCR-READ-VIEW` 内の操作状態であり、別画面とはしません。
 - 各結果の表示上の切替・計測状態の識別により、既存HTML IDやUI文言を変更する指示ではありません。
 
 ## 3. 入力項目識別子（FLD）
@@ -74,7 +74,7 @@
 | `FLD-ESTIMATE-MINUTES` | 見積もり用の予定朗読時間 | `#estimate-minutes` |
 | `FLD-RESULT-PLANNED-MINUTES` | 結果画面の予定朗読時間 | `#planned-minutes` |
 | `FLD-SETTINGS-READER-WIDTH` | 本文の表示幅 | `#reader-width` |
-| `FLD-SETTINGS-COLUMNS` | 1行の文字数目安 | `#columns` |
+| `FLD-SETTINGS-COLUMNS` | 横書きの1行文字数目安／縦書きの文字サイズに対応する調整 | `#columns` |
 | `FLD-SETTINGS-LINE-HEIGHT` | 行間 | `#line-height` |
 | `FLD-SETTINGS-BREAK-LINES` | 自動区切り | `#break-lines` |
 | `FLD-RUBY-TEXT` | 読み仮名の入力 | `#ruby-input` |
@@ -101,7 +101,7 @@
 | `DLG-MEMO` | 文字メモの追加・編集 | `#writing-memo-dialog` |
 | `DLG-SAVE-NAVIGATION` | 原稿保存・画面移動の確認 | `#save-navigation-dialog` |
 | `DLG-CONFIRM` | 操作確認 | `#confirm-dialog` |
-| `DLG-STARTUP` | 起動時のJSON読込・新規作成 | `#startup-dialog` |
+| `DLG-STARTUP` | ブラウザ保存データからの開始・ファイルバックアップ読込 | `#startup-dialog` |
 | `DLG-DOWNLOAD-CONFIRM` | 通常ダウンロードの保存確認 | `#download-confirm-dialog` |
 
 追加2件のダイアログは現在 `data-dialog-id` 未付与です。HTML `id` との管理上の対応を記録し、コードの属性追加は別の改修とします。
@@ -137,3 +137,4 @@
 | 2026-10-21 | 1.1 | 現行コードの識別属性・画面状態連動・フッターの画面IDコピー実装を反映 |
 | 2026-10-21 | 1.2 | `SCR-READ-VIEW` を「原稿画面」と命名し、書込メニュー開閉は同一画面内の操作状態と明記。SCR 9件・FLD 23件・DLG 7件の割当ては不変 |
 | 2026-10-26 | 1.3 | JSON正本のユーザーデータ管理・見積もり専用画面・一時停止／再開を反映。現行SCR 11件・FLD 29件・DLG 9件。旧`SCR-RESULT-SPEED`は参照用に保持 |
+| 2026-11-04 | 1.4 | ブラウザ自動保存・ファイルバックアップ導線と縦横切替を現行仕様に整合。既存の識別子件数は変更しない |

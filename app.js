@@ -6,6 +6,8 @@
   let browserSession = null, browserSaveError = '';
   let pendingDownloadSnapshot = null;
   let view = 'home', mode = 'read', sourceType = 'sample', sample = null;
+  // Entry context is transient; saved history does not imply a completed flow.
+  let resultMode = 'records';
   let history = [], target = '', targetManual = false, plannedMinutes = '20';
   let readMeasurementReturn = null;
   let phase = 'idle', began = 0, accumulatedMilliseconds = 0, countdownTimer = 0, elapsedTimer = 0, noticeTimer = 0;
@@ -31,6 +33,65 @@
     $('paper-mode').setAttribute('aria-label', `白背景：${on ? 'ON' : 'OFF'}`);
   }
   let openingReader = false;
+  // Browser entries contain navigation metadata only. Reader context stays in memory.
+  const navigationSession = `${Date.now()}-${Math.random()}`;
+  let navigationIndex = 0, navigatingHistory = false, restoringHistory = false;
+  const readerContexts = new Map();
+  const navigationViews = new Set(['home', 'read-input', 'reading', 'time-input', 'results', 'estimate']);
+  function navigationRoute(next, nextResultMode) {
+    return { view: next, mode: next === 'reading' ? mode : null,
+      resultMode: next === 'results' ? nextResultMode : 'records' };
+  }
+  function writeNavigation(next, nextResultMode, replace = false) {
+    if (!libraryReady || navigatingHistory) return;
+    const route = navigationRoute(next, nextResultMode);
+    const old = window.history.state;
+    if (!replace && old?.session === navigationSession &&
+      old.view === route.view && old.mode === route.mode && old.resultMode === route.resultMode) return;
+    if (!replace) navigationIndex++;
+    window.history[replace ? 'replaceState' : 'pushState'](
+      { session: navigationSession, index: navigationIndex, ...route }, '', `#${route.view}${route.mode ? `-${route.mode}` : ''}`);
+    if (next === 'reading') readerContexts.set(navigationIndex, {
+      book: library.activeId, text: displayedText, input: $('time-text').value, source: sourceType, sample
+    });
+  }
+  function restoreNavigation(state) {
+    let next = navigationViews.has(state?.view) ? state.view : 'home';
+    if (next === 'reading') {
+      const context = readerContexts.get(state.index);
+      const read = state.mode === 'read';
+      const text = read ? readAnnotations.source : context?.text;
+      if (!text || (context && context.book !== library.activeId) ||
+        (!read && (!context || (context.source === 'custom' && context.input !== $('time-text').value)))) {
+        next = read ? 'read-input' : 'time-input';
+      } else {
+        if (!read) { sourceType = context.source; sample = context.sample; }
+        // This only renders retained models; it never creates or replaces annotations.
+        cancelMeasurement();
+        displayReader(read ? 'read' : 'time', text);
+        return;
+      }
+    }
+    show(next, state?.resultMode === 'completed' && history.length ? 'completed' : 'records');
+  }
+  addEventListener('popstate', event => {
+    const state = event.state;
+    if (restoringHistory) { restoringHistory = false; return; }
+    if (!libraryReady) return;
+    const valid = state?.session === navigationSession && Number.isSafeInteger(state.index) && state.index >= 0;
+    const delta = valid ? navigationIndex - state.index : 0;
+    if (!readyForDirectAction() || (phase !== 'idle' &&
+      !window.confirm('この画面を離れると、その回の計測結果は保存されません。移動しますか？'))) {
+      if (delta) { restoringHistory = true; window.history.go(delta); }
+      else writeNavigation(view, resultMode, true);
+      return;
+    }
+    if (valid) navigationIndex = state.index;
+    navigatingHistory = true;
+    try { restoreNavigation(valid ? state : null); }
+    finally { navigatingHistory = false; }
+    writeNavigation(view, resultMode, true);
+  });
   const hasReadings = model => !!(model && (model.entries.length || model.sourceRubies.length));
   function ask(message, action = '削除する', title = '操作の確認') {
     return new Promise(resolve => {
@@ -171,8 +232,8 @@
     if (view === 'read-input') renderSteps('read-input-steps', false, 0);
     if (view === 'time-input') renderSteps('time-input-steps', true, 0);
     if (view === 'results') {
-      $('result-steps').hidden = !history.length;
-      if (history.length) renderSteps('result-steps', true, 3);
+      $('result-steps').hidden = resultMode !== 'completed';
+      if (resultMode === 'completed') renderSteps('result-steps', true, 3);
     }
     if (view !== 'reading') return;
     const measuring = mode === 'time', active = measuring && phase !== 'idle';
@@ -219,11 +280,13 @@
   }
   setTarget(target);
   $('planned-minutes').value = plannedMinutes;
-  function show(next) {
+  function show(next, nextResultMode = 'records', focusHeading = true) {
+    writeNavigation(next, nextResultMode);
     if (libraryReady) syncLibrary();
-    if (view === 'reading' && next !== 'reading') { window.ManuscriptWriting.leave(); window.ManuscriptPrint.clear(); window.Reader.leave(); cancelMeasurement(); releaseWake(); }
+    if (view === 'reading' && next !== 'reading') { setZen(false); window.ManuscriptWriting.leave(); window.ManuscriptPrint.clear(); window.Reader.leave(); cancelMeasurement(); releaseWake(); }
     document.querySelectorAll('dialog[open]').forEach(d => d.close());
     document.querySelectorAll('.view').forEach(el => el.hidden = el.id !== next);
+    resultMode = next === 'results' ? nextResultMode : 'records';
     view = next; $('footer').hidden = next === 'reading';
     if (next === 'results' || next === 'estimate') renderResults();
     if (next === 'home') renderHomeResults();
@@ -232,8 +295,9 @@
     $('time-annotation-retention').hidden = !hasReadings(timeAnnotations) && !timeMarks?.hasMarks;
     $('writing-retention').hidden = !readMarks.hasMarks;
     syncScreenId();
+    syncMobileReader();
     window.scrollTo(0, 0);
-    $(next).querySelector('h1')?.focus({ preventScroll: true });
+    if (focusHeading) $(next).querySelector('h1')?.focus({ preventScroll: true });
   }
   document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => requestNavigation(b.dataset.go)));
   function selectSample() {
@@ -388,6 +452,7 @@
     $('toolbar-settings').disabled = phase !== 'idle';
     $('export-manuscript').hidden = mode !== 'read';
     $('export-pdf').hidden = mode !== 'read';
+    $('fullscreen-reading').hidden = mode !== 'read';
     $('measure-current').hidden = mode !== 'read';
     $('writing-mode').hidden = mode !== 'read';
     measuredPartial = mode === 'time' && sourceType === 'custom' && partialOn;
@@ -401,13 +466,35 @@
     window.Reader.show(text, model, { editable: mode === 'read', end: measuredPartial ? timingRange?.end ?? 0 : null, writingDirection });
     window.ManuscriptWriting.show(mode === 'read' ? readMarks : sourceType === 'custom' && timeMarks?.source === text ? timeMarks : null, { editable: mode === 'read' });
     if (mode === 'read' && readerReturnState) {
-      Object.entries(readerReturnState.settings).forEach(([id, value]) => { $(id).value = value; applySetting(id, Number(value)); });
       if (readerReturnState.anchor) requestAnimationFrame(() => window.Reader.restore(readerReturnState.anchor));
     }
     syncPartialInputs();
   }
   $('open-read').onclick = () => openReader('read'); $('prepare-time').onclick = () => openReader('time');
-  let preparingPDF = false, pdfAnchor = null;
+  let preparingPDF = false, pdfAnchor = null, pdfSnapshot = null, pdfWriting = null;
+  const preparePDF = () => {
+    const layout = $('pdf-layout').value;
+    $('pdf-spread-help').hidden = layout !== 'spread';
+    $('pdf-paper-help').textContent = layout === 'spread'
+      ? 'A4・横向き・倍率100%を基本とし、ヘッダーとフッターはOFFにしてください。ブラウザの「1枚あたりのページ数」は1に設定してください。保存が完了したかは印刷画面でご確認ください。'
+      : 'A4・縦向き・倍率100%を基本とし、ヘッダーとフッターはOFFにしてください。保存が完了したかは印刷画面でご確認ください。';
+    const paper = window.ManuscriptPrint.contentSize(layout, pdfSnapshot.direction);
+    let inlineSize = paper.inlineSize - 12, snapshot, writing;
+    // Keep type size/leading and rewrap into the paper. Reserve extra inline room
+    // for protruding ink before using the renderer's last-resort uniform shrink.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      snapshot = window.Reader.withPrintLayout(() => window.Reader.printSnapshot(), { inlineSize });
+      writing = window.ManuscriptPrint.reflowWriting(pdfSnapshot, pdfWriting, snapshot);
+      const overflow = window.ManuscriptPrint.inlineExtent(snapshot, writing) - paper.inlineSize;
+      if (overflow <= .1) break;
+      const next = Math.max(parseFloat(snapshot.font.fontSize) * 2, inlineSize - Math.max(overflow + 8, parseFloat(snapshot.font.fontSize) * 2));
+      if (next >= inlineSize - 1) break;
+      inlineSize = next;
+    }
+    const result = window.ManuscriptPrint.prepare(snapshot, writing, { layout, reflowed: true });
+    $('pdf-small-warning').hidden = result.points >= 9 && result.scale >= .8;
+    $('pdf-small-warning').textContent = `長い読み仮名や大きな手書きを用紙内に収めるため、文字を約${Math.round(result.scale * 100)}%に縮小しています。必要に応じてキャンセルし、該当箇所を確認してください。`;
+  };
   $('export-pdf').onclick = async () => {
     if (!readyForDirectAction()) return;
     if (view !== 'reading' || mode !== 'read' || preparingPDF) return;
@@ -419,19 +506,23 @@
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       if (view !== 'reading' || mode !== 'read') return;
       pdfAnchor = window.Reader.capture();
-      const snapshot = window.Reader.printSnapshot(), writing = window.ManuscriptWriting.printSnapshot({ forPrint: true });
-      const result = window.ManuscriptPrint.prepare(snapshot, writing);
-      $('pdf-small-warning').hidden = result.points >= 9;
-      $('pdf-small-warning').textContent = window.Reader.direction === 'vertical'
-        ? '文字が小さくなるため、キャンセルして文字サイズを調整するか、長い読み仮名やペンの広がりを見直してから出力することをおすすめします。'
-        : '文字が小さくなるため、キャンセルして本文幅を狭くするか文字サイズを大きくしてから出力することをおすすめします。長い読み仮名がある場合は、内容の短縮もご検討ください。';
+      const frozen = window.Reader.withPrintLayout(() => ({ snapshot: window.Reader.printSnapshot(), writing: window.ManuscriptWriting.printSnapshot({ forPrint: true }) }));
+      pdfSnapshot = frozen.snapshot; pdfWriting = frozen.writing;
+      preparePDF();
       $('pdf-dialog').showModal();
-    } catch (error) { window.ManuscriptPrint.clear(); notify(error.message); }
+    } catch (error) { pdfSnapshot = pdfWriting = null; window.ManuscriptPrint.clear(); notify(error.message); }
     finally { preparingPDF = false; }
   };
+  $('pdf-layout').addEventListener('change', () => {
+    if (!$('pdf-dialog').open || !pdfSnapshot || !pdfWriting) return;
+    try { preparePDF(); }
+    catch (error) { window.ManuscriptPrint.clear(); notify(error.message); }
+  });
   $('pdf-cancel').onclick = () => $('pdf-dialog').close();
   $('pdf-dialog').addEventListener('close', () => {
-    if (!document.body.classList.contains('manuscript-printing')) window.ManuscriptPrint.clear();
+    if (!document.body.classList.contains('manuscript-printing')) {
+      window.ManuscriptPrint.clear(); pdfSnapshot = pdfWriting = null;
+    }
   });
   $('pdf-print').onclick = () => {
     // Set printing state before closing: the asynchronous close event must not
@@ -444,6 +535,7 @@
     if (!document.body.classList.contains('manuscript-printing')) return;
     window.ManuscriptPrint.clear();
     const anchor = pdfAnchor; pdfAnchor = null;
+    pdfSnapshot = pdfWriting = null;
     requestAnimationFrame(() => { if (view === 'reading') window.Reader.restore(anchor); });
   };
   addEventListener('afterprint', finishPDF);
@@ -476,15 +568,18 @@
       custom.checked = true; custom.dispatchEvent(new Event('change'));
       $('time-text').dispatchEvent(new Event('input'));
       setTarget(count, true);
-      const settings = Object.fromEntries(['reader-width', 'columns', 'line-height', 'break-lines'].map(id => [id, $(id).value]));
       displayReader('time', text);
-      readMeasurementReturn = { anchor: readerReturnAnchor, settings };
+      readMeasurementReturn = { anchor: readerReturnAnchor };
     } catch (error) { notify(`計測用の原稿を準備できません。${error.message}`); }
     finally { openingReader = false; }
   };
   $('export-manuscript').onclick = saveUserData;
   let importing = false;
-  $('import-manuscript').onclick = () => $('manuscript-file').click();
+  $('import-manuscript').onclick = async () => {
+    if (importing || view !== 'read-input') return;
+    const confirmed = await ask('以前のバージョンで保存した原稿を取り込みます。現在の原稿に本文や書き込みがある場合、取り込み後に置き換わります。保存した続きのデータはホームの「保存したデータを開く」から読み込んでください。', 'ファイルを選ぶ');
+    if (confirmed && view === 'read-input') $('manuscript-file').click();
+  };
   $('manuscript-file').addEventListener('change', async () => {
     const file = $('manuscript-file').files[0];
     $('manuscript-file').value = ''; // Allow retrying the same file after cancel/error.
@@ -529,15 +624,94 @@
   function closeWritingMenu() {
     closeSettings();
     window.ManuscriptWriting.setMode(false);
-    $('writing-mode').focus({ preventScroll: true });
+    (mobileReaderActive() ? $('mobile-reader-tab') : $('writing-mode')).focus({ preventScroll: true });
   }
-  $('writing-off').onclick = closeWritingMenu;
   $('writing-mode').onclick = async () => {
     if (window.ManuscriptWriting.enabled) { closeWritingMenu(); return; }
     if (!await approveEditing(false)) return;
     closeSettings();
     window.ManuscriptWriting.setMode(true);
   };
+  $('mobile-writing-done').onclick = closeWritingMenu;
+
+  // Reuse the actual controls and handlers; desktop and measurement retain
+  // their original DOM order. Opening the drawer never resizes the manuscript.
+  const mobileReaderMedia = matchMedia('(max-width: 600px)');
+  const readerToolbar = document.querySelector('.reader-toolbar');
+  const writingToolbar = $('writing-toolbar');
+  const toolbarHome = document.createComment('reader toolbar');
+  const writingHome = document.createComment('writing toolbar');
+  readerToolbar.before(toolbarHome); writingToolbar.before(writingHome);
+  const mobileMenu = $('mobile-reader-menu');
+  function mobileReaderActive() { return mobileReaderMedia.matches && view === 'reading' && mode === 'read'; }
+  function syncMobileReader() {
+    const active = mobileReaderActive();
+    $('reading').classList.toggle('mobile-manuscript', active);
+    if (active) {
+      $('mobile-reader-actions').append(readerToolbar);
+      $('mobile-writing-dock').append(writingToolbar);
+    } else {
+      mobileMenu.close();
+      toolbarHome.after(readerToolbar); writingHome.after(writingToolbar);
+    }
+    fitMobileReader();
+  }
+  function closeMobileReader() {
+    mobileMenu.close();
+  }
+  $('mobile-reader-tab').onclick = () => {
+    if (!mobileReaderActive()) return;
+    mobileMenu.showModal();
+    $('mobile-reader-tab').setAttribute('aria-expanded', 'true');
+    $('mobile-reader-close').focus({ preventScroll: true });
+  };
+  $('mobile-reader-close').onclick = closeMobileReader;
+  mobileMenu.addEventListener('close', () => $('mobile-reader-tab').setAttribute('aria-expanded', 'false'));
+  // Close before the target's existing handler opens a dialog or changes view.
+  mobileMenu.addEventListener('click', event => {
+    if (event.target.closest('.reader-toolbar button')) closeMobileReader();
+    if (event.target === mobileMenu) {
+      const rect = mobileMenu.getBoundingClientRect();
+      if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closeMobileReader();
+    }
+  }, true);
+  function fitMobileReader() {
+    const viewport = window.visualViewport;
+    const height = viewport?.height ?? innerHeight, top = viewport?.offsetTop ?? 0;
+    const reading = $('reading');
+    const writing = mobileReaderActive() && Boolean(window.ManuscriptWriting?.enabled);
+    reading.classList.toggle('mobile-writing', writing);
+    reading.style.setProperty('--mobile-visual-top', `${top}px`);
+    reading.style.setProperty('--mobile-visual-height', `${height}px`);
+    reading.style.setProperty('--mobile-visual-bottom', `${Math.max(0, innerHeight - height - top)}px`);
+    const pageHeight = $('page-controls').getBoundingClientRect().height;
+    reading.style.setProperty('--mobile-page-height', `${pageHeight}px`);
+    const dockHeight = mobileReaderActive() ? $('mobile-writing-dock').getBoundingClientRect().height : 0;
+    reading.style.setProperty('--mobile-dock-height', `${dockHeight}px`);
+    if (writing) {
+      // Clip only the painted/hit-tested work area. Keep the source DOM and
+      // document scrolling intact so every saved writing coordinate stays in
+      // the existing reader-relative coordinate system (no nested scroller).
+      const rect = $('reader-viewport').getBoundingClientRect();
+      const workTop = top + toolbarHome.parentElement.getBoundingClientRect().height;
+      const workBottom = $('mobile-writing-dock').getBoundingClientRect().top;
+      reading.style.setProperty('--mobile-writing-clip-top', `${Math.max(0, workTop - rect.top)}px`);
+      reading.style.setProperty('--mobile-writing-clip-bottom', `${Math.max(0, rect.bottom - workBottom)}px`);
+    }
+  }
+  new ResizeObserver(fitMobileReader).observe($('page-controls'));
+  new ResizeObserver(fitMobileReader).observe($('mobile-writing-dock'));
+  new ResizeObserver(fitMobileReader).observe($('reader-viewport'));
+  document.addEventListener('reader-writing-mode', fitMobileReader);
+  mobileReaderMedia.addEventListener('change', () => {
+    const anchor = window.Reader.capture();
+    syncMobileReader();
+    if (view === 'reading') window.Reader.refresh(anchor);
+  });
+  window.visualViewport?.addEventListener('resize', fitMobileReader);
+  window.visualViewport?.addEventListener('scroll', fitMobileReader);
+  addEventListener('resize', fitMobileReader);
+  addEventListener('scroll', fitMobileReader, { passive: true });
   window.Reader.setEditModeGuard(approveEditing);
   document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.dataset.close === 'settings-dialog' ? closeSettings() : $(b.dataset.close).close());
   const settingsMobile = matchMedia('(max-width: 600px)');
@@ -563,8 +737,12 @@
       ['reader-width', 'columns'].forEach(id => settingsBaseline.set(id, { value: $(id).value, label: $(sliderOutput[id]).textContent }));
     } else rememberSettings();
   });
-  const settingNames = layoutSettings;
-  let activeSetting = 'columns';
+  const settingNames = ['display-mode', ...layoutSettings];
+  let activeSetting = 'display-mode';
+  const displayHelpHome = document.createComment('desktop reading direction help');
+  $('vertical-help').before(displayHelpHome);
+  const memoOpacityHome = document.createComment('desktop memo opacity setting');
+  $('memo-opacity-setting').before(memoOpacityHome);
   function reserveSettingsSpace() {
     const panel = $('settings-dialog');
     const height = panel.open && settingsMobile.matches ? Math.ceil(panel.getBoundingClientRect().height) : 0;
@@ -573,6 +751,12 @@
   function updateSettingsControls() {
     $('settings-tabs').hidden = !settingsMobile.matches;
     $('setting-width').hidden = settingsMobile.matches;
+    // Keep the desktop explanation in its original position. On phones it
+    // belongs to the display-mode panel and disappears with that panel.
+    if (settingsMobile.matches) $('setting-display-mode').append($('vertical-help'));
+    else displayHelpHome.after($('vertical-help'));
+    if (settingsMobile.matches) $('setting-columns').append($('memo-opacity-setting'));
+    else memoOpacityHome.after($('memo-opacity-setting'));
     settingNames.forEach(name => {
       const group = $(`setting-${name}`), tab = $(`tab-${name}`);
       group.hidden = settingsMobile.matches && activeSetting !== name;
@@ -604,6 +788,12 @@
     }
     reserveSettingsSpace(); window.Reader.restore(anchor);
   }
+  $('display-mode').onchange = () => {
+    if (!readyForDirectAction()) { $('display-mode').value = window.Reader.displayMode; return; }
+    window.Reader.setDisplayMode($('display-mode').value);
+    syncWritingDirection(window.Reader.direction);
+    document.dispatchEvent(new Event('manuscript-change'));
+  };
   $('before-settings').onclick = openSettings;
   $('settings-dialog').addEventListener('close', () => {
     reserveSettingsSpace();
@@ -639,13 +829,13 @@
   $('paper-mode').onclick = () => {
     if (view !== 'reading' || phase !== 'idle') return;
     const on = !$('reader-stage').classList.contains('paper-mode');
-    if (mode === 'read') readPaper = on;
+    if (mode === 'read') { readPaper = on; syncLibrary(); }
     else timingPaper[sourceType] = { text: displayedText, on };
     applyPaper(on);
   };
   function applySetting(id, value) {
     if (id === 'reader-width') window.Reader.configure({ width: value });
-    if (id === 'columns') window.Reader.configure({ columns: value });
+    if (id === 'columns') window.Reader.configure(window.Reader.direction === 'vertical' ? { fontSize: value } : { columns: value });
     if (id === 'line-height') {
       $('line-height-value').textContent = value.toFixed(1); window.Reader.configure({ height: value });
     }
@@ -653,13 +843,13 @@
       $('break-lines-value').textContent = value ? `${value}表示${window.Reader.direction === 'vertical' ? '列' : '行'}ごと` : 'なし'; window.Reader.configure({ breaks: value });
     }
     rememberSettings();
+    document.dispatchEvent(new Event('manuscript-change'));
   }
   function syncWritingDirection(value) {
     document.querySelectorAll('button[data-direction]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.direction === value)));
     $('vertical-help').hidden = value !== 'vertical';
-    $('columns-label').textContent = value === 'vertical' ? '文字サイズの目安（小さい値ほど大きい文字）' : '1行の文字数目安';
-    $('tab-columns').textContent = value === 'vertical' ? '文字サイズ' : '文字数';
-    $('tab-line-height').textContent = value === 'vertical' ? '列間隔' : '行間';
+    $('vertical-help').textContent = window.Reader.displayMode === 'pages' ? '上から下、右から左へ読みます。ペンは縦横別に保存されます。' : '各区画を右から左へ読み、下へスクロールすると続きが読めます。ペンは縦横別に保存されます。';
+    $('columns-label').textContent = value === 'vertical' ? '文字サイズの目安' : '1行の文字数目安';
     $('line-height-label').textContent = value === 'vertical' ? '列間隔' : '行間';
     const breaks = Number($('break-lines').value);
     $('break-lines-value').textContent = breaks ? `${breaks}表示${value === 'vertical' ? '列' : '行'}ごと` : 'なし';
@@ -722,7 +912,7 @@
       const value = Number(input.value);
       if (!window.ManuscriptWriting.hasMarks || settingsApproved) { applySetting(id, value); return; }
       pendingSetting = { id, value };
-      $(sliderOutput[id]).textContent = id === 'reader-width' ? `${value}px` : id === 'columns' ? `約${value}文字`
+      $(sliderOutput[id]).textContent = id === 'reader-width' ? `${value}px` : id === 'columns' ? (window.Reader.direction === 'vertical' ? `${value}px` : `約${value}文字`)
         : id === 'line-height' ? value.toFixed(1) : value ? `${value}表示行ごと` : 'なし';
     });
   });
@@ -803,7 +993,7 @@
         title: measuredType === 'sample' ? sample.title : readMeasurementReturn ? activeBook()?.title || '無題の原稿' : '用意した文章' });
       history = history.slice(-100); recordChanges();
     }
-    show('results');
+    show('results', 'completed');
   };
   function readingStatistics() {
     const characters = history.reduce((sum, r) => sum + r.characters, 0);
@@ -817,6 +1007,10 @@
     $('home-average-speed').textContent = history.length ? paceText(readingStatistics().speed) : '';
   }
   function renderResults() {
+    const completed = resultMode === 'completed';
+    $('result-title').textContent = completed ? '計測結果' : 'あなたの朗読記録';
+    $('again').hidden = !completed;
+    $('records-measure').hidden = completed || !history.length;
     const { characters, seconds, speed } = readingStatistics();
     const minutes = Number(target) / speed;
     $('time-estimate').textContent = !history.length ? '計測結果がありません'
@@ -835,14 +1029,14 @@
     $('result-empty').hidden = !!history.length; $('estimate-empty').hidden = !!history.length;
     $('estimate-results').hidden = !history.length;
     $('estimate-return').hidden = !readMeasurementReturn;
-    $('retry-measurement').hidden = !history.length;
+    $('retry-measurement').hidden = !completed || !history.length;
     $('history-count').textContent = `（${history.length}回）`;
     $('result-summary').textContent = history.length ? `合計${characters.toLocaleString()}文字・実測${seconds.toFixed(1)}秒 ／ 平均${Math.round(speed).toLocaleString()}文字/分` : '';
     const lastMeasurement = history.at(-1);
     const currentText = $('time-text').value.replace(/\r\n?/g, '\n');
     const retainedCustomText = lastMeasurement?.type === 'custom' && currentText && currentText === lastMeasuredCustomText?.replace(/\r\n?/g, '\n');
     $('again').textContent = readMeasurementReturn ? '原稿に戻る' : sourceType === 'custom' ? '入力した文章に戻る' : '計測設定に戻る';
-    $('result-retention').hidden = !retainedCustomText;
+    $('result-retention').hidden = !completed || !retainedCustomText;
     $('history').replaceChildren();
     history.forEach((record, i) => {
       const li = document.createElement('li'), detail = document.createElement('div'), small = document.createElement('small'), remove = document.createElement('button');
@@ -861,7 +1055,6 @@
     if (readMeasurementReturn) {
       const returnState = readMeasurementReturn;
       readMeasurementReturn = null;
-      show('reading');
       displayReader('read', readAnnotations.source, returnState);
       return;
     }
@@ -930,7 +1123,7 @@
     toolbarY = window.scrollY; toolbarTravel = 0; toolbarDirection = 0;
   }
   function toolbarLocked() {
-    return !toolbarMobile.matches || view !== 'reading' || phase === 'countdown' || phase === 'resuming'
+    return window.Reader.displayMode === 'pages' || !toolbarMobile.matches || view !== 'reading' || phase === 'countdown' || phase === 'resuming'
       || window.ManuscriptWriting.enabled
       || Boolean(document.querySelector('dialog[open]'))
       || Boolean(document.activeElement?.matches('input,textarea,select'));
@@ -964,12 +1157,45 @@
   addEventListener('orientationchange', resetToolbarViewport);
   window.visualViewport?.addEventListener('resize', resetToolbarViewport);
 
+  // Fullscreen reading: a manuscript-only view for reading without
+  // measuring. The layout class does the work; the Fullscreen API is an
+  // enhancement where available (it is missing on some mobile browsers).
+  const zenButton = $('fullscreen-reading');
+  let zenActive = false, zenIdleTimer = 0;
+  function zenShowUi() {
+    if (!zenActive) return;
+    document.body.classList.add('zen-ui');
+    clearTimeout(zenIdleTimer);
+    zenIdleTimer = setTimeout(() => document.body.classList.remove('zen-ui'), 2600);
+  }
+  function setZen(on) {
+    if (on === zenActive) return;
+    if (on && view !== 'reading') return;
+    if (on && window.ManuscriptWriting?.enabled) $('writing-mode').click();
+    zenActive = on;
+    document.body.classList.toggle('zen-reading', on);
+    zenButton.setAttribute('aria-pressed', String(on));
+    if (on) {
+      zenShowUi();
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    } else {
+      clearTimeout(zenIdleTimer);
+      document.body.classList.remove('zen-ui');
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    }
+    window.dispatchEvent(new Event('resize'));
+  }
+  zenButton.onclick = () => setZen(true);
+  $('zen-exit').onclick = () => setZen(false);
+  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && zenActive) setZen(false); });
+  document.addEventListener('keydown', event => { if (zenActive && event.key === 'Escape' && !document.fullscreenElement) setZen(false); });
+  ['pointermove', 'pointerdown'].forEach(name => document.addEventListener(name, zenShowUi, { passive: true }));
+
   function activeBook() { return library?.manuscripts.find(book => book.id === library.activeId); }
   function renderIdentity() {
     const book = activeBook();
     $('profile-display').textContent = (library.profile.name ? `${library.profile.name}さんの本棚` : 'あなたの本棚') + (book ? ` · ${book.title}` : '');
     const owner = library.profile.name ? `${library.profile.name}さん` : '';
-    $('result-title').textContent = owner ? `${owner}の計測結果` : '計測結果';
     $('average-speed-title').textContent = owner ? `${owner}の平均朗読速度` : '平均朗読速度';
     $('estimate-average-speed-title').textContent = owner ? `${owner}の平均朗読速度` : '平均朗読速度';
     $('home-results-title').textContent = owner ? `${owner}の計測結果` : 'これまでの計測結果';
@@ -1013,6 +1239,8 @@
         Object.assign(book, { draft, title, manuscript, pending, updatedAt: new Date().toISOString() });
       }
     }
+    library.displaySettings = window.Reader.displaySettings;
+    library.paperMode = readPaper;
     library.profile.name = $('profile-name').value;
     library.history = history;
     library.target = validTarget(target) ? String(Number(target)) : '';
@@ -1050,7 +1278,7 @@
     pendingReadPaste = book?.pending ? { model: window.ReadingAnnotations.fromData(book.pending), input: book.draft } : null;
     $('manuscript-title').value = book?.title || '';
     $('read-count').textContent = `${countText($('read-text').value)}文字`;
-    readPaper = false; readMeasurementReturn = null;
+    readPaper = library?.paperMode === true; readMeasurementReturn = null;
     renderIdentity();
   }
   let libraryRenderKey = '', renamingId = null;
@@ -1060,7 +1288,7 @@
     const totalChars = library.history.reduce((sum, r) => sum + r.characters, 0);
     const charsPerMinute = totalSeconds > 0 ? totalChars / totalSeconds * 60 : 0;
     const key = JSON.stringify([renamingId, library.activeId, charsPerMinute,
-      library.manuscripts.map(b => [b.id, b.title, b.updatedAt, b.draft.length, countText(b.draft), b.draft.slice(0, 50)])]);
+      library.manuscripts.map(b => [b.id, b.title, b.updatedAt, b.draft.length, countText(b.draft), b.draft.slice(0, 160)])]);
     if (key === libraryRenderKey) return;
     libraryRenderKey = key;
     $('library-empty').hidden = !!library.manuscripts.length;
@@ -1097,19 +1325,23 @@
         li.append(input, editActions); return li;
       }
       const open = document.createElement('button'), detail = document.createElement('small'), rename = document.createElement('button'), remove = document.createElement('button');
-      open.className = 'book-open'; open.textContent = book.title; open.setAttribute('aria-label', `${book.title}を開く`);
+      detail.className = 'book-meta';
+      open.className = 'book-open'; open.setAttribute('aria-label', `${book.title}を開く`);
+      const title = document.createElement('span'); title.className = 'book-title'; title.textContent = book.title; open.append(title);
       const count = countText(book.draft);
-      const estimate = count && charsPerMinute ? ` · 朗読目安 約${count / charsPerMinute < 1 ? '1分未満' : `${Math.round(count / charsPerMinute)}分`}` : '';
-      detail.textContent = `${count.toLocaleString()}文字 · ${new Date(book.updatedAt).toLocaleDateString('ja-JP')}${estimate}`;
-      open.append(detail);
-      const preview = book.draft.replace(/\s+/g, ' ').trim().slice(0, 50);
-      if (preview) { const p = document.createElement('small'); p.className = 'book-preview'; p.textContent = preview; open.append(p); }
-      if (book.id === library.activeId) {
-        const active = document.createElement('small'); active.className = 'book-active-label'; active.textContent = '開いている原稿';
-        open.append(active); open.setAttribute('aria-current', 'true');
+      const metaMain = document.createElement('span'); metaMain.className = 'book-meta-line';
+      metaMain.textContent = `${count.toLocaleString()}文字 · ${new Date(book.updatedAt).toLocaleDateString('ja-JP')}`;
+      detail.append(metaMain);
+      if (count && charsPerMinute) {
+        const minutes = count / charsPerMinute;
+        const metaTime = document.createElement('span'); metaTime.className = 'book-meta-line';
+        metaTime.textContent = `あなたの朗読時間（目安） ${minutes < 1 ? '1分未満' : `約${Math.round(minutes)}分`}`;
+        detail.append(metaTime);
       }
-      const openLabel = document.createElement('small'); openLabel.className = 'book-open-label'; openLabel.textContent = 'この原稿を開く';
-      open.append(openLabel);
+      open.append(detail);
+      const preview = book.draft.replace(/\s+/g, ' ').trim().slice(0, 160);
+      if (preview) { const p = document.createElement('small'); p.className = 'book-preview'; p.textContent = preview; open.append(p); }
+      if (book.id === library.activeId) open.setAttribute('aria-current', 'true');
       open.onclick = () => {
         if (!syncLibrary()) { notify('入力内容を確認してから原稿を切り替えてください。'); return; }
         library.activeId = book.id; restoreBook(book); syncLibrary();
@@ -1241,6 +1473,7 @@
     return window.UserLibrary.openBrowser(storage, { replacement });
   }
   function useUserData(candidate, filename = '', session = openBrowserSession()) {
+    const initialHome = !libraryReady;
     clearTimeout(changeTimer);
     libraryReady = false;
     browserSession = session; browserSaveError = ''; captureFailed = false;
@@ -1248,9 +1481,17 @@
     $('storage-privacy').textContent = 'データはこのブラウザ内に保存します。外部へ送信しません。';
     ['export-user', 'save-user-status'].forEach(id => { $(id).textContent = 'バックアップを保存'; });
     ['import-user', 'library-load'].forEach(id => { $(id).textContent = '保存したデータを開く'; });
-    $('export-manuscript').querySelector('span').textContent = 'バックアップを保存';
+    $('export-manuscript').querySelector('span').textContent = '保存';
     $('export-manuscript').setAttribute('aria-label', 'バックアップを保存');
-    library = candidate; history = library.history; target = library.target; plannedMinutes = library.plannedMinutes;
+    library = candidate;
+    window.Reader.configure(library.displaySettings);
+    $('line-height').value = library.displaySettings.height;
+    $('line-height-value').textContent = library.displaySettings.height.toFixed(1);
+    $('break-lines').value = library.displaySettings.breaks;
+    syncWritingDirection(window.Reader.direction);
+    window.Reader.setDisplayMode(library.displaySettings.mode);
+    $('display-mode').value = window.Reader.displayMode;
+    history = library.history; target = library.target; plannedMinutes = library.plannedMinutes;
     $('profile-name').value = library.profile.name; restoreBook(activeBook());
     timeAnnotations = null; timeMarks = null; timeInputSnapshot = null; $('time-text').value = ''; lastMeasuredCustomText = null;
     $('time-count').textContent = '計測する本文：0文字';
@@ -1258,7 +1499,15 @@
     $('planned-minutes').value = plannedMinutes; $('estimate-minutes').value = plannedMinutes;
     userFilename = filename; savedUserSnapshot = snapshotKey(library);
     libraryReady = true; document.querySelector('main').inert = false;
-    syncLibrary(); renderResults(); show('home');
+    const initialRoute = initialHome ? location.hash.slice(1) : 'home';
+    readerContexts.clear();
+    syncLibrary(); renderResults();
+    navigatingHistory = true;
+    try {
+      restoreNavigation(initialRoute === 'reading-read' ? { view: 'reading', mode: 'read' }
+        : { view: navigationViews.has(initialRoute) ? initialRoute : 'home' });
+    } finally { navigatingHistory = false; }
+    writeNavigation(view, resultMode, true);
   }
   let restoringUser = false;
   const chooseUserFile = () => { if (!savingUser && !restoringUser) $('user-file').click(); };

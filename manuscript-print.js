@@ -1,5 +1,5 @@
-/* Frozen text, not a screenshot: retain measured screen lines and paginate in
- * an independent A4 document. No manuscript, settings or Storage is mutated. */
+/* Freeze measured print lines after paper-width reflow, map ink by source
+ * grapheme, and paginate independently. Manuscript data and settings stay intact. */
 (() => {
   const root = document.getElementById('manuscript-print');
   let ready = false;
@@ -7,6 +7,7 @@
     ready = false;
     document.body.classList.remove('manuscript-printing');
     root.classList.remove('print-measuring');
+    root.classList.remove('print-two-up');
     root.replaceChildren();
   }
   const svg = (name, attrs, parent) => {
@@ -19,7 +20,7 @@
     // Native print dimensions avoid Chromium clipping the unscaled height of a
     // transformed, tall bubble before shrinking it into its page.
     parent.style.setProperty('--memo-print-scale', scale);
-    return window.ManuscriptWriting.bubble(item, { ...settings, fontSize: settings.fontSize * scale }, x, y, tx, ty, parent);
+    return window.ManuscriptWriting.bubble(item, { ...settings, fontSize: (item.fontSize ?? settings.fontSize) * scale }, x, y, tx, ty, parent);
   }
   // Sweep the obstacle edges rather than a pixel grid. For each possible Y,
   // merge forbidden X intervals and keep the nearest unobstructed rectangle.
@@ -79,10 +80,76 @@
     }
     return fragments;
   }
-  function prepare(snapshot, writing = { items: [], pens: [] }) {
+  function contentSize(layout = 'single', direction = 'horizontal') {
+    const probe = document.createElement('div');
+    Object.assign(probe.style, { position: 'fixed', visibility: 'hidden', pointerEvents: 'none', left: '-100000px',
+      width: layout === 'spread' ? '123.5mm' : '180mm', height: layout === 'spread' ? '180mm' : '266mm' });
+    document.body.append(probe);
+    const { width, height } = probe.getBoundingClientRect(); probe.remove();
+    return { width, height, inlineSize: direction === 'vertical' ? height : width };
+  }
+  function logicalPens(snapshot, writing) {
+    if (snapshot.direction !== 'vertical' || writing.logicalPens) return writing.pens;
+    const sections = snapshot.sections;
+    if (!sections?.length) throw new Error('縦書きの区画情報を確認できないためPDFを準備できません。');
+    return writing.pens.flatMap(pen => {
+      if (pen.points.length < 2 || pen.points.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) throw new Error('ペンの描画座標を確認できないためPDFを準備できません。');
+      return [...splitStroke(pen.points, sections)].flatMap(([row, paths]) => paths.map(points => {
+        const s = sections[row];
+        return { ...pen, first: s.first, last: s.last, points: points.map(p => ({ x: p.y - s.top, y: s.base + s.right - p.x })) };
+      }));
+    });
+  }
+  const cellKey = cell => cell.readingIndex !== undefined ? `a:${cell.offset}:${cell.readingIndex}` : `s:${cell.start}`;
+  function reflowWriting(original, writing, target) {
+    // Split vectors at their original line and character bands, then translate
+    // each fragment with its source grapheme. Never join ink across a new wrap.
+    const cells = [...original.glyphs, ...(original.annotationGlyphs || [])];
+    const targets = new Map([...target.glyphs, ...(target.annotationGlyphs || [])].map(g => [cellKey(g), g]));
+    const byLine = new Map();
+    for (const cell of cells) {
+      if (!byLine.has(cell.line)) byLine.set(cell.line, []);
+      byLine.get(cell.line).push(cell);
+    }
+    for (const row of byLine.values()) row.sort((a, b) => a.x - b.x);
+    const pens = [];
+    for (const pen of logicalPens(original, writing)) {
+      const oldLines = original.lines.map((line, index) => ({ ...line, index }))
+        .filter(line => pen.first === undefined || line.index >= pen.first && line.index <= pen.last);
+      for (const [row, paths] of splitStroke(pen.points, oldLines)) {
+        const line = oldLines[row];
+        let rowCells = byLine.get(line.index);
+        if (!rowCells?.length) {
+          const nearest = cells.reduce((best, c) => !best || Math.abs(original.lines[c.line].center - line.center) < Math.abs(original.lines[best.line].center - line.center) ? c : best, null);
+          rowCells = nearest ? byLine.get(nearest.line) : [];
+        }
+        if (!rowCells.length) throw new Error('手書きに対応する本文位置を確認できません。');
+        const bands = rowCells.map(g => ({ top: g.x, bottom: g.x + g.width }));
+        for (const path of paths) for (const [column, fragments] of splitStroke(path.map(p => ({ x: p.y, y: p.x })), bands)) {
+          const from = rowCells[column], to = targets.get(cellKey(from));
+          if (!to) throw new Error('改行後の手書きの本文位置を確認できません。');
+          const dx = to.x + to.width / 2 - from.x - from.width / 2, dy = to.y + to.height / 2 - from.y - from.height / 2;
+          for (const fragment of fragments) if (fragment.some(p => Math.hypot(p.x - fragment[0].x, p.y - fragment[0].y) > .00001))
+            pens.push({ id: pen.id, color: pen.color, line: to.line, points: fragment.map(p => ({ x: p.y + dx, y: p.x + dy })) });
+        }
+      }
+    }
+    return { ...writing, pens, logicalPens: true };
+  }
+  function inlineExtent(snapshot, writing) {
+    let low = 0, high = snapshot.width;
+    for (const line of snapshot.lines) for (const p of line.pieces) if (p.sourceRuby) for (const r of [p.sourceRuby.bounds, p.sourceRuby.readingBounds]) {
+      low = Math.min(low, r.left); high = Math.max(high, r.left + r.width);
+    }
+    for (const pen of logicalPens(snapshot, writing)) for (const p of pen.points) { low = Math.min(low, p.x - 1.4); high = Math.max(high, p.x + 1.4); }
+    return high - low;
+  }
+  function prepare(snapshot, writing = { items: [], pens: [] }, options = {}) {
     clear();
+    const spread = options.layout === 'spread';
     const vertical = snapshot.direction === 'vertical';
-    if (vertical) {
+    if (spread) root.classList.add('print-two-up');
+    if (vertical && !writing.logicalPens) {
       // Split at viewport-section boundaries before unfolding. Every fragment
       // remains a rigid vector stroke; only its translation changes in print.
       const sections = snapshot.sections;
@@ -123,7 +190,8 @@
     for (const pen of writing.pens) {
       if (pen.points.length < 2 || pen.points.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) throw new Error('赤ペンの描画座標を確認できないためPDFを準備できません。');
       for (const point of pen.points) { minX = Math.min(minX, point.x - 1.4); maxX = Math.max(maxX, point.x + 1.4); }
-      const targetLines = vertical ? lines.filter(line => line.index >= pen.first && line.index <= pen.last) : lines;
+      const targetLines = Number.isInteger(pen.line) ? lines.filter(line => line.index === pen.line)
+        : vertical ? lines.filter(line => line.index >= pen.first && line.index <= pen.last) : lines;
       if (!targetLines.length) throw new Error('ペンに対応する本文の列を確認できないためPDFを準備できません。');
       for (const [row, paths] of splitStroke(pen.points, targetLines)) targetLines[row].strokes.push({ id: pen.id, paths, color: pen.color ?? 'red' });
     }
@@ -133,7 +201,7 @@
     const groups = [], groupByLine = new Map();
     for (let i = 0; i < lines.length;) {
       let end = i;
-      for (let j = i; j <= end; j++) for (const piece of lines[j].pieces) if (piece.annotation !== null) end = Math.max(end, last.get(piece.annotation));
+      if (!options.reflowed) for (let j = i; j <= end; j++) for (const piece of lines[j].pieces) if (piece.annotation !== null) end = Math.max(end, last.get(piece.annotation));
       const group = lines.slice(i, end + 1);
       group.extentTop = group[0].top; group.extentBottom = group.at(-1).bottom;
       for (const line of group) for (const stroke of line.strokes) for (const path of stroke.paths) for (const point of path) {
@@ -156,7 +224,7 @@
     for (const [number, item] of memoItems.entries()) {
       const glyph = glyphs.get(item.offset), line = glyph && byLine.get(glyph.line);
       if (!line) throw new Error('文字メモの本文位置を確認できません。朗読画面を開き直してから出力してください。');
-      const el = printBubble(item, memoSettings, 0, 0, 0, 0, measurePage, scale);
+      const el = printBubble(item, item.style === 'direct' ? { ...memoSettings, fontSize: item.fontSize ?? memoSettings.fontSize } : memoSettings, 0, 0, 0, 0, measurePage, scale);
       const size = el.getBoundingClientRect();
       groupByLine.get(line.index).memos.push({ item, glyph, number: number + 1, width: size.width, height: size.height });
     }
@@ -276,7 +344,7 @@
     readingPositions.forEach(({ reading, left, top }) => { reading.style.left = `${left}px`; reading.style.top = `${top}px`; });
     // Only now are the final base/ruby ink boxes known. Keep bubble bodies clear
     // of them, vector marks and already placed bubbles, without moving the text.
-    for (const { sheet, canvas, pageLines, placedLines, memos, left, place } of memoPages) {
+    for (const [pageIndex, { sheet, canvas, pageLines, placedLines, memos, left, place }] of memoPages.entries()) {
       if (!memos.length) continue;
       const paper = sheet.getBoundingClientRect(), gap = Math.max(3, 4 * scale);
       const obstacles = [...sheet.querySelectorAll('.manuscript-piece,.manuscript-ruby-reading,.manuscript-pens path,.manuscript-markers rect')].map(el => {
@@ -289,6 +357,16 @@
         const center = place(memo.glyph.x + memo.glyph.width / 2, memo.glyph.y + memo.glyph.height / 2 + line.placedTop - line.top);
         const gx = center.x, gy = center.y;
         const preferred = { x: left + gx + memo.item.dx * font, y: gy + memo.item.dy * font };
+        if (memo.item.style === 'direct') {
+          // Direct text belongs exactly where it was written: clamp it into
+          // the page like the live stage does, never divert it to note pages.
+          const itemSettings = { ...memoSettings, fontSize: memo.item.fontSize ?? memoSettings.fontSize };
+          const px = clamp(preferred.x, memoInset, Math.max(memoInset, paper.width - memoInset - memo.width));
+          const py = clamp(preferred.y, memoInset, Math.max(memoInset, paper.height - memoInset - memo.height));
+          printBubble(memo.item, itemSettings, px - left, py, 0, 0, canvas, scale);
+          obstacles.push({ left: px, right: px + memo.width, top: py, bottom: py + memo.height });
+          continue;
+        }
         const position = memoPosition(memo.width, memo.height, preferred, obstacles, paper, memoInset, gap);
         if (!position) {
           overflow.push({ ...memo, line }); continue;
@@ -302,7 +380,7 @@
       // If this page has no free body-sized region, append referenced note pages
       // immediately after it. Source-page/line/quotation retain the association;
       // neither the frozen manuscript nor any saved coordinates are changed.
-      const sourcePage = [...root.children].indexOf(sheet) + 1;
+      const sourcePage = spread ? pageIndex + 1 : [...root.children].indexOf(sheet) + 1;
       let notePage = null, after = sheet, cursor = 0, pageStart = 0;
       const inset = 12, bodyGap = 16 * scale + 4;
       const newNotePage = () => {
@@ -351,12 +429,32 @@
         }
       }
     }
+    if (spread) {
+      const bodyPages = [...root.querySelectorAll(':scope > .manuscript-page:not(.manuscript-memo-page)')];
+      const notePages = [...root.querySelectorAll(':scope > .manuscript-page.manuscript-memo-page')];
+      root.replaceChildren();
+      const direction = vertical ? 'vertical' : 'horizontal';
+      for (let i = 0; i < bodyPages.length; i += 2) {
+        const spreadSheet = document.createElement('section');
+        spreadSheet.className = 'manuscript-spread'; spreadSheet.dataset.direction = direction;
+        spreadSheet.append(bodyPages[i]);
+        if (bodyPages[i + 1]) spreadSheet.append(bodyPages[i + 1]);
+        root.append(spreadSheet);
+      }
+      for (let i = 0; i < notePages.length; i += 2) {
+        const noteSheet = document.createElement('section');
+        noteSheet.className = 'manuscript-spread manuscript-note-spread';
+        noteSheet.dataset.direction = direction; noteSheet.append(notePages[i]);
+        if (notePages[i + 1]) noteSheet.append(notePages[i + 1]);
+        root.append(noteSheet);
+      }
+    }
     root.classList.remove('print-measuring'); ready = true;
     return { pages: root.querySelectorAll('.manuscript-page').length, scale, points: parseFloat(snapshot.font.fontSize) * scale * .75,
       marks: writing.items.length };
   }
   window.ManuscriptPrint = {
-    prepare, clear,
+    prepare, clear, contentSize, reflowWriting, inlineExtent,
     print() {
       if (!ready) throw new Error('印刷用の原稿をもう一度準備してください。');
       document.body.classList.add('manuscript-printing');
