@@ -7,7 +7,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="description" content="文章を読みやすく整え、自分の朗読速度から作品の朗読時間を調べるツール。">
   <title>よみじたく | 朗読支援サイト</title>
-  <link rel="stylesheet" href="styles.css?v=writing-tool-arrows">
+  <link rel="stylesheet" href="styles.css?v=work-search-2">
   <script src="samples.js" defer></script>
   <script src="reading-annotations.js?v=direct-memo" defer></script>
   <script src="html-ruby.js?v=clipboard-fragments" defer></script>
@@ -15,6 +15,7 @@
   <script src="manuscript-writing.js?v=writing-tool-arrows" defer></script>
   <script src="manuscript-print.js?v=memo-editor" defer></script>
   <script src="user-library.js?v=paper-save" defer></script>
+  <script src="work-search.js?v=aozora-20260401" defer></script>
   <script src="app.js?v=mobile-writing-scroll" defer></script>
 </head>
 <body>
@@ -34,6 +35,7 @@
         <button class="entry" data-go="read-input"><span class="entry-number">01 / PREPARE</span><strong>原稿を準備する <span aria-hidden="true">↗</span></strong><span>読む・書き込む・PDFにする</span></button>
         <button class="entry" data-go="time-input"><span class="entry-number">02 / MEASURE</span><strong>朗読速度を測る <span aria-hidden="true">↗</span></strong><span>声に出して読んで、自分の速度を知る</span></button>
         <button class="entry" data-go="estimate"><span class="entry-number">03 / ESTIMATE</span><strong>朗読時間を見積もる <span aria-hidden="true">↗</span></strong><span>作品の文字数から所要時間を調べる</span></button>
+        <button class="entry" data-go="work-search"><span class="entry-number">04 / FIND</span><strong>朗読作品を探す <span aria-hidden="true">↗</span></strong><span>持ち時間に合う青空文庫の作品を調べる</span></button>
       </div>
       <details class="user-settings"><summary>プロフィール・ファイルの保存と読み込み</summary>
         <label for="profile-name">表示名</label><input id="profile-name" maxlength="80" autocomplete="nickname" placeholder="お名前（任意）">
@@ -151,6 +153,45 @@
       <p class="muted">間の取り方や作品によって、実際の時間は変わります。</p>
       <div class="inline"><button id="estimate-results" data-go="results">計測結果・履歴を見る</button><button id="estimate-return" hidden>原稿に戻る</button><button data-go="time-input">朗読速度を測る</button></div>
       <p class="privacy">計測履歴は直近100件まで保持します。保存の状態は画面上部で確認できます。</p>
+    </section>
+    <section id="work-search" class="view narrow" hidden aria-labelledby="ws-title">
+      <button class="back" data-go="home">← ホーム</button><p class="eyebrow">FIND A WORK</p><h1 id="ws-title" tabindex="-1">朗読作品を探す</h1>
+      <div class="pace-card"><h2>平均朗読速度</h2><p id="ws-average-speed" class="estimate" aria-live="polite"></p><p class="muted">これまでの計測履歴をもとに計算します。</p></div>
+      <div id="ws-empty" class="empty-state" hidden><p>朗読速度の記録がありません。</p><p>はじめに自分の朗読速度を測ると、持ち時間に合う作品を探せるようになります。計測には例文も用意されています。</p><button data-go="time-input" class="primary">朗読速度を測る</button></div>
+      <div id="ws-controls" hidden>
+        <fieldset class="ws-fieldset"><legend>持ち時間</legend>
+          <div class="ws-chips" role="group" aria-label="持ち時間の候補">
+            <button type="button" class="ws-chip" data-ws-minutes="5">5分</button>
+            <button type="button" class="ws-chip" data-ws-minutes="10">10分</button>
+            <button type="button" class="ws-chip" data-ws-minutes="15">15分</button>
+            <button type="button" class="ws-chip" data-ws-minutes="20">20分</button>
+            <button type="button" class="ws-chip" data-ws-minutes="30">30分</button>
+            <button type="button" class="ws-chip" data-ws-minutes="45">45分</button>
+            <button type="button" class="ws-chip" data-ws-minutes="60">60分</button>
+          </div>
+          <div class="inline"><input id="ws-minutes" data-field-id="FLD-WORKSEARCH-MINUTES" type="number" min="1" max="600" step="1" inputmode="numeric" value="15"><span>分くらい読みたい</span></div>
+        </fieldset>
+        <label for="ws-query">作品名・作者名で絞り込み</label>
+        <input id="ws-query" data-field-id="FLD-WORKSEARCH-QUERY" type="search" placeholder="例：芥川、羅生門" autocomplete="off">
+        <div class="inline spread ws-options">
+          <label class="choice"><input id="ws-modern-only" data-field-id="FLD-WORKSEARCH-MODERN-ONLY" type="checkbox" checked> 新字新仮名のみ</label>
+          <label for="ws-sort">並び順</label>
+          <select id="ws-sort" data-field-id="FLD-WORKSEARCH-SORT">
+            <option value="author" selected>作者順</option>
+            <option value="fit">持ち時間に近い順</option>
+            <option value="short">短い順</option>
+            <option value="long">長い順</option>
+            <option value="random">ランダム</option>
+          </select>
+        </div>
+        <p class="muted">想定時間が持ち時間の80%から100%におさまる作品を表示します。間の取り方や作品によって、実際の時間は変わります。</p>
+      </div>
+      <div id="ws-results" hidden>
+        <div class="ws-results-head"><p id="ws-count" role="status"></p><p class="ws-source">データ出典：青空文庫（CC BY 4.0）／文字数：国立国語研究所『ひまわり』</p></div>
+        <p id="ws-status" class="muted" hidden></p>
+        <ul id="ws-list" class="ws-list"></ul>
+        <p class="muted">本文は各作品の図書カード（青空文庫）から入手してください。ここでは作品の一覧とリンクだけを表示します。</p>
+      </div>
     </section>
   </main>
   <footer id="footer"><span><span id="screen-id-copy" role="button" tabindex="0" aria-label="現在の画面IDをコピー">よみじたく</span> 〜 朗読支援サイト 〜</span><span>Created by rinsan1120 <a class="x-profile-link" href="https://x.com/rinsan11201" target="_blank" rel="noopener noreferrer" aria-label="rinsan11201のXプロフィール（新しいタブで開く）"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg></a></span></footer>

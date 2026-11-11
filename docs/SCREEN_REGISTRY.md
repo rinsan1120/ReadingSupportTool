@@ -40,6 +40,7 @@
 | `SCR-TIME-RESUME-COUNTDOWN` | 計測の再開準備 | `#reading` | `phase === 'resuming'` |
 | `SCR-RESULT-TIME` | 計測結果（速度・時間を同時表示） | `#results` | `view === 'results'` |
 | `SCR-ESTIMATE` | 朗読時間を見積もる | `#estimate` | `view === 'estimate'` |
+| `SCR-WORK-SEARCH` | 朗読作品を探す | `#work-search` | `view === 'work-search'` |
 
 ### 画面状態と旧識別子
 
@@ -72,6 +73,10 @@
 | `FLD-ESTIMATE-BOOK` | 本棚から見積もり対象を選ぶ | `#estimate-book` |
 | `FLD-ESTIMATE-TARGET` | 見積もり対象の作品全体文字数 | `#estimate-target` |
 | `FLD-ESTIMATE-MINUTES` | 見積もり用の予定朗読時間 | `#estimate-minutes` |
+| `FLD-WORKSEARCH-MINUTES` | 作品を探すときの持ち時間 | `#ws-minutes` |
+| `FLD-WORKSEARCH-QUERY` | 作品名・作者名の絞り込み | `#ws-query` |
+| `FLD-WORKSEARCH-MODERN-ONLY` | 新字新仮名のみに絞るか | `#ws-modern-only` |
+| `FLD-WORKSEARCH-SORT` | 作品一覧の並び順 | `#ws-sort` |
 | `FLD-RESULT-PLANNED-MINUTES` | 結果画面の予定朗読時間 | `#planned-minutes` |
 | `FLD-SETTINGS-READER-WIDTH` | 本文の表示幅 | `#reader-width` |
 | `FLD-SETTINGS-COLUMNS` | 横書きの1行文字数目安／縦書きの文字サイズに対応する調整 | `#columns` |
