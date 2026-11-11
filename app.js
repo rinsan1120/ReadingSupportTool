@@ -317,7 +317,15 @@
     if (sourceType === 'custom' && !targetManual) setTarget(countText($('time-text').value) || '');
     syncPartialInputs();
   }));
-  $('read-text').addEventListener('input', () => $('read-count').textContent = `${countText($('read-text').value)}文字`);
+  function updateReadCount() {
+    const count = countText($('read-text').value);
+    const { speed } = readingStatistics();
+    if (!count || !history.length || !(speed > 0)) { $('read-count').textContent = `${count}文字`; return; }
+    const minutes = count / speed;
+    const label = (minutes < 10 ? Math.max(.1, Math.round(minutes * 10) / 10) : Math.round(minutes)).toLocaleString();
+    $('read-count').textContent = `${count}文字（あなたの想定朗読時間：約${label}分）`;
+  }
+  $('read-text').addEventListener('input', updateReadCount);
   $('time-text').addEventListener('input', () => {
     const count = countText($('time-text').value);
     $('time-count').textContent = `計測する本文：${count}文字`;
@@ -1279,7 +1287,7 @@
     readInputSnapshot = readAnnotations.source.replace(/\r\n?/g, '\n');
     pendingReadPaste = book?.pending ? { model: window.ReadingAnnotations.fromData(book.pending), input: book.draft } : null;
     $('manuscript-title').value = book?.title || '';
-    $('read-count').textContent = `${countText($('read-text').value)}文字`;
+    updateReadCount();
     readPaper = library?.paperMode === true; readMeasurementReturn = null;
     renderIdentity();
   }
