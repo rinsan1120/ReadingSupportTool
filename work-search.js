@@ -5,7 +5,7 @@
 // このサイトが提示するのは作品名・作者・想定時間と図書カードへのリンクだけで、
 // 本文そのものは保持も表示もしない。本文の入手と取り込みは利用者自身が行う。
 window.WorkSearch = (() => {
-  const DATA_SRC = 'aozora-works.js?v=20260401';
+  const DATA_SRC = 'aozora-works.js?v=20260401-2';
   const KANA_LABELS = ['新字新仮名', '新字旧仮名', '旧字新仮名', '旧字旧仮名', 'その他'];
   // 持ち時間に収まる側へ寄せる: 想定時間が持ち時間の80%から100%の作品を出す。
   const BAND_LOW = 0.8;
@@ -17,6 +17,7 @@ window.WorkSearch = (() => {
   let minutes = 15;
   let query = '';
   let modernOnly = true;
+  let domesticOnly = false;
   let sort = 'author';
 
   const $ = id => document.getElementById(id);
@@ -58,6 +59,7 @@ window.WorkSearch = (() => {
       const chars = work[4];
       if (chars < low || chars > target) continue;
       if (modernOnly && work[3] !== 0) continue;
+      if (domesticOnly && work[5] === 1) continue;
       if (keyword) {
         const author = data.authors[work[2]];
         if (!work[1].includes(keyword) && !author[1].includes(keyword) && !author[2].includes(keyword)) continue;
@@ -158,6 +160,7 @@ window.WorkSearch = (() => {
   });
   $('ws-query').addEventListener('input', event => { query = event.target.value; renderList(); });
   $('ws-modern-only').addEventListener('change', event => { modernOnly = event.target.checked; renderList(); });
+  $('ws-domestic-only').addEventListener('change', event => { domesticOnly = event.target.checked; renderList(); });
   $('ws-sort').addEventListener('change', event => { sort = event.target.value; renderList(); });
   syncChips();
 

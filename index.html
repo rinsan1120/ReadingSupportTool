@@ -15,7 +15,7 @@
   <script src="manuscript-writing.js?v=writing-tool-arrows" defer></script>
   <script src="manuscript-print.js?v=memo-editor" defer></script>
   <script src="user-library.js?v=paper-save" defer></script>
-  <script src="work-search.js?v=aozora-20260401" defer></script>
+  <script src="work-search.js?v=domestic-filter" defer></script>
   <script src="app.js?v=mobile-writing-scroll" defer></script>
 </head>
 <body>
@@ -175,6 +175,7 @@
         <input id="ws-query" data-field-id="FLD-WORKSEARCH-QUERY" type="search" placeholder="例：芥川、羅生門" autocomplete="off">
         <div class="inline spread ws-options">
           <label class="choice"><input id="ws-modern-only" data-field-id="FLD-WORKSEARCH-MODERN-ONLY" type="checkbox" checked> 新字新仮名のみ</label>
+          <label class="choice"><input id="ws-domestic-only" data-field-id="FLD-WORKSEARCH-DOMESTIC-ONLY" type="checkbox"> 国内作品のみ</label>
           <label for="ws-sort">並び順</label>
           <select id="ws-sort" data-field-id="FLD-WORKSEARCH-SORT">
             <option value="author" selected>作者順</option>
@@ -187,7 +188,7 @@
         <p class="muted">想定時間が持ち時間の80%から100%におさまる作品を表示します。間の取り方や作品によって、実際の時間は変わります。</p>
       </div>
       <div id="ws-results" hidden>
-        <div class="ws-results-head"><p id="ws-count" role="status"></p><p class="ws-source">データ出典：青空文庫（CC BY 4.0）／文字数：国立国語研究所『ひまわり』</p></div>
+        <div class="ws-results-head"><p id="ws-count" role="status"></p><p class="ws-source">データ出典：青空文庫（CC BY 4.0）<br>文字数：国立国語研究所『ひまわり』</p></div>
         <p id="ws-status" class="muted" hidden></p>
         <ul id="ws-list" class="ws-list"></ul>
         <p class="muted">本文は各作品の図書カード（青空文庫）から入手してください。ここでは作品の一覧とリンクだけを表示します。</p>

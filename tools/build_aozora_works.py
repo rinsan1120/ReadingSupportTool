@@ -12,9 +12,11 @@
   window.AOZORA_WORKS = {
     "v": "20260401",                       // ひまわり側データの版
     "authors": [[人物ID, 著者名, 読み], ...],  // 読み順にソート済み
-    "works": [[作品ID, 作品名, 著者index, 文字遣いコード, 文字数], ...]
+    "works": [[作品ID, 作品名, 著者index, 文字遣いコード, 文字数, 海外フラグ], ...]
   }
   文字遣いコード: 0=新字新仮名 1=新字旧仮名 2=旧字新仮名 3=旧字旧仮名 4=その他
+  海外フラグ: 1=海外・翻訳作品 (分類番号NDC 920-999、または翻訳者あり。
+  ただし分類が 910-919 の日本文学は現代語訳でも 0)
   図書カードURLは 作品ID と 人物ID から復元できる:
     https://www.aozora.gr.jp/cards/<人物ID>/card<作品ID(ゼロなし)>.html
 
@@ -58,7 +60,7 @@ def load_bytes(source):
 
 
 def read_catalog(csv_source):
-    """公式CSVから、著作権なし作品を 作品ID -> 代表行(著者) で返す。"""
+    """公式CSVから、著作権なし作品を (作品ID -> 代表行(著者), 翻訳者のいる作品ID集合) で返す。"""
     raw = load_bytes(csv_source)
     if raw[:2] == b"PK":
         with zipfile.ZipFile(io.BytesIO(raw)) as zf:
@@ -67,15 +69,33 @@ def read_catalog(csv_source):
     text = raw.decode("utf-8-sig")
     rows = list(csv.DictReader(io.StringIO(text)))
     works = {}
+    translators = set()
     for row in rows:
         if row["作品著作権フラグ"] != "なし":
             continue
         work_id = row["作品ID"].zfill(6)
+        if "翻訳" in row["役割フラグ"]:
+            translators.add(work_id)
         current = works.get(work_id)
         # 1作品に複数行 (著者・翻訳者など) あるので、著者の行を優先する
         if current is None or (row["役割フラグ"] == "著者" and current["役割フラグ"] != "著者"):
             works[work_id] = row
-    return works
+    return works, translators
+
+
+def is_foreign(row, has_translator):
+    """海外・翻訳作品かどうか。分類番号 (NDC) が 920-999 (海外文学) か、
+    翻訳者のいる作品を海外とする。ただし分類が 910-919 (日本文学) の作品は、
+    現代語訳などでも国内に残す。"""
+    import re
+
+    match = re.search(r"(\d{3})", row["分類番号"] or "")
+    ndc = int(match.group(1)) if match else None
+    if ndc is not None and 910 <= ndc <= 919:
+        return False
+    if ndc is not None and 920 <= ndc <= 999:
+        return True
+    return has_translator
 
 
 def read_counts(xlsx_source):
@@ -100,7 +120,7 @@ def main():
     parser.add_argument("--out", default="aozora-works.js")
     args = parser.parse_args()
 
-    catalog = read_catalog(args.csv)
+    catalog, translators = read_catalog(args.csv)
     counts = read_counts(args.xlsx)
     print(f"公式CSVの著作権なし作品: {len(catalog)} 件")
     print(f"ひまわり側の文字数データ: {len(counts)} 件")
@@ -131,6 +151,7 @@ def main():
             "sort_reading": sort_reading or reading,
             "kana": row["文字遣い種別"],
             "chars": chars,
+            "foreign": 1 if is_foreign(row, work_id in translators) else 0,
         })
     print(f"文字数なしで除外: {no_count} 件 / 文字数0で除外: {zero_count} 件")
 
@@ -151,7 +172,7 @@ def main():
         "authors": [[pid, name, reading] for pid, (name, reading, _) in author_rows],
         "works": [[
             w["work_id"], w["title"], author_index[w["person_id"]],
-            KANA_CODE.get(w["kana"], 4), w["chars"],
+            KANA_CODE.get(w["kana"], 4), w["chars"], w["foreign"],
         ] for w in deduped],
     }
     payload = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
@@ -166,7 +187,7 @@ def main():
         f.write(content)
     raw_size = len(content.encode("utf-8"))
     gz_size = len(gzip.compress(content.encode("utf-8")))
-    print(f"出力: 作品 {len(deduped)} 件 / 著者 {len(author_rows)} 人")
+    print(f"出力: 作品 {len(deduped)} 件 / 著者 {len(author_rows)} 人 / 海外・翻訳 {sum(w['foreign'] for w in deduped)} 件")
     print(f"ファイルサイズ: {raw_size:,} bytes (gzip {gz_size:,} bytes) -> {args.out}")
     return 0
 

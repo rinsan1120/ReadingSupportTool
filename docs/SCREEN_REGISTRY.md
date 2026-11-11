@@ -76,6 +76,7 @@
 | `FLD-WORKSEARCH-MINUTES` | 作品を探すときの持ち時間 | `#ws-minutes` |
 | `FLD-WORKSEARCH-QUERY` | 作品名・作者名の絞り込み | `#ws-query` |
 | `FLD-WORKSEARCH-MODERN-ONLY` | 新字新仮名のみに絞るか | `#ws-modern-only` |
+| `FLD-WORKSEARCH-DOMESTIC-ONLY` | 国内作品のみに絞るか | `#ws-domestic-only` |
 | `FLD-WORKSEARCH-SORT` | 作品一覧の並び順 | `#ws-sort` |
 | `FLD-RESULT-PLANNED-MINUTES` | 結果画面の予定朗読時間 | `#planned-minutes` |
 | `FLD-SETTINGS-READER-WIDTH` | 本文の表示幅 | `#reader-width` |
