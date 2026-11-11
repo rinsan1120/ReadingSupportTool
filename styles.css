@@ -1030,3 +1030,21 @@ html { scrollbar-gutter: stable; }
   #mobile-reader-menu[open] { animation:mobile-reader-enter .16s ease-out; }
   @keyframes mobile-reader-enter { from { transform:translateX(100%); } to { transform:translateX(0); } }
 }
+
+/* 朗読作品を探す (SCR-WORK-SEARCH) */
+.ws-fieldset { border:0; padding:0; margin:0 0 16px; min-width:0; }
+.ws-fieldset legend { font-weight:600; margin-bottom:4px; }
+.ws-chips { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0 12px; }
+.ws-chip { min-height:44px; padding:8px 16px; border-radius:999px; }
+#ws-minutes { width:7em; min-width:0; padding:12px; color:var(--text); background:var(--bg); border:1px solid #7897c159; border-radius:8px; }
+#ws-query { width:100%; min-width:0; margin:8px 0; padding:12px; color:var(--text); background:var(--bg); border:1px solid #7897c159; border-radius:8px; }
+#ws-sort { min-width:0; padding:10px; color:var(--text); background:var(--bg); border:1px solid #7897c159; border-radius:8px; }
+.ws-options { flex-wrap:wrap; row-gap:12px; }
+.ws-results-head { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 16px; margin:20px 0 4px; }
+.ws-results-head #ws-count { margin:0; font-weight:600; }
+.ws-source { margin:0 0 0 auto; font-size:12px; color:var(--muted); text-align:right; }
+.ws-list { list-style:none; margin:8px 0 20px; padding:0; }
+.ws-author { margin:20px 0 4px; font-weight:700; color:var(--blue); }
+.ws-item { padding:10px 0; border-bottom:1px solid var(--border); min-width:0; }
+.ws-title { display:inline-block; max-width:100%; font-size:17px; font-weight:600; line-height:1.5; overflow-wrap:anywhere; }
+.ws-meta { margin:4px 0 0; color:var(--muted); font-size:14px; line-height:1.6; overflow-wrap:anywhere; }

@@ -205,6 +205,7 @@
     }
     if (view === 'results') return 'SCR-RESULT-TIME';
     if (view === 'estimate') return 'SCR-ESTIMATE';
+    if (view === 'work-search') return 'SCR-WORK-SEARCH';
     return 'SCR-HOME';
   }
   function syncScreenId() {
@@ -289,6 +290,7 @@
     resultMode = next === 'results' ? nextResultMode : 'records';
     view = next; $('footer').hidden = next === 'reading';
     if (next === 'results' || next === 'estimate') renderResults();
+    if (next === 'work-search') window.WorkSearch.open({ speed: readingStatistics().speed, hasHistory: !!history.length });
     if (next === 'home') renderHomeResults();
     $('existing-results').hidden = !history.length;
     $('annotation-retention').hidden = !hasReadings(readAnnotations);
