@@ -989,6 +989,7 @@ html { scrollbar-gutter: stable; }
   padding:0 3px;
   font-size:9px;
   line-height:1.2;
+}
 /* Mobile manuscript controls overlay the reading area without changing its width. */
 .writing-tool-strip { display:contents; }
 #mobile-reader-tab, #mobile-writing-dock, #mobile-writing-done, #mobile-writing-scroll, .writing-tool-arrow { display:none; }
