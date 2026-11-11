@@ -1044,7 +1044,7 @@ html { scrollbar-gutter: stable; }
 .ws-results-head #ws-count { margin:0; font-weight:600; }
 .ws-source { margin:0 0 0 auto; font-size:12px; color:var(--muted); text-align:right; }
 .ws-list { list-style:none; margin:8px 0 20px; padding:0; }
-.ws-author { margin:20px 0 4px; font-weight:700; color:var(--blue); }
-.ws-item { padding:10px 0; border-bottom:1px solid var(--border); min-width:0; }
-.ws-title { display:inline-block; max-width:100%; font-size:17px; font-weight:600; line-height:1.5; overflow-wrap:anywhere; }
+.ws-author { margin:24px 0 6px; padding:8px 12px; font-weight:700; color:var(--blue); background:var(--panel); border:1px solid var(--border); border-radius:8px; }
+.ws-item { padding:12px 2px; border-bottom:1px solid #7897c173; min-width:0; }
+.ws-title { display:inline-block; max-width:100%; font-size:17px; font-weight:600; line-height:1.5; overflow-wrap:anywhere; color:var(--accent); }
 .ws-meta { margin:4px 0 0; color:var(--muted); font-size:14px; line-height:1.6; overflow-wrap:anywhere; }
