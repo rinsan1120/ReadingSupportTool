@@ -943,13 +943,13 @@ html { scrollbar-gutter: stable; }
 }
 #reader-actions button {
   display:grid;
-  grid-template-rows:20px minmax(2.5em,auto) 12px;
+  grid-template-rows:20px minmax(2.5em,auto);
   justify-items:center;
   align-items:center;
   align-content:center;
   gap:2px;
   min-width:0;
-  min-height:76px;
+  min-height:62px;
   padding:5px 4px;
   font-size:12px;
   line-height:1.25;

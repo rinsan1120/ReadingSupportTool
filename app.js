@@ -29,7 +29,6 @@
   function applyPaper(on) {
     $('reader-stage').classList.toggle('paper-mode', on);
     $('paper-mode').setAttribute('aria-pressed', String(on));
-    $('paper-mode').querySelector('.button-state').textContent = on ? 'ON' : 'OFF';
     $('paper-mode').setAttribute('aria-label', `白背景：${on ? 'ON' : 'OFF'}`);
   }
   let openingReader = false;
