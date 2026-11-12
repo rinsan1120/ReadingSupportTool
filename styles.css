@@ -423,7 +423,6 @@ footer {
 #reader-viewport { min-width:0; }
 .has-paged-reader { padding-bottom:var(--page-bottom-space,80px); }
 /* Autosave status must not change the reading area's height after a page turn. */
-.has-paged-reader #reader-save-state[hidden] { display:inline-block!important; visibility:hidden; }
 #reader-viewport.is-paged { position:relative; overflow:hidden; overflow:clip; padding-block:16px; box-sizing:border-box; background:var(--panel); touch-action:pinch-zoom; overscroll-behavior:contain; }
 #reader-viewport.is-paged:has(#reader-stage.paper-mode) { background:#fff; }
 #page-controls { position:fixed; bottom:0; left:0; right:0; z-index:9; min-height:52px; padding:4px 12px calc(4px + env(safe-area-inset-bottom)); background:var(--bg); border-top:1px solid var(--border); display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:center; }
@@ -794,7 +793,6 @@ html { scrollbar-gutter: stable; }
 #wake { grid-area:wake; }
 #reader-actions { grid-area:actions; display:flex; align-items:center; justify-content:center; gap:6px; width:min(100%,840px); justify-self:center; }
 #reader-actions button { min-width:0; }
-#reader-save-state { color:#fbbf24; }
 .reader-toolbar button,.writing-tools button { display:flex; justify-content:center; align-items:center; gap:7px; min-height:var(--control-height); padding:8px 10px; white-space:nowrap; }
 .reader-toolbar button { height:var(--control-height); }
 .tool-icon { width:21px; height:24px; flex:none; }
@@ -816,7 +814,6 @@ html { scrollbar-gutter: stable; }
   #reader-topline #wake { flex-direction:row; gap:6px; height:var(--control-height); min-height:var(--control-height); padding:7px 12px; font-size:12px; }
   #reader-topline #wake .tool-icon { width:19px; height:21px; }
 
-  #reader-actions .button-state { position:static; margin:0; font-size:9px; padding:1px 3px; }
   #reader-actions { min-width:0; }
   #writing-toolbar { padding:0 8px 6px; }
   .writing-tools { grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; }
@@ -838,7 +835,6 @@ html { scrollbar-gutter: stable; }
 #reader-topline #reader-back { grid-area:back; }
 #reader-topline #wake { grid-area:wake; }
 #reader-actions { align-items:center; }
-#reader-actions .button-state { position:static; margin:0; font-size:9px; }
 #wake[hidden] { display:none!important; }
 
 /* One opacity group keeps ink, background and tail consistent on screen/PDF. */
@@ -965,6 +961,10 @@ html { scrollbar-gutter: stable; }
   text-align:center;
   text-wrap:balance;
 }
+#export-manuscript { position:relative; }
+#export-manuscript.has-unsaved { border-color:#e5484d; color:#fca5a5; }
+#reader-actions #export-manuscript .unsaved-badge { position:absolute; grid-row:auto; top:2px; left:calc(50% + 2px); display:none; width:15px; height:15px; border-radius:50%; background:#e5484d; color:#fff; font-size:11px; font-weight:700; line-height:15px; text-align:center; pointer-events:none; }
+#reader-actions #export-manuscript.has-unsaved .unsaved-badge { display:block; }
 /* 朗読作品を探す (SCR-WORK-SEARCH) */
 .ws-fieldset { border:0; padding:0; margin:0 0 16px; min-width:0; }
 .ws-fieldset legend { font-weight:600; margin-bottom:4px; }
@@ -982,14 +982,6 @@ html { scrollbar-gutter: stable; }
 .ws-item { padding:12px 2px; border-bottom:1px solid #7897c173; min-width:0; }
 .ws-title { display:inline-block; max-width:100%; font-size:17px; font-weight:600; line-height:1.5; overflow-wrap:anywhere; color:var(--accent); }
 .ws-meta { margin:4px 0 0; color:var(--muted); font-size:14px; line-height:1.6; overflow-wrap:anywhere; }
-#reader-actions .button-state {
-  grid-row:3;
-  position:static;
-  margin:0;
-  padding:0 3px;
-  font-size:9px;
-  line-height:1.2;
-}
 /* Mobile manuscript controls overlay the reading area without changing its width. */
 .writing-tool-strip { display:contents; }
 #mobile-reader-tab, #mobile-writing-dock, #mobile-writing-done, #mobile-writing-scroll, .writing-tool-arrow { display:none; }
@@ -1021,8 +1013,6 @@ html { scrollbar-gutter: stable; }
   #mobile-reader-menu .mobile-menu-heading button { width:auto; flex-shrink:0; padding-inline:12px; }
   #mobile-reader-menu .tool-icon { width:20px; height:20px; flex-shrink:0; }
   #mobile-reader-menu .button-state { font-size:10px; }
-  #mobile-reader-menu #reader-save-state { display:none!important; }
-  #mobile-reader-menu #reader-save-state:not([hidden]) { display:inline-block!important; }
   .mobile-manuscript #page-controls { bottom:var(--mobile-visual-bottom,0px)!important; padding-left:max(6px,env(safe-area-inset-left)); padding-right:max(6px,env(safe-area-inset-right)); touch-action:manipulation; }
   .mobile-manuscript #mobile-writing-dock { display:block; position:fixed; bottom:calc(var(--mobile-visual-bottom,0px) + var(--mobile-page-height)); left:env(safe-area-inset-left); right:env(safe-area-inset-right); z-index:10; }
   .mobile-manuscript.mobile-writing:not(.has-paged-reader) #mobile-writing-dock { padding-bottom:env(safe-area-inset-bottom); background:var(--panel); }

@@ -1225,8 +1225,8 @@
       : userDirty ? '自動保存中…' : '自動保存済み';
     saveStatus(message || browserStatus, captureFailed || !!browserSaveError);
     $('retry-browser-save').hidden = !browserSaveError;
-    const readerState = $('reader-save-state');
-    if (readerState) readerState.hidden = !userDirty;
+    const saveButton = $('export-manuscript');
+    if (saveButton) saveButton.classList.toggle('has-unsaved', userDirty);
   }
   function createBook() {
     if (library.manuscripts.length >= 500) throw new Error('原稿は500件までです。バックアップして整理してください。');
