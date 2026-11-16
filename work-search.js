@@ -5,7 +5,7 @@
 // このサイトが提示するのは作品名・作者・想定時間と図書カードへのリンクだけで、
 // 本文そのものは保持も表示もしない。本文の入手と取り込みは利用者自身が行う。
 window.WorkSearch = (() => {
-  const DATA_SRC = 'aozora-works.js?v=20260401-2';
+  const DATA_SRC = 'aozora-works.js?v=20261116-canonical-card';
   const KANA_LABELS = ['新字新仮名', '新字旧仮名', '旧字新仮名', '旧字旧仮名', 'その他'];
   // 持ち時間に収まる側へ寄せる: 想定時間が持ち時間の80%から100%の作品を出す。
   const BAND_LOW = 0.8;
@@ -24,7 +24,9 @@ window.WorkSearch = (() => {
 
   function cardUrl(work) {
     const author = window.AOZORA_WORKS.authors[work[2]];
-    return `https://www.aozora.gr.jp/cards/${author[0]}/card${Number(work[0])}.html`;
+    // 共著・別名義作品では、青空文庫公式CSVの図書カード人物IDを使用する。
+    const cardPersonId = work[6] || author[0];
+    return `https://www.aozora.gr.jp/cards/${cardPersonId}/card${Number(work[0])}.html`;
   }
 
   function minutesText(chars) {

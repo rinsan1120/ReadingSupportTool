@@ -12,13 +12,13 @@
   window.AOZORA_WORKS = {
     "v": "20260401",                       // ひまわり側データの版
     "authors": [[人物ID, 著者名, 読み], ...],  // 読み順にソート済み
-    "works": [[作品ID, 作品名, 著者index, 文字遣いコード, 文字数, 海外フラグ], ...]
+    "works": [[作品ID, 作品名, 著者index, 文字遣いコード, 文字数, 海外フラグ, 正規カード人物ID?], ...]
   }
   文字遣いコード: 0=新字新仮名 1=新字旧仮名 2=旧字新仮名 3=旧字旧仮名 4=その他
   海外フラグ: 1=海外・翻訳作品 (分類番号NDC 920-999、または翻訳者あり。
   ただし分類が 910-919 の日本文学は現代語訳でも 0)
-  図書カードURLは 作品ID と 人物ID から復元できる:
-    https://www.aozora.gr.jp/cards/<人物ID>/card<作品ID(ゼロなし)>.html
+  図書カードURLは公式CSVの「図書カードURL」を正とする。共著などでは
+  表示著者とカードの人物IDが異なるため、その場合だけ7番目に人物IDを追加する。
 
 収録する作品の条件:
   - 作品著作権フラグが「なし」の作品だけ
@@ -40,6 +40,7 @@ import csv
 import gzip
 import io
 import json
+import re
 import sys
 import urllib.request
 import zipfile
@@ -57,6 +58,17 @@ def load_bytes(source):
             return response.read()
     with open(source, "rb") as f:
         return f.read()
+
+
+def canonical_card_person_id(work_id, card_url):
+    """公式CSVの図書カードURLを検証し、URL内の人物IDを取り出す。"""
+    match = re.fullmatch(
+        r"https://www\.aozora\.gr\.jp/cards/(\d{6})/card(\d+)\.html",
+        card_url or "",
+    )
+    if match is None or int(match.group(2)) != int(work_id):
+        raise ValueError(f"作品ID {work_id} の図書カードURLが不正です: {card_url!r}")
+    return match.group(1)
 
 
 def read_catalog(csv_source):
@@ -146,6 +158,7 @@ def main():
             "title": title,
             "title_sort": row["ソート用読み"] or row["作品名"],
             "person_id": row["人物ID"].zfill(6),
+            "card_person_id": canonical_card_person_id(work_id, row["図書カードURL"]),
             "author": author,
             "reading": reading,
             "sort_reading": sort_reading or reading,
@@ -173,6 +186,7 @@ def main():
         "works": [[
             w["work_id"], w["title"], author_index[w["person_id"]],
             KANA_CODE.get(w["kana"], 4), w["chars"], w["foreign"],
+            *([w["card_person_id"]] if w["card_person_id"] != w["person_id"] else []),
         ] for w in deduped],
     }
     payload = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
