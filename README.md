@@ -17,7 +17,11 @@ python -m http.server 8000
 
 ## GitHub Pages
 
-オーナーがpushした後、リポジトリの **Settings → Pages → Deploy from a branch** で `main` の `/ (root)` を選択します。公開先は通常 <https://rinsan1120.github.io/ReadingSupportTool/> です。ファイルはすべて相対パスで参照します。公開・デプロイはリポジトリの運用に従います。
+変更をコミット・Pushした後、リポジトリの **Settings → Pages → Deploy from a branch** で `main` の `/ (root)` を選択します。公開先は通常 <https://rinsan1120.github.io/ReadingSupportTool/> です。ファイルはすべて相対パスで参照します。公開・デプロイはリポジトリの運用に従います。
+
+## 開発時のGit運用
+
+作業開始前に `git fetch` でリモートとの差分を確認し、安全に fast-forward できる場合だけ最新状態を取り込む。実装・必要な確認後、コミット直前にリモートを再確認し、変更内容が分かるメッセージでコミットしてPushまで行う。分岐・競合・権限不足などで安全に進めない場合は停止して報告し、強制Pushは行わない。 無断merge・rebase・ブランチ切替は禁止します。
 
 ## ユーザーデータ・保存・再開
 
