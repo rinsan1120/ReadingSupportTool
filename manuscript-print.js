@@ -113,9 +113,42 @@
     }
     for (const row of byLine.values()) row.sort((a, b) => a.x - b.x);
     const pens = [];
+    const sourceGlyphs = new Map(original.glyphs.map(g => [g.start, g]));
+    const sourcePens = new Map((writing.items || []).filter(item => item.type === 'pen').map(item => [item.id, item]));
+    const center = g => ({ x: g.x + g.width / 2, y: g.y + g.height / 2 });
+    // Ink in the interline space may geometrically fall on an unrelated short
+    // line. Prefer the recorded anchor and actual witnessed lines; do not
+    // include unwitnessed lines merely because they lie between two witnesses.
+    function witnessLines(pen) {
+      if (original.direction === 'vertical') return null;
+      const item = sourcePens.get(pen.id), anchor = item && sourceGlyphs.get(item.offset);
+      if (!anchor) return null;
+      const origin = center(anchor), font = item.fontSize ?? parseFloat(original.font.fontSize);
+      if (!(font > 0)) return null;
+      const lines = new Set([anchor.line]);
+      let stale = false;
+      for (const witness of item.witnesses || []) {
+        const glyph = sourceGlyphs.get(witness.offset);
+        if (!glyph) { stale = true; continue; }
+        const p = center(glyph);
+        if (Math.hypot(p.x - origin.x - witness.x * font, p.y - origin.y - witness.y * font) > font * .5) {
+          stale = true; continue;
+        }
+        lines.add(glyph.line);
+      }
+      // After a live rewrap, a witness may no longer match its saved position.
+      // Compact marks still follow their anchor; long strokes with stale
+      // witnesses retain geometric mapping so real cross-line ink is not lost.
+      const pitch = parseFloat(original.font.lineHeight) || font * 1.8;
+      const ys = pen.points.map(p => p.y);
+      if (stale && Math.max(...ys) - Math.min(...ys) > pitch) return null;
+      return lines;
+    }
     for (const pen of logicalPens(original, writing)) {
+      const witnessed = witnessLines(pen);
       const oldLines = original.lines.map((line, index) => ({ ...line, index }))
-        .filter(line => pen.first === undefined || line.index >= pen.first && line.index <= pen.last);
+        .filter(line => (pen.first === undefined || line.index >= pen.first && line.index <= pen.last)
+          && (!witnessed || witnessed.has(line.index)));
       for (const [row, paths] of splitStroke(pen.points, oldLines)) {
         const line = oldLines[row];
         let rowCells = byLine.get(line.index);

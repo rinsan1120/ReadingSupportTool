@@ -488,21 +488,31 @@
       ? 'A4・横向き・倍率100%を基本とし、ヘッダーとフッターはOFFにしてください。ブラウザの「1枚あたりのページ数」は1に設定してください。保存が完了したかは印刷画面でご確認ください。'
       : 'A4・縦向き・倍率100%を基本とし、ヘッダーとフッターはOFFにしてください。保存が完了したかは印刷画面でご確認ください。';
     const paper = window.ManuscriptPrint.contentSize(layout, pdfSnapshot.direction);
-    let inlineSize = paper.inlineSize - 12, snapshot, writing;
-    // Keep type size/leading and rewrap into the paper. Reserve extra inline room
-    // for protruding ink before using the renderer's last-resort uniform shrink.
+    const preferredInlineSize = paper.inlineSize - 12;
+    const minimumInlineSize = preferredInlineSize * .8;
+    let inlineSize = preferredInlineSize, snapshot, writing, fits = false;
+    // Reserve extra space for ordinary protruding ink, but never let a single
+    // stroke collapse the manuscript into a narrow strip. If reflow cannot fit,
+    // preserve the original wrapping and uniformly scale the complete layout.
     for (let attempt = 0; attempt < 6; attempt++) {
       snapshot = window.Reader.withPrintLayout(() => window.Reader.printSnapshot(), { inlineSize });
       writing = window.ManuscriptPrint.reflowWriting(pdfSnapshot, pdfWriting, snapshot);
       const overflow = window.ManuscriptPrint.inlineExtent(snapshot, writing) - paper.inlineSize;
-      if (overflow <= .1) break;
-      const next = Math.max(parseFloat(snapshot.font.fontSize) * 2, inlineSize - Math.max(overflow + 8, parseFloat(snapshot.font.fontSize) * 2));
+      if (overflow <= .1) { fits = true; break; }
+      const next = Math.max(minimumInlineSize, inlineSize - Math.max(overflow + 8, parseFloat(snapshot.font.fontSize) * 2));
       if (next >= inlineSize - 1) break;
       inlineSize = next;
     }
-    const result = window.ManuscriptPrint.prepare(snapshot, writing, { layout, reflowed: true });
-    $('pdf-small-warning').hidden = result.points >= 9 && result.scale >= .8;
-    $('pdf-small-warning').textContent = `長い読み仮名や大きな手書きを用紙内に収めるため、文字を約${Math.round(result.scale * 100)}%に縮小しています。必要に応じてキャンセルし、該当箇所を確認してください。`;
+    if (!fits) {
+      snapshot = pdfSnapshot;
+      writing = window.ManuscriptPrint.reflowWriting(pdfSnapshot, pdfWriting, pdfSnapshot);
+    }
+    const result = window.ManuscriptPrint.prepare(snapshot, writing, { layout, reflowed: fits });
+    if (!fits && result.points < 9) throw new Error('本文と手書きの位置関係を保ったまま、読みやすい大きさでPDFを作成できません。表示幅や書き込みを確認してください。');
+    $('pdf-small-warning').hidden = fits && result.points >= 9 && result.scale >= .8;
+    $('pdf-small-warning').textContent = !fits
+      ? `本文と手書きの位置関係を保つため、朗読画面の折り返しを維持し、用紙に合わせて文字を約${Math.round(result.scale * 100)}%の大きさで出力します。`
+      : `長い読み仮名や大きな手書きを用紙内に収めるため、文字を約${Math.round(result.scale * 100)}%に縮小しています。必要に応じてキャンセルし、該当箇所を確認してください。`;
   };
   $('export-pdf').onclick = async () => {
     if (!readyForDirectAction()) return;
