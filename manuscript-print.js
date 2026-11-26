@@ -120,21 +120,32 @@
     // line. Prefer the recorded anchor and actual witnessed lines; do not
     // include unwitnessed lines merely because they lie between two witnesses.
     function witnessLines(pen) {
-      if (original.direction === 'vertical') return null;
+      const vertical = original.direction === 'vertical';
       const item = sourcePens.get(pen.id), anchor = item && sourceGlyphs.get(item.offset);
       if (!anchor) return null;
+      // Vertical pens saved before witnesses existed keep the geometric
+      // mapping exactly as before; never restrict them to the anchor line.
+      if (vertical && !(item.witnesses?.length)) return null;
       const origin = center(anchor), font = item.fontSize ?? parseFloat(original.font.fontSize);
       if (!(font > 0)) return null;
       const lines = new Set([anchor.line]);
+      const glyphs = new Map([[anchor.line, new Set([anchor.start])]]);
       let stale = false;
       for (const witness of item.witnesses || []) {
         const glyph = sourceGlyphs.get(witness.offset);
         if (!glyph) { stale = true; continue; }
         const p = center(glyph);
-        if (Math.hypot(p.x - origin.x - witness.x * font, p.y - origin.y - witness.y * font) > font * .5) {
+        // Witness offsets are recorded in screen axes. The vertical snapshot
+        // transposes them (snapshot x follows screen y, snapshot y follows
+        // -screen x), so map the recorded offset into snapshot axes first.
+        const ex = vertical ? witness.y * font : witness.x * font;
+        const ey = vertical ? -witness.x * font : witness.y * font;
+        if (Math.hypot(p.x - origin.x - ex, p.y - origin.y - ey) > font * .5) {
           stale = true; continue;
         }
         lines.add(glyph.line);
+        if (!glyphs.has(glyph.line)) glyphs.set(glyph.line, new Set());
+        glyphs.get(glyph.line).add(glyph.start);
       }
       // After a live rewrap, a witness may no longer match its saved position.
       // Compact marks still follow their anchor; long strokes with stale
@@ -142,13 +153,13 @@
       const pitch = parseFloat(original.font.lineHeight) || font * 1.8;
       const ys = pen.points.map(p => p.y);
       if (stale && Math.max(...ys) - Math.min(...ys) > pitch) return null;
-      return lines;
+      return { lines, glyphs };
     }
     for (const pen of logicalPens(original, writing)) {
       const witnessed = witnessLines(pen);
       const oldLines = original.lines.map((line, index) => ({ ...line, index }))
         .filter(line => (pen.first === undefined || line.index >= pen.first && line.index <= pen.last)
-          && (!witnessed || witnessed.has(line.index)));
+          && (!witnessed || witnessed.lines.has(line.index)));
       for (const [row, paths] of splitStroke(pen.points, oldLines)) {
         const line = oldLines[row];
         let rowCells = byLine.get(line.index);
@@ -159,7 +170,23 @@
         if (!rowCells.length) throw new Error('手書きに対応する本文位置を確認できません。');
         const bands = rowCells.map(g => ({ top: g.x, bottom: g.x + g.width }));
         for (const path of paths) for (const [column, fragments] of splitStroke(path.map(p => ({ x: p.y, y: p.x })), bands)) {
-          const from = rowCells[column], to = targets.get(cellKey(from));
+          let from = rowCells[column];
+          // Vertical only: when band geometry assigns ink to a glyph the
+          // stroke never touched, follow the nearest witnessed glyph in the
+          // same line instead. Pens without witnesses keep pure geometry.
+          if (original.direction === 'vertical' && witnessed) {
+            const seen = witnessed.glyphs.get(line.index);
+            if (seen && !seen.has(from.start)) {
+              const pts = fragments.flat(), mid = pts.reduce((sum, p) => sum + p.y, 0) / pts.length;
+              let best = null, distance = Infinity;
+              for (const g of rowCells) if (seen.has(g.start)) {
+                const d = Math.abs(g.x + g.width / 2 - mid);
+                if (d < distance) { distance = d; best = g; }
+              }
+              if (best) from = best;
+            }
+          }
+          const to = targets.get(cellKey(from));
           if (!to) throw new Error('改行後の手書きの本文位置を確認できません。');
           const dx = to.x + to.width / 2 - from.x - from.width / 2, dy = to.y + to.height / 2 - from.y - from.height / 2;
           for (const fragment of fragments) if (fragment.some(p => Math.hypot(p.x - fragment[0].x, p.y - fragment[0].y) > .00001))
